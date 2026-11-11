@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AVAPageStream.Core/AVAPageStream.Core.csproj" />
+    <Project Path="src/AVAPageStream/AVAPageStream.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AVAPageStream.Tests/AVAPageStream.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Everything but the window: the document and its objects, stories and how they flow through their frames,
+       undo, snapping, units and colours, and the .avps file. -->
+  <PropertyGroup>
+    <RootNamespace>AVAPageStream.Core</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AVAPageStream.Tests" />
+  </ItemGroup>
+</Project>

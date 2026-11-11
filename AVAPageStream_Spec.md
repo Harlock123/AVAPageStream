@@ -1,0 +1,422 @@
+# AVAPageStream: Specification
+
+### A desktop publishing program for Windows, macOS and Linux, built with .NET 10 and Avalonia 12
+
+AVAPageStream re-imagines PageStream, the frame-based desktop publishing program from Soft-Logik (later Grasshopper)
+that many people first met on the Amiga. It keeps what made PageStream good: pages laid out as frames you draw on a
+pasteboard, text that flows from frame to frame and column to column, master pages, rulers and guides, and output that
+looks the same as the screen. It is a new program, written from scratch, with its own file format and its own look;
+it is not affiliated with Soft-Logik or Grasshopper and reads no PageStream files.
+
+---
+
+## Contents
+
+1. [Goals](#1-goals)
+2. [Ideas the program is built on](#2-ideas-the-program-is-built-on)
+3. [The window](#3-the-window)
+4. [The document](#4-the-document)
+5. [Objects](#5-objects)
+6. [Text](#6-text)
+7. [Tools and editing](#7-tools-and-editing)
+8. [Pages and master pages](#8-pages-and-master-pages)
+9. [Rulers, guides and snapping](#9-rulers-guides-and-snapping)
+10. [Colour](#10-colour)
+11. [Undo](#11-undo)
+12. [Files](#12-files)
+13. [Output](#13-output)
+14. [Keyboard](#14-keyboard)
+15. [Architecture](#15-architecture)
+16. [Testing](#16-testing)
+17. [Milestones](#17-milestones)
+
+---
+
+## 1. Goals
+
+- **What you see is what prints.** The page on screen, a PNG export and a PDF are drawn by the same code from the
+  same layout, so line breaks, positions and fonts match exactly.
+- **Frames and flowing text.** Every piece of a page is an object in a frame. Text lives in *stories* that flow
+  through a chain of linked text frames, and through each frame's columns, reflowing as you type, resize or relink.
+- **Precise.** Positions and sizes are typed in the units you think in (points, picas, inches, millimetres or
+  centimetres) and kept internally as points (1/72 inch), so nothing drifts when units change.
+- **Self-contained documents.** A document file carries its pictures with it, so it opens the same on another machine.
+- **Fonts that travel.** Liberation Serif and Liberation Sans ship inside the program, so a document that uses them
+  looks the same everywhere; installed system fonts can be used too.
+- **Testable.** Everything but the window lives in a Core library with no Avalonia in it, and the window is driven by
+  headless tests, which also take the README's screenshots.
+
+### Not goals (for now)
+
+- Reading or writing PageStream, QuarkXPress, InDesign or Scribus files.
+- Colour separations, trapping and imposition for commercial printers.
+- Right-to-left and vertical scripts (text is laid out left to right).
+- Collaborative editing.
+
+---
+
+## 2. Ideas the program is built on
+
+| Idea | What it means here |
+| --- | --- |
+| **Pasteboard** | The grey area around the page. Objects can sit on it, half on and half off the page, while you work; only what is on the page is exported. |
+| **Frame** | An object's rectangle on the page: its position (X, Y of the top-left corner from the page's top-left) and size. |
+| **Story** | A body of styled text. It belongs to the document, not to a frame. |
+| **Chain** | The ordered list of text frames a story flows through. Text fills the first frame's columns, then the next frame's, and so on. A story with more text than its chain can hold shows an *overflow* mark on its last frame. |
+| **Master page** | A page of objects that appear behind every page that uses it: headers, footers, page numbers, column guides. |
+| **Paragraph style** | A named set of character and paragraph settings. Changing the style changes every paragraph that uses it. |
+
+---
+
+## 3. The window
+
+```
+┌────────────────────────────────────────────────────────────────────────────────────┐
+│ File  Edit  View  Object  Text  Page  Help                                         │ menu
+├────────────────────────────────────────────────────────────────────────────────────┤
+│ [New][Open][Save] │ [Undo][Redo] │ zoom 100% ▾ │ page ◀ 3 of 12 ▶ │ units: pt ▾      │ tool bar
+├──┬──────────────────────────────────────────────────────────────┬──────────────────┤
+│▲ │ ┌──────── ruler ───────────────────────────────────────────┐ │ Object │ Text │  │
+│T │ │                                                           │ │ Pages │ Document │
+│▭ │ │        ┌───────────────────────────┐   pasteboard         │ │                  │
+│◯ │ │        │ page                      │                      │ │  X  [ 54 pt ]    │
+│╱ │ │        │  ┌────────┐  ┌────────┐   │                      │ │  Y  [ 72 pt ]    │
+│▣ │ │        │  │ text   │  │ text   │   │                      │ │  W  [240 pt ]    │
+│⛓ │ │        │  │ frame  │→ │ frame  │   │                      │ │  H  [300 pt ]    │
+│✋│ │        │  └────────┘  └────────┘   │                      │ │  Fill   [■ none] │
+│  │ │        └───────────────────────────┘                      │ │  Stroke [■ black]│
+│  │ └───────────────────────────────────────────────────────────┘ │                  │
+├──┴──────────────────────────────────────────────────────────────┴──────────────────┤
+│ Text frame 1 of story 1 · X 54 Y 72 W 240 H 300 pt │ cursor 120.5, 300.0 pt │ 100% │ status bar
+└────────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Toolbox** (left): Select, Text, Rectangle, Ellipse, Line, Picture, Link and Hand, each with a key (section 14).
+- **Page view** (centre): the pasteboard with the current page on it, rulers along the top and left, scroll bars,
+  and zoom from 10% to 1600%. Ctrl+wheel zooms about the mouse; the wheel scrolls; Shift+wheel scrolls sideways.
+- **Side panel** (right), in tabs:
+  - **Object**: position and size in the current units, fill and stroke colour, stroke width, corner radius
+    (rectangles), lock; for text frames, columns, gutter and inset; for pictures, how the picture fits its frame.
+  - **Text**: paragraph style, font, size, bold, italic, underline, colour, tracking, alignment, leading, indents and
+    space before and after. It edits the selected text when editing, or all of the selected frames' text otherwise.
+    Paragraph styles are made, renamed, redefined from a paragraph and deleted here.
+  - **Pages**: the pages in order with their master, add (before or after), delete, move, and which master each uses;
+    the master pages, to add, rename and edit.
+  - **Document**: page size (Letter, Legal, Tabloid, A3, A4, A5, B5, custom), orientation, margins, columns and gutter
+    for new pages, and the units.
+- **Status bar**: what is selected and its frame, the cursor's position on the page in the current units, the zoom,
+  and messages (what was saved, why something could not be done).
+
+The window is built in code (no XAML), dark, like the other AVA applications; the page itself is always white paper.
+
+---
+
+## 4. The document
+
+```
+Document
+├── Setup: page size, margins, columns, gutter, units
+├── Styles: paragraph styles by name
+├── Colours: named swatches
+├── Stories: id → Story
+├── Images: hash → bytes (PNG, JPEG, BMP, GIF, WebP)
+├── Masters: list of MasterPage (name, guides, objects)
+└── Pages: list of Page (master name, guides, objects)
+```
+
+- Every measure is a `double` in points. A page's origin is its top-left corner; Y grows downwards.
+- Objects on a page are drawn in list order: the last is on top.
+- Every object and story has an id unique in the document, so chains and selections refer to them by id.
+- Page numbers count from 1. A page's *side* is left or right (odd pages right) for facing-page masters (milestone 2).
+
+### Page sizes
+
+| Name | Size (pt) | Size |
+| --- | --- | --- |
+| Letter | 612 × 792 | 8.5 × 11 in |
+| Legal | 612 × 1008 | 8.5 × 14 in |
+| Tabloid | 792 × 1224 | 11 × 17 in |
+| A3 | 841.89 × 1190.55 | 297 × 420 mm |
+| A4 | 595.28 × 841.89 | 210 × 297 mm |
+| A5 | 419.53 × 595.28 | 148 × 210 mm |
+| B5 | 498.9 × 708.66 | 176 × 250 mm |
+
+Landscape swaps width and height.
+
+### Units
+
+| Unit | Points |
+| --- | --- |
+| point (pt) | 1 |
+| pica (pc) | 12 |
+| inch (in) | 72 |
+| millimetre (mm) | 72 / 25.4 |
+| centimetre (cm) | 720 / 25.4 |
+
+A typed measure may carry its own unit (`3in`, `12p6` for 12 picas 6 points, `25 mm`), which overrides the current
+unit; plain numbers are in the current unit. Simple sums (`72+18`, `2in-0.25in`) are allowed.
+
+---
+
+## 5. Objects
+
+Every object has an id, a frame (X, Y, width, height), a fill, a stroke (colour and width), a name, and *locked*
+(locked objects can be selected but not moved, resized or deleted).
+
+| Kind | Extra settings | Notes |
+| --- | --- | --- |
+| **Rectangle** | corner radius | |
+| **Ellipse** | | Fills its frame. |
+| **Line** | which diagonal (down or up), arrowheads (milestone 2) | Drawn corner to corner across its frame; a frame may have zero width or height. |
+| **Text frame** | story id, columns, gutter, inset | Shows its part of the story; empty frames show their columns as faint guides. |
+| **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | A missing picture shows a crossed box. |
+| **Group** (milestone 2) | children | Moves and resizes as one. |
+| **Polygon / Bézier path** (milestone 2) | points | |
+
+Fills and strokes are a colour or *none*. A stroke is centred on the frame's edge.
+
+---
+
+## 6. Text
+
+### The story
+
+A story is its text (paragraphs end with a new-line character) plus:
+
+- **Character runs**: consecutive stretches of the text, each with one complete `CharFormat`: font family, size,
+  bold, italic, underline, colour, tracking (in thousandths of an em) and baseline shift.
+- **Paragraph formats**: one `ParaFormat` per paragraph: the paragraph style's name, alignment (left, centre, right,
+  justified), leading (0 = automatic, 120% of the largest size on the line), left, right and first-line indents, and
+  space before and after.
+
+Runs never have zero length, and two neighbouring runs never have the same format: every edit puts the story back in
+that form, so equal stories compare equal.
+
+Applying a paragraph style sets the paragraph's format and all of its characters to the style's. Redefining a style
+updates every paragraph that uses it, keeping bold and italic set locally (milestone 2: keep every local change).
+
+### Flowing
+
+Layout takes a story and the list of *areas* it may fill (each frame in the chain, inset, split into its columns,
+in order) and produces *lines*, each in one area at a baseline, made of *pieces* of text in one format at an X.
+
+1. Paragraphs are broken into words at spaces and after hyphens; spaces stay with the word before them.
+2. Words fill a line until the next would not fit; a word longer than a whole line is broken between characters.
+3. Each line's height comes from the largest font on it: ascent and descent from the font, leading from the paragraph.
+   A line that does not fit in the rest of an area moves to the top of the next area. The first line of an area sits
+   with its ascent at the area's top.
+4. Space before is skipped at the top of an area. Indents narrow the line.
+5. Alignment moves the line; justified lines (except the last of a paragraph) spread their spaces.
+6. Text left when the areas run out is *overset*: the last frame shows a red ⊞ mark, and the status bar says how much.
+
+Measuring is behind an interface (`ITextMeasurer`), so Core lays out text without Avalonia and tests use a measurer
+with fixed widths; the program measures with the real fonts.
+
+Layout is redone when the story, the chain, a frame's size or columns change, and never for a frame the change
+cannot reach.
+
+### Editing text
+
+Choosing a text frame with the Text tool (or double-clicking it with Select) puts the caret in the story. The caret
+moves through the whole story, across frames.
+
+- Typing inserts in the format of the character before the caret (or after, at a paragraph's start).
+- Backspace, Delete, Enter (new paragraph, same format), arrows, Home, End, Ctrl+arrows by word, Ctrl+Home/End to the
+  story's ends, Page Up/Down by frame.
+- Shift extends the selection; dragging selects; double-click selects a word, triple-click a paragraph; Ctrl+A
+  selects the whole story.
+- Ctrl+B, Ctrl+I and Ctrl+U toggle bold, italic and underline on the selection.
+- Cut, copy and paste (plain text; milestone 2: styled within the program).
+- Escape leaves the text and selects its frame.
+
+### Milestone 2 and later
+
+Text wrap around objects (by frame or by shape), tabs and tab leaders, drop caps, hyphenation, kerning, small caps,
+super- and subscript, page number and page count fields (on masters), a *story editor* window showing a story as
+plain text with its styles, find and replace, spelling, importing plain text and Markdown.
+
+---
+
+## 7. Tools and editing
+
+| Tool | Key | What it does |
+| --- | --- | --- |
+| Select | V | Click to select (Shift adds or removes), drag on the page for a marquee, drag an object to move it, drag one of eight handles to resize (Shift keeps the shape), double-click a text frame to edit its text. Arrow keys nudge by 1 pt (Shift: 10 pt). |
+| Text | T | Drag to draw a text frame and start typing in it; click in a text frame to put the caret there. |
+| Rectangle | R | Drag to draw (Shift: square). |
+| Ellipse | E | Drag to draw (Shift: circle). |
+| Line | L | Drag to draw (Shift: at 45° steps). |
+| Picture | P | Drag a frame, then pick an image file for it; clicking an existing picture replaces its image. |
+| Link | K | Click a text frame, then another: the second joins the first's chain just after it. Clicking an empty frame with the story's last frame picked adds it to the end. Alt+click a frame takes it out of its chain. |
+| Hand | H (or hold Space) | Drag to scroll. |
+
+- A new object is drawn with the last fill and stroke used for its kind.
+- **Object menu**: bring to front, bring forward, send backward, send to back; lock and unlock; delete; duplicate
+  (Ctrl+D, offset 12 pt); align left, centre, right, top, middle, bottom (milestone 2: distribute; group, ungroup).
+- Text frames show their chain: with a linked frame selected, arrows from the bottom-right of each frame to the
+  top-left of the next show the flow.
+- Clicking a text frame's overset mark with Select starts the Link tool from that frame.
+
+---
+
+## 8. Pages and master pages
+
+- A new document has one page using the master "A-Master", sized from the setup (Letter, ½ in margins, one column).
+- Pages can be added before or after the current one, deleted (never the last), and moved.
+- Each page uses one master, or none. A master's objects are drawn under the page's objects and cannot be selected on
+  the page; edit them by opening the master in the Pages tab, where the page view shows the master itself.
+- Margins and columns are shown as guides (magenta and violet); they are the document's for every page in milestone 1,
+  per master in milestone 2.
+- Text frames on a master that hold a page-number field show each page's own number (milestone 2).
+
+---
+
+## 9. Rulers, guides and snapping
+
+- Rulers along the top and left measure from the page's top-left in the current units, with ticks that thin out as
+  the zoom shrinks, and a marker following the mouse.
+- Dragging from a ruler onto the page makes a guide (horizontal from the top ruler, vertical from the left); dragging a
+  guide moves it; dragging it back onto a ruler removes it. Guides belong to the page.
+- **Snap** (View › Snap to guides, on by default): moving, resizing and drawing snap to margins, column edges, page
+  edges, guides and the page's centre lines within 5 screen pixels.
+- **Grid** (milestone 2): a document grid to snap to.
+
+---
+
+## 10. Colour
+
+- Colours are sRGB with alpha, stored as `#RRGGBB` or `#AARRGGBB`.
+- The document keeps named swatches: None, Black, White, Paper, Registration-free basics (Red, Green, Blue, Cyan,
+  Magenta, Yellow) and any you add. Objects and text refer to a colour by value in milestone 1, by swatch name
+  (so changing the swatch changes them all) in milestone 2.
+- CMYK swatches for print and spot colours: milestone 3.
+
+---
+
+## 11. Undo
+
+Every change is one step that Undo (Ctrl+Z) takes back and Redo (Ctrl+Y or Ctrl+Shift+Z) puts back, without limit
+until the document is closed. Typing a run of characters, or nudging repeatedly, is one step. A step is the document
+as it was (the model is small: images are kept outside the steps, shared by every state), so undo can never get a
+change partly wrong. The title shows `•` while there are changes not saved.
+
+---
+
+## 12. Files
+
+- **`.avps`**: a ZIP archive holding `document.json` (everything but the images, as indented JSON, with a format
+  version) and `images/<sha256>.<ext>` for each picture used. Images no object uses are left out on saving.
+- Saving writes a new file beside the old one and then replaces it, so a failed save never damages the old file.
+- A newer format version than the program knows is refused with a message saying so.
+- **Open recent** keeps the last ten files. Closing with unsaved changes asks whether to save.
+- Settings (units, recent files, snap) are kept in the user's settings folder as `settings.json`.
+
+---
+
+## 13. Output
+
+- **Export PDF**: every page (or a range) as vector PDF with its fonts embedded, at the page's size.
+- **Export PNG**: the current page or every page at a chosen resolution (72 to 600 dpi), one file per page.
+- Both draw with the same renderer as the screen, with guides, frame outlines and the pasteboard left out.
+- **Print**: milestone 3 (through the PDF on platforms that cannot print from Avalonia).
+
+---
+
+## 14. Keyboard
+
+| Keys | Does |
+| --- | --- |
+| Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S | New, open, save, save as |
+| Ctrl+E | Export PDF |
+| Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z | Undo, redo |
+| Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste (objects, or text when editing) |
+| Ctrl+D | Duplicate |
+| Delete, Backspace | Delete the selected objects (when not editing text) |
+| Ctrl+A | Select every object on the page (or all the story's text when editing) |
+| Ctrl+0, Ctrl+1, Ctrl+=, Ctrl+- | Fit page, actual size, zoom in, zoom out |
+| Page Up / Page Down | Previous, next page (when not editing text) |
+| Ctrl+] / Ctrl+[ , Ctrl+Shift+] / Ctrl+Shift+[ | Bring forward, send backward; to front, to back |
+| V T R E L P K H | Tools (when not editing text) |
+| Escape | Stop editing text; then clear the selection; cancels a drag |
+
+---
+
+## 15. Architecture
+
+```
+AVAPageStream.slnx
+├── src/AVAPageStream.Core/     no Avalonia: the model, layout, editing, undo, files
+│   ├── Units.cs                Units, measure parsing and formatting
+│   ├── Colours.cs, Box.cs      colour parsing and swatches; points and rectangles
+│   ├── Model.cs                Setup, Page, MasterPage, SheetRef, Guide, PageObject and its kinds
+│   ├── Document.cs             Document, and the ImageStore its undo states share
+│   ├── Story.cs                Story, CharFormat, ParaFormat, ParagraphStyle; inserting, deleting, formatting
+│   ├── TextFlow.cs             ITextMeasurer, Area, Line, Piece, TextLayout: a story set through its areas
+│   ├── Chains.cs               a story's frames and areas, linking and unlinking
+│   ├── Editor.cs               the document being edited: every change, and undo and redo
+│   ├── TextNav.cs              moving by words; picking a word
+│   ├── DocumentFile.cs         reading and writing .avps
+│   ├── Snapping.cs             snap targets and snapping
+│   └── AppSettings.cs
+├── src/AVAPageStream/          the Avalonia program
+│   ├── App.cs, Program.cs
+│   ├── Look.cs                 colours of the window
+│   ├── FontSupport.cs          the bundled fonts, and the measurer that uses real fonts
+│   ├── PageRenderer.cs         draws a page (and its master) to a DrawingContext: used by the screen and exports
+│   ├── PageView.cs             the pasteboard, rulers, tools, selection, text editing
+│   ├── Panels.cs               the side panel tabs
+│   ├── MainWindow.cs           menus, tool bar, status bar; its controls are public for tests
+│   ├── Export.cs               PDF (through SkiaSharp's PDF document) and PNG
+│   └── Dialogs.cs
+└── tests/AVAPageStream.Tests/  xUnit v3 + Avalonia.Headless.XUnit
+```
+
+- **Rules**: nothing in Core touches a window; every change to the document goes through `Editor` methods that record
+  one undo step; layout is a pure function of the story, the areas and the measurer, cached by the window per story;
+  errors are shown in the status bar in plain words, never as a bare exception.
+- **Dependencies**: Avalonia 12.1.4 (Desktop, Fluent theme, Inter font), SkiaSharp (already under Avalonia, for PDF),
+  System.Text.Json and System.IO.Compression from .NET.
+
+---
+
+## 16. Testing
+
+- **Core**: units and measure parsing; colour parsing; story editing keeps its runs normal; formats apply to the right
+  characters; layout breaks lines, fills columns and frames in order, aligns and justifies, and reports overset text
+  (with a fixed-width measurer); chains link and unlink; undo and redo; files save and load with their pictures and
+  refuse newer versions; snapping.
+- **Window** (headless, real fonts): drawing each kind of object with the mouse; moving, resizing and nudging; typing
+  into a frame and the text flowing on into a linked frame; styling text from the Text tab; pages added, moved and
+  deleted; master objects showing on pages; undo; saving and opening; exporting a PDF and PNGs.
+- **Screenshots**: with `AVAPAGESTREAM_SHOTS` set to a folder, the window tests save pictures of the window there; the
+  README's screenshots come from them.
+
+---
+
+## 17. Milestones
+
+### Milestone 1: a working page layout program
+
+Document and pages with a master page; rectangles, ellipses, lines, pictures and text frames; flowing linked text
+through columns and frames with character and paragraph formats and paragraph styles; in-place text editing; select,
+move, resize, nudge, arrange, duplicate, delete; rulers, guides and snapping; zoom and scrolling; the four side panel
+tabs; undo and redo; `.avps` files; PDF and PNG export; tests and CI publishing for eight platforms.
+
+**Status (11 November 2026):** built and tested, except for these parts of milestone 1, still to do:
+
+- Scroll bars on the page view (it scrolls with the wheel, the Hand tool and Space-drag).
+- Page Up and Page Down moving the caret a frame at a time while editing text (they change page otherwise).
+- Choosing a page range for PDF export, and the PNG resolution, in the window (PNG uses `ExportDpi` in the
+  settings, 150 dpi by default).
+- Dragging a page in the Pages tab to move it (Move up and Move down do it now).
+
+### Milestone 2: a publishing program
+
+Facing pages and spreads; per-master margins and columns; page number fields; groups; align and distribute; polygons
+and Bézier paths; rotation; text wrap; tabs; drop caps; hyphenation; kerning; named swatches that update their users;
+the story editor; find and replace; importing text and Markdown; styled copy and paste; a document grid.
+
+### Milestone 3: print
+
+Printing; CMYK and spot colours; SVG and EPS pictures; spelling; tables; a table of contents from paragraph styles;
+templates; booklet printing.
