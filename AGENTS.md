@@ -172,6 +172,9 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   draw operations, one doing `SaveLayer` (opacity, blend, shadow filter) and one `Restore`, around Avalonia's own
   drawing of it. Their bounds are huge on purpose: one culled without the other would leave the canvas's layers
   unmatched. Gradients are Avalonia brushes in the object's own coordinates.
+- **Object styles** (`Document.ObjectStyles`, Core's `ObjectStyles.cs`) copy their look onto objects
+  (`ObjectStyle.ApplyTo`); `PageObject.ObjectStyle` only names the style. A new look property of objects belongs in
+  `ObjectStyle`, its `From` and `ApplyTo`.
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

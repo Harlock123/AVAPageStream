@@ -898,6 +898,72 @@ public sealed class Editor
         return null;
     }
 
+    /// <summary>Gives objects an object style's look, or (with null) takes them out of their style, keeping their look.</summary>
+    public string? ApplyObjectStyle(IEnumerable<string> ids, string? style)
+    {
+        var list = ids.ToList();
+        if (style is not null && Doc.ObjectStyle(style) is null) return $"There is no object style called {style}.";
+        if (list.Count == 0) return "Select the objects to give the style to.";
+        Change(style is null ? "No object style" : "Object style " + style, d =>
+        {
+            foreach (var id in list)
+                if (d.Find(id) is { } o)
+                {
+                    if (style is null) o.ObjectStyle = null;
+                    else d.ObjectStyle(style)!.ApplyTo(o);
+                }
+        });
+        return null;
+    }
+
+    /// <summary>Makes or redefines an object style; every object in it takes its new look.</summary>
+    public string? DefineObjectStyle(ObjectStyle style, IEnumerable<string>? andGive = null)
+    {
+        var name = style.Name.Trim();
+        if (name.Length == 0) return "Type a name for the object style first.";
+        style = style with { Name = name };
+        var give = andGive?.ToList() ?? [];
+        Change("Object style " + name, d =>
+        {
+            var i = d.ObjectStyles.FindIndex(s => s.Name == name);
+            if (i < 0) d.ObjectStyles.Add(style);
+            else d.ObjectStyles[i] = style;
+            foreach (var o in d.AllObjects)
+                if (o.ObjectStyle == name || give.Contains(o.Id)) style.ApplyTo(o);
+        });
+        return null;
+    }
+
+    public string? RenameObjectStyle(string old, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Type the object style's new name first.";
+        if (name == old) return null;
+        if (Doc.ObjectStyles.Any(s => s.Name == name)) return $"There is already an object style called {name}.";
+        if (Doc.ObjectStyle(old) is null) return $"There is no object style called {old}.";
+        Change("Rename object style " + old, d =>
+        {
+            var i = d.ObjectStyles.FindIndex(s => s.Name == old);
+            d.ObjectStyles[i] = d.ObjectStyles[i] with { Name = name };
+            foreach (var o in d.AllObjects)
+                if (o.ObjectStyle == old) o.ObjectStyle = name;
+        });
+        return null;
+    }
+
+    /// <summary>Deletes an object style; its objects keep their look.</summary>
+    public string? DeleteObjectStyle(string name)
+    {
+        if (Doc.ObjectStyle(name) is null) return $"There is no object style called {name}.";
+        Change("Delete object style " + name, d =>
+        {
+            foreach (var o in d.AllObjects)
+                if (o.ObjectStyle == name) o.ObjectStyle = null;
+            d.ObjectStyles.RemoveAll(s => s.Name == name);
+        });
+        return null;
+    }
+
     /// <summary>
     /// Changes colours everywhere: objects' fills, strokes, gradients and shadows, tables' headers, text, paragraphs'
     /// rules, and styles.
@@ -925,6 +991,16 @@ public sealed class Editor
             var style = d.Styles[k];
             if (change(style.Char.Colour) is { } c && c != style.Char.Colour) style = style with { Char = style.Char with { Colour = c } };
             d.Styles[k] = style with { Para = Para(style.Para) };
+        }
+        for (var k = 0; k < d.ObjectStyles.Count; k++)
+        {
+            var os = d.ObjectStyles[k];
+            d.ObjectStyles[k] = os with
+            {
+                Fill = change(os.Fill), Stroke = change(os.Stroke),
+                Shadow = os.Shadow is { } s ? s with { Colour = Must(s.Colour) } : null,
+                Gradient = os.Gradient is { } g ? g with { Stops = g.Stops.Select(st => st with { Colour = Must(st.Colour) }).ToList() } : null,
+            };
         }
     }
 

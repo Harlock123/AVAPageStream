@@ -385,6 +385,25 @@ The Object tab's **Effects** go on any object: shapes, text frames, pictures, ta
 They are drawn the same on screen, in PNGs and in PDFs, where they stay as vector shading and transparency (a
 shadow's blur is the one part a PDF carries as a picture).
 
+### Object styles
+
+![Four notices in one object style, one of them given a different fill since, and the style in the Object tab](docs/images/guide/objectstyles.png)
+
+An object style is to shapes and frames what a paragraph style is to text: a named look, kept in the document. It
+holds the fill (or gradient), the stroke and its width, opacity, the blend mode, the shadow or glow, the corners and
+the text wrap. Its place is at the top of the Object tab.
+
+- **Add from object**: style an object, type a name and click it. The object, and anything else selected, is put in
+  the new style.
+- **Style**: pick one for the selected objects to take its look; **(none)** takes them out of their style, and they
+  keep how they look.
+- **Redefine** makes the style match the selected object, and every object in it changes to match.
+- **Rename** and **Delete**: deleting an object style leaves its objects looking as they did.
+
+An object changed by hand after it was given its style stays in the style, and the Object tab says it has been
+changed since: pick the style again to put it back, or **Redefine** to make the style match it. Redefining puts every
+object in the style back to the style's look, changes and all.
+
 ### Text on a path
 
 ![Text set along a curve, and a footnote at the foot of the column](docs/images/guide/pathtext.png)

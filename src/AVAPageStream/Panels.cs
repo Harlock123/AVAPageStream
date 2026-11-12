@@ -131,6 +131,9 @@ public sealed class SidePanel : TabControl
     public TextBox WrapGapBox { get; } = Ui.Box();
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
     private readonly StackPanel _cornerRow = new();
+    public ComboBox ObjectStyleChoice { get; } = new() { HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox ObjectStyleNameBox { get; } = Ui.Box("New object style's name");
+    public TextBlock ObjectStyleInfo { get; } = new() { Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _gradientRows = new();
     private readonly StackPanel _shadowRows = new();
     public ComboBox FillKindChoice { get; } = new() { ItemsSource = new[] { "Colour", "Linear gradient", "Radial gradient" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
@@ -467,7 +470,23 @@ public sealed class SidePanel : TabControl
             else _window.Say(LinkedBox.IsChecked == true ? "Linked: the picture is read from its file, and follows it when it changes." : "Embedded: the document keeps a copy of the picture.");
         };
 
+        ObjectStyleChoice.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || ObjectStyleChoice.SelectedIndex < 0 || View.Selected.Count == 0) return;
+            var name = ObjectStyleChoice.SelectedIndex == 0 ? null : (string)ObjectStyleChoice.SelectedItem!;
+            if (Editor.ApplyObjectStyle(View.Selected.Where(o => !o.Locked).Select(o => o.Id), name) is { } why) _window.Say(why);
+            Refresh();
+        };
         _objectBody.Children.AddRange([
+            Ui.Heading("Object style"),
+            Ui.Row(("Style", ObjectStyleChoice)),
+            ObjectStyleInfo,
+            Ui.Row(("New", ObjectStyleNameBox)),
+            Ui.Buttons(
+                Ui.Button("Add from object", NewObjectStyle, "A new style of the selected object's fill, stroke, effects, corners and wrap"),
+                Ui.Button("Redefine", RedefineObjectStyle, "Make the style match the selected object; every object in it changes"),
+                Ui.Button("Rename", RenameObjectStyle),
+                Ui.Button("Delete", DeleteObjectStyle)),
             Ui.Heading("Frame"),
             Ui.Row(("X", XBox), ("Y", YBox)),
             Ui.Row(("W", WBox), ("H", HBox)),
@@ -975,6 +994,56 @@ public sealed class SidePanel : TabControl
         _window.Say(Editor.DeleteCharStyle(name) ?? $"Deleted {name}; its text has its paragraph's style again.");
     }
 
+    private void RefreshObjectStyle(IReadOnlyList<PageObject> selected)
+    {
+        ObjectStyleChoice.ItemsSource = Doc.ObjectStyles.Select(s => s.Name).Prepend("(none)").ToList();
+        var names = selected.Select(o => o.ObjectStyle).Distinct().ToList();
+        var name = names.Count == 1 ? names[0] : null;
+        ObjectStyleChoice.SelectedIndex = names.Count != 1 ? -1 : name is null ? 0 : Math.Max(0, Doc.ObjectStyles.FindIndex(s => s.Name == name) + 1);
+        ObjectStyleInfo.Text = name is not null && Doc.ObjectStyle(name) is { } style
+            ? $"{name}: {style.Describe(Doc.Swatches)}." + (selected.All(style.Matches) ? "" : " Changed since: pick the style again to put it back, or Redefine to make the style match.")
+            : Doc.ObjectStyles.Count == 0 ? "Style an object, then type a name and Add from object to keep its look as a style." : "";
+    }
+
+    internal void NewObjectStyle()
+    {
+        var name = ObjectStyleNameBox.Text?.Trim() ?? "";
+        if (name.Length == 0) { _window.Say("Type the new object style's name first."); return; }
+        if (Doc.ObjectStyle(name) is not null) { _window.Say($"There is already an object style called {name}. Use Redefine to change it."); return; }
+        if (View.Selected.FirstOrDefault() is not { } o) { _window.Say("Select an object to take the style from."); return; }
+        if (Editor.DefineObjectStyle(ObjectStyle.From(name, o), View.Selected.Where(s => !s.Locked).Select(s => s.Id)) is { } why) { _window.Say(why); return; }
+        ObjectStyleNameBox.Text = "";
+        _window.Say($"Made the object style {name}.");
+        Refresh();
+    }
+
+    internal void RedefineObjectStyle()
+    {
+        if (View.Selected.FirstOrDefault() is not { } o) { _window.Say("Select an object to take the style from."); return; }
+        var name = o.ObjectStyle ?? ObjectStyleChoice.SelectedItem as string;
+        if (name is null || Doc.ObjectStyle(name) is null) { _window.Say("Select an object in the style to redefine it from."); return; }
+        Editor.DefineObjectStyle(ObjectStyle.From(name, o));
+        _window.Say($"Redefined {name}: every object in it now matches.");
+        Refresh();
+    }
+
+    private void RenameObjectStyle()
+    {
+        if (ObjectStyleChoice.SelectedItem is not string old || ObjectStyleChoice.SelectedIndex == 0) { _window.Say("Pick the object style to rename first."); return; }
+        var name = ObjectStyleNameBox.Text?.Trim() ?? "";
+        if (Editor.RenameObjectStyle(old, name) is { } why) { _window.Say(why); return; }
+        ObjectStyleNameBox.Text = "";
+        _window.Say($"Renamed the object style {old} to {name}.");
+        Refresh();
+    }
+
+    private void DeleteObjectStyle()
+    {
+        if (ObjectStyleChoice.SelectedItem is not string name || ObjectStyleChoice.SelectedIndex == 0) return;
+        _window.Say(Editor.DeleteObjectStyle(name) ?? $"Deleted the object style {name}. Its objects keep their look.");
+        Refresh();
+    }
+
     internal void NewStyle()
     {
         var name = StyleNameBox.Text?.Trim() ?? "";
@@ -1465,6 +1534,7 @@ public sealed class SidePanel : TabControl
         Set(StrokeWidthBox, Units.Format(first.StrokeWidth, Unit));
         _cornerRow.IsVisible = selected.All(o => o is RectangleObject or TextFrame or PictureObject);
         RefreshEffects(first);
+        RefreshObjectStyle(selected);
         _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject or TableObject));
         Set(RotationBox, first.Rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
         Set(CornerBox, first.Corners is { } fc ? fc.Describe(Unit) : first is RectangleObject r ? Units.Format(r.CornerRadius, Unit) : Units.Format(0, Unit));

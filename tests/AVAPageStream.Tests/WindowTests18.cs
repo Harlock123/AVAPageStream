@@ -76,4 +76,41 @@ public partial class WindowTests
         Assert.Null(w.Editor.Doc.Stories[f.StoryId].Paras[0].RuleBelow);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void The_object_tab_makes_applies_and_redefines_object_styles()
+    {
+        var w = Open();
+        var a = w.Editor.Add(SheetRef.PageAt(0), new RectangleObject { X = 72, Y = 72, W = 100, H = 60, Fill = "@Red" });
+        var b = w.Editor.Add(SheetRef.PageAt(0), new EllipseObject { X = 272, Y = 72, W = 100, H = 60, Fill = "@Green" });
+        w.Editor.Change("Shadow", d => d.Find(a.Id)!.Shadow = new Shadow());
+        w.View.Select([a.Id]);
+        w.Panel.SelectedIndex = 0;
+        w.Refresh();
+        Pump();
+        w.Panel.ObjectStyleNameBox.Text = "Alert";
+        w.Panel.NewObjectStyle();
+        Assert.Equal("Alert", w.Editor.Doc.Find(a.Id)!.ObjectStyle);
+        Assert.Equal("Alert", w.Panel.ObjectStyleChoice.SelectedItem);
+        Assert.Contains("fill Red", w.Panel.ObjectStyleInfo.Text);
+        w.View.Select([b.Id]);
+        w.Refresh();
+        Pump();
+        Assert.Equal("(none)", w.Panel.ObjectStyleChoice.SelectedItem);
+        w.Panel.ObjectStyleChoice.SelectedItem = "Alert";
+        Pump();
+        Assert.Equal(("@Red", true), (w.Editor.Doc.Find(b.Id)!.Fill, w.Editor.Doc.Find(b.Id)!.Shadow is not null));
+        // Changed, then redefined from: the other object follows.
+        w.Editor.Change("Fill", d => d.Find(b.Id)!.Fill = "@Blue");
+        w.Refresh();
+        Pump();
+        Assert.Contains("Changed since", w.Panel.ObjectStyleInfo.Text);
+        w.Panel.RedefineObjectStyle();
+        Assert.Equal("@Blue", w.Editor.Doc.Find(a.Id)!.Fill);
+        Assert.DoesNotContain("Changed since", w.Panel.ObjectStyleInfo.Text);
+        w.Panel.ObjectStyleChoice.SelectedIndex = 0;            // out of the style, keeping its look
+        Pump();
+        Assert.Equal((null, "@Blue"), (w.Editor.Doc.Find(b.Id)!.ObjectStyle, w.Editor.Doc.Find(b.Id)!.Fill));
+        Done(w);
+    }
 }

@@ -135,6 +135,8 @@ public static class DocumentFile
         }
         foreach (var frame in doc.AllObjects.OfType<TextFrame>())
             if (!doc.Stories.ContainsKey(frame.StoryId)) Chains.NewStory(doc, frame, doc.Style("Body"));
+        foreach (var o in doc.AllObjects)
+            if (o.ObjectStyle is { } os && doc.ObjectStyle(os) is null) o.ObjectStyle = null;
         foreach (var path in doc.AllObjects.OfType<PathObject>())
             if (path.StoryId is { } sid && !doc.Stories.ContainsKey(sid)) path.StoryId = null;
         foreach (var table in doc.AllObjects.OfType<TableObject>().ToList())

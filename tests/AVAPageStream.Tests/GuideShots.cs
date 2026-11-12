@@ -453,4 +453,25 @@ public partial class WindowTests
         Guide(w, "rules");
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_object_styles()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var style = new ObjectStyle("Notice", "@Yellow", "@Red", 2, Shadow: new Shadow(Colours.Black, 0.35, 5, 6, 8), Corners: Corners.All(14), Wrap: true);
+        var ids = new List<string>();
+        foreach (var (x, y) in new[] { (72.0, 90.0), (300.0, 90.0), (72.0, 260.0) })
+            ids.Add(e.Add(SheetRef.PageAt(0), new RectangleObject { X = x, Y = y, W = 190, H = 130 }).Id);
+        e.DefineObjectStyle(style, ids);
+        var odd = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 300, Y = 260, W = 190, H = 130 });
+        e.ApplyObjectStyle([odd.Id], "Notice");
+        e.Change("Fill", d => d.Find(odd.Id)!.Fill = "@Cyan");
+        w.View.Select([odd.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0);
+        w.Refresh();
+        Guide(w, "objectstyles");
+        Done(w);
+    }
 }

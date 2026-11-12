@@ -222,6 +222,9 @@ public abstract class PageObject
     /// <summary>For rectangles, text frames and pictures: rounded or cut corners (a rectangle's CornerRadius otherwise).</summary>
     public Corners? Corners { get; set; }
 
+    /// <summary>The object style it was given, if any (its look can have been changed since).</summary>
+    public string? ObjectStyle { get; set; }
+
     /// <summary>Whether it is drawn as a layer of its own: see-through, blended or with a shadow.</summary>
     [JsonIgnore]
     public bool HasEffects => Opacity < 1 || Blend != BlendMode.Normal || Shadow is not null;

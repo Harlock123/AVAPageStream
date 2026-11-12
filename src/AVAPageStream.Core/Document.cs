@@ -74,6 +74,7 @@ public sealed class Document
     public Setup Setup { get; set; } = new();
     public List<ParagraphStyle> Styles { get; set; } = [];
     public List<CharacterStyle> CharStyles { get; set; } = [];
+    public List<ObjectStyle> ObjectStyles { get; set; } = [];
     public List<Layer> Layers { get; set; } = [new("Layer 1")];
     public List<Swatch> Swatches { get; set; } = [];
     public Dictionary<string, Story> Stories { get; set; } = [];
@@ -112,6 +113,8 @@ public sealed class Document
     ];
 
     public CharacterStyle? CharStyle(string name) => CharStyles.FirstOrDefault(s => s.Name == name);
+
+    public ObjectStyle? ObjectStyle(string name) => ObjectStyles.FirstOrDefault(s => s.Name == name);
 
     /// <summary>Where an object's layer is in the list, bottom first (an unknown layer counts as the bottom).</summary>
     public int LayerIndex(PageObject o) => Math.Max(0, Layers.FindIndex(l => l.Name == o.Layer));
