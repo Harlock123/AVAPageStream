@@ -18,7 +18,7 @@ public static class GeneratedLists
 {
     /// <summary>The paragraph styles a list's own text is set in.</summary>
     public static IEnumerable<string> StylesOf(GeneratedList list) => list.Kind == ListKind.Index
-        ? [Indexes.HeadingStyle, Indexes.StyleFor(0), Indexes.StyleFor(1)]
+        ? [Indexes.HeadingStyle, .. Enumerable.Range(0, Indexes.Levels).Select(Indexes.StyleFor)]
         : Enumerable.Range(0, Math.Max(1, list.Styles.Count)).Select(Contents.StyleFor);
 
     /// <summary>

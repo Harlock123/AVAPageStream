@@ -572,14 +572,14 @@ public partial class WindowTests
         w.View.StartEditing((TextFrame)e.Doc.Find(a.Id)!);
         (w.View.Editing!.Anchor, w.View.Editing.Caret) = (0, 5);
         string? offered = null;
-        w.AskIndex = topic => { offered = topic; return Task.FromResult<IndexMark?>(new IndexMark(topic)); };
+        w.AskIndex = (topic, _) => { offered = topic; return Task.FromResult<IndexMark?>(new IndexMark(topic)); };
         Wait(w.MarkIndexEntry());
         Assert.Equal("Tides", offered);
         Assert.Equal((1, 6), (w.View.Editing.Anchor, w.View.Editing.Caret)); // the selection still the word
         Assert.Equal("Tides follow the moon.", w.View.Layouts.Of(e.Doc, a.StoryId)!.Display(0, e.Doc.Stories[a.StoryId].Length));
         w.View.StartEditing((TextFrame)e.Doc.Find(b.Id)!);
         (w.View.Editing!.Anchor, w.View.Editing.Caret) = (7, 12);
-        w.AskIndex = _ => Task.FromResult<IndexMark?>(new IndexMark("Tides", "spring"));
+        w.AskIndex = (_, _) => Task.FromResult<IndexMark?>(new IndexMark("Tides", "spring"));
         Press(w, Key.I, RawInputModifiers.Control | RawInputModifiers.Alt); // the key, not italic
         Pump();
         Assert.False(e.Doc.Stories[b.StoryId].FormatAt(8).Italic);

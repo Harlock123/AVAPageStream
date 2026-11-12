@@ -123,7 +123,7 @@ internal sealed class ReferenceDialog : Window
 /// <summary>Asks for an index entry: its topic, a sub-topic under it, and another topic to see instead.</summary>
 internal sealed class IndexDialog : Window
 {
-    private IndexDialog(string topic)
+    private IndexDialog(string topic, IReadOnlyList<string> places)
     {
         Title = "Index entry";
         Width = 440;
@@ -133,10 +133,16 @@ internal sealed class IndexDialog : Window
         Background = Look.Window;
         var t = new TextBox { Text = topic, FontSize = 14 };
         var s = new TextBox { PlaceholderText = "none", FontSize = 14 };
+        var s2 = new TextBox { PlaceholderText = "none", FontSize = 14 };
         var see = new TextBox { PlaceholderText = "none: the page this is on", FontSize = 14 };
+        var covers = new ComboBox { FontSize = 14, HorizontalAlignment = HorizontalAlignment.Stretch };
+        covers.ItemsSource = new[] { "Just here", "To the end of its paragraph" }.Concat(places.Select(p => "To the place " + p)).ToList();
+        covers.SelectedIndex = 0;
         var ok = new Button { Content = "Mark", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
         ok.Classes.Add("accent");
-        ok.Click += (_, _) => Close(new IndexMark(t.Text ?? "", s.Text ?? "", see.Text ?? ""));
+        ok.Click += (_, _) => Close(new IndexMark(t.Text ?? "", s.Text ?? "", see.Text ?? "", s2.Text ?? "",
+            covers.SelectedIndex switch { 0 or -1 => IndexCovers.Here, 1 => IndexCovers.Paragraph, _ => IndexCovers.ToPlace },
+            covers.SelectedIndex > 1 ? places[covers.SelectedIndex - 2] : ""));
         var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
         cancel.Click += (_, _) => Close(null);
         StackPanel Row(string label, Control c) => new() { Spacing = 4, Children = { new TextBlock { Text = label, Foreground = Look.Text }, c } };
@@ -148,14 +154,16 @@ internal sealed class IndexDialog : Window
             {
                 Row("Topic", t),
                 Row("Sub-topic (under the topic)", s),
+                Row("Sub-sub-topic (under the sub-topic)", s2),
                 Row("See (another topic, instead of a page)", see),
+                Row("Covers (its pages run to)", covers),
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } },
             },
         };
         Opened += (_, _) => { t.Focus(); t.SelectAll(); };
     }
 
-    public static Task<IndexMark?> Show(Window owner, string topic) => new IndexDialog(topic).ShowDialog<IndexMark?>(owner);
+    public static Task<IndexMark?> Show(Window owner, string topic, IReadOnlyList<string> places) => new IndexDialog(topic, places).ShowDialog<IndexMark?>(owner);
 }
 
 /// <summary>Asks for a protected PDF's password.</summary>

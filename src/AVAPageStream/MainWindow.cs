@@ -75,8 +75,8 @@ public sealed class MainWindow : Window
     /// <summary>Asks for a line of text (title, message, what it starts as); null if cancelled.</summary>
     public Func<string, string, string, Task<string?>> AskText { get; set; }
 
-    /// <summary>Asks for an index entry, starting from the words given.</summary>
-    public Func<string, Task<IndexMark?>> AskIndex { get; set; }
+    /// <summary>Asks for an index entry, starting from the words given, offering the named places it can run to.</summary>
+    public Func<string, IReadOnlyList<string>, Task<IndexMark?>> AskIndex { get; set; }
 
     /// <summary>Asks what to refer to, from a list of headings and places, and how.</summary>
     public Func<IReadOnlyList<string>, Task<ReferenceChoice?>> AskReference { get; set; }
@@ -231,7 +231,7 @@ public sealed class MainWindow : Window
         View.SpellingWords = SpellingWords;
         AskText = (title, message, start) => TextDialog.Show(this, title, message, start);
         AskReference = targets => ReferenceDialog.Show(this, targets);
-        AskIndex = topic => IndexDialog.Show(this, topic);
+        AskIndex = (topic, places) => IndexDialog.Show(this, topic, places);
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
         View.AskPassword = (file, wrong) => PasswordDialog.Show(this, file, wrong);
@@ -943,11 +943,11 @@ public sealed class MainWindow : Window
     {
         if (View.Editing is not { } t) { Say("Put the caret in the text the entry is for, or select its words."); return; }
         var words = t.Length > 0 ? Fields.Expand(Editor.Doc.Stories[t.StoryId].Slice(t.Start, t.Length), null).Trim() : "";
-        if (await AskIndex(words) is not { } mark) return;
+        if (await AskIndex(words, References.Places(Editor.Doc).Select(p => p.Name).Distinct().ToList()) is not { } mark) return;
         if (Editor.MarkIndex(t.StoryId, t.Start, mark) is { } why) { Say(why); return; }
         if (t.Caret >= t.Start) t.Caret++;
         if (t.Anchor >= t.Start) t.Anchor++;
-        Say($"Marked an index entry for {mark.Topic.Trim()}{(mark.Sub.Trim().Length > 0 ? ", " + mark.Sub.Trim() : "")}. Text › Index makes the index.");
+        Say($"Marked an index entry for {string.Join(", ", mark.Path)}. Text › Index makes the index.");
     }
 
     /// <summary>Puts an index of the document's entries at the caret, or at the end of the selected frame's story.</summary>

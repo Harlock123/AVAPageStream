@@ -1186,7 +1186,9 @@ public sealed class Editor
     public string? MarkIndex(string storyId, int index, IndexMark mark)
     {
         if (mark.Topic.Trim().Length == 0) return "An index entry needs a topic.";
-        if ((mark.Topic + mark.Sub + mark.See).Contains('\t')) return "An index entry can't have a tab in it.";
+        if ((mark.Topic + mark.Sub + mark.See + mark.Sub2 + mark.Place).Contains('\t')) return "An index entry can't have a tab in it.";
+        if (mark.Sub2.Trim().Length > 0 && mark.Sub.Trim().Length == 0) return "A sub-sub-topic goes under a sub-topic: give that too.";
+        if (mark.Covers == IndexCovers.ToPlace && References.Places(Doc).All(p => p.Name != mark.Place)) return $"There is no place called {mark.Place}: Text › Name this place names one.";
         Change("Index entry", d =>
         {
             var story = d.Stories[storyId];

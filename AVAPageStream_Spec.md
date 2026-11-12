@@ -809,3 +809,7 @@ references, anchors, places, cross-references and index entries); `Story.Keep` h
 Stage 2 done: `StyleChange` (a paragraph style, a character style, "" for none) given to `Editor.ReplaceAll` and
 `ReplaceOne`; with no replacement text the found text is kept and only restyled ("Restyle n" to undo). The find bar's
 Change to list chooses it.
+
+Stage 3 done: `IndexMark` has `Sub2` and `Covers` (here, to its paragraph's end, or to a named place), written after
+the stage 3 key so older entries read the same; `Indexes.Entries` gives `IndexHit`s with the page reached
+(`To`), and `Paragraphs` sets any depth of topics (three levels, Index 1 to 3), each level's own see references.

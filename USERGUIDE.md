@@ -649,8 +649,11 @@ Mark each place a topic is discussed, then make the index from the marks.
 - Select the word or words the entry is for (or just put the caret there) and choose Text › **Mark index
   entry…** (Ctrl+Alt+I). The topic starts as the selected words; change it if you like, so that "tidal" and
   "tides" can both be filed under Tides. Give a **sub-topic** to file the entry under the topic, indented: Tides,
-  then neap and spring. Give a **see** topic to send the reader elsewhere instead of to a page: "Launch. See
-  Harbour master." The mark itself is invisible and takes no room.
+  then neap and spring, and a **sub-sub-topic** to go a level further (Tides, spring, highest). Give a **see**
+  topic to send the reader elsewhere instead of to a page: "Launch. See Harbour master." (or, on a sub-topic,
+  "neap. See Moon."). **Covers** says how far the entry reaches: just where it is, to the end of its paragraph, or
+  to a place you have named (Text › Name this place…); the index then shows the pages between as a range, 12–15.
+  The mark itself is invisible and takes no room.
 - Put the caret where the index should go (in a frame of two or three columns, usually) or select its frame, and
   choose Text › **Index**.
 

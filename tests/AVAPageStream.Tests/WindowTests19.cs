@@ -71,4 +71,26 @@ public partial class WindowTests
         Assert.True(e.Doc.Stories[a.StoryId].FormatAt(9).Bold);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Index_entries_can_go_three_deep_and_run_to_a_place()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var a = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 300, H = 200 });
+        e.ReplaceText(a.StoryId, 0, 0, "Spring tides are the highest of all.");
+        e.NamePlace(a.StoryId, 10, "Highest");
+        w.View.StartEditing((TextFrame)e.Doc.Find(a.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = 0;
+        IReadOnlyList<string>? offered = null;
+        w.AskIndex = (_, places) => { offered = places; return Task.FromResult<IndexMark?>(new IndexMark("Tides", "spring", "", "highest", IndexCovers.ToPlace, "Highest")); };
+        Wait(w.MarkIndexEntry());
+        Assert.Equal(["Highest"], offered);
+        Assert.Contains("Tides, spring, highest", w.Message.Text);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[a.StoryId].Length;
+        w.MakeIndex();
+        Assert.EndsWith("Tides\nspring\nhighest, 1", Fields.Expand(e.Doc.Stories[a.StoryId].Text, null));
+        Assert.Equal("Index 3", e.Doc.Stories[a.StoryId].Paras[^1].Style);
+        Done(w);
+    }
 }
