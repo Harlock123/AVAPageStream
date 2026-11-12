@@ -541,7 +541,7 @@ that will certainly show in red:
 - text that doesn't all fit its frames, a table's cell, or its path, and table rows with no frame to go in;
 - picture frames with no picture, and linked pictures whose files are missing or have changed;
 - pictures with too few pixels for the size they are printed at: under 150 dots an inch, a photograph looks soft or
-  blocky (an SVG drawing prints sharp at any size; EPS pictures aren't checked);
+  blocky (an SVG drawing prints sharp at any size; in an EPS, the pictures inside it are checked);
 - filled shapes and pictures that reach the edge of the page but not out to the bleed (or, with no bleed set, that
   run to the edge at all);
 - fonts that aren't on this computer (their text is set in Liberation Serif), and fonts whose licence doesn't allow

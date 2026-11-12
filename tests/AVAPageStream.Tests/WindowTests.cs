@@ -22,7 +22,7 @@ public partial class WindowTests
 
     // A 2×2 PNG: red, green, blue and white.
     internal static readonly byte[] Png = Convert.FromBase64String(
-        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP4z8DAwMDAxMDAwMDAAAANHQEDasKb6QAAAABJRU5ErkJggg==");
+        "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGP4z8DAAMIM/4EAAB/uBfsL2WiLAAAAAElFTkSuQmCC");
 
     private static MainWindow Open(string? file = null, int width = 1360, int height = 880)
     {
@@ -34,6 +34,7 @@ public partial class WindowTests
             UserWordsPath = Path.Combine(home, "words.txt"),       // never the real dictionary
             TemplatesFolder = Path.Combine(home, "templates"),     // or the real templates
         };
+        w.Settings.PreflightFirst = false; // the preflight question has tests of its own
         w.Ask = (_, _, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked.");
         w.PickOpen = _ => throw new Xunit.Sdk.XunitException("Nothing should have asked for a file.");
         w.PickSave = (_, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked where to save.");

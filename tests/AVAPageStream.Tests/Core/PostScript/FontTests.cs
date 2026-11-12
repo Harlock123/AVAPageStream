@@ -202,9 +202,8 @@ public class FontTests
     }
 
     [Fact]
-    public void Composite_fonts_and_the_symbol_font_fall_back()
+    public void Composite_fonts_fall_back()
     {
-        Assert.Equal("unsupported", new Interpreter().Run("/Symbol findfont")!.Name);
         Assert.Equal("unsupported", new Interpreter().Run("/X << /FontType 0 >> definefont")!.Name);
     }
 }

@@ -78,7 +78,49 @@ internal static class FontSupport
                     }
                 }
         }
-        return _files.TryGetValue(family, out var found) ? found : [];
+        if (_files.TryGetValue(family, out var found)) return found;
+        // Installed somewhere else: ask the system's own list of fonts.
+        var more = OperatingSystem.IsWindows() ? FromRegistry(family) : FromFontconfig(family);
+        if (more.Count > 0) _files[family] = more;
+        return more;
+    }
+
+    /// <summary>The files fontconfig (Linux, the BSDs) says a family is in.</summary>
+    private static List<string> FromFontconfig(string family)
+    {
+        try
+        {
+            var info = new System.Diagnostics.ProcessStartInfo("fc-list", [":family=" + family, "file"]) { RedirectStandardOutput = true, UseShellExecute = false, CreateNoWindow = true };
+            using var p = System.Diagnostics.Process.Start(info);
+            if (p is null) return [];
+            var output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(5000);
+            return output.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => l.TrimEnd().TrimEnd(':')).Where(File.Exists).Distinct().ToList();
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return []; // no fontconfig
+        }
+    }
+
+    /// <summary>The files Windows lists for a family's fonts, for this user or all.</summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static List<string> FromRegistry(string family)
+    {
+        var files = new List<string>();
+        var system = Environment.GetFolderPath(Environment.SpecialFolder.Fonts);
+        foreach (var root in new[] { Microsoft.Win32.Registry.LocalMachine, Microsoft.Win32.Registry.CurrentUser })
+        {
+            using var key = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts");
+            if (key is null) continue;
+            foreach (var name in key.GetValueNames())
+            {
+                if (!name.StartsWith(family, StringComparison.OrdinalIgnoreCase) || key.GetValue(name) is not string file) continue;
+                var path = Path.IsPathRooted(file) ? file : Path.Combine(system, file);
+                if (File.Exists(path)) files.Add(path);
+            }
+        }
+        return files.Distinct().ToList();
     }
 
     public static FormattedText Format(string text, CharFormat f, IBrush? brush) =>

@@ -15,6 +15,7 @@ public sealed class AppSettings
     public Unit Unit { get; set; } = Unit.Point;
     public int ExportDpi { get; set; } = 150;
     public int AutosaveMinutes { get; set; } = 2; // 0: never
+    public bool PreflightFirst { get; set; } = true; // ask before exporting or printing a document with problems that will show
 
     public const int MaxRecent = 10;
 

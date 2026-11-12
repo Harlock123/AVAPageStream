@@ -1139,18 +1139,36 @@ public sealed class MainWindow : Window
 
     private string BaseName => FilePath is null ? "Untitled" : Path.GetFileNameWithoutExtension(FilePath);
 
+    /// <summary>
+    /// Before exporting or printing: if preflight finds problems that will show in print, asks whether to go on, or
+    /// opens preflight to see them. True to go on.
+    /// </summary>
+    private async Task<bool> PreflightFirst()
+    {
+        if (!Settings.PreflightFirst) return true;
+        var serious = Preflight().Where(i => i.Serious).ToList();
+        if (serious.Count == 0) return true;
+        var list = string.Join("\n", serious.Take(4).Select(i => "• " + i.Message)) + (serious.Count > 4 ? $"\n… and {serious.Count - 4} more." : "");
+        var answer = await Ask("Problems that will show", $"Preflight found {serious.Count} problem{(serious.Count == 1 ? "" : "s")} that will show in print:\n\n{list}", ["Go on anyway", "Show them", "Cancel"]);
+        if (answer == 1) OpenPreflight();
+        return answer == 0;
+    }
+
     public async Task ExportPdf()
     {
+        if (!await PreflightFirst()) return;
         if (await AskExport("pdf") is not { } choice) return;
         if (await PickSave("pdf", BaseName + ".pdf") is not { } path) return;
         if (!path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) path += ".pdf";
         try
         {
             if (choice.Booklet) await Export.Booklet(Editor.Doc, path, choice.Pages, BaseName);
-            else await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks);
+            CmykResult? cmyk = null;
+            if (!choice.Booklet) cmyk = await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks, choice.Cmyk);
+            var inks = cmyk is null ? "" : " In CMYK" + (cmyk.PicturesLeft > 0 ? $"; {cmyk.PicturesLeft} JPEG picture{(cmyk.PicturesLeft == 1 ? " is" : "s are")} still RGB, to keep {(cmyk.PicturesLeft == 1 ? "its" : "their")} quality." : ".");
             Say((choice.Booklet
                 ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
-                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + PreflightNote());
+                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + inks + PreflightNote());
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1161,6 +1179,7 @@ public sealed class MainWindow : Window
     /// <summary>Exports pages as PNGs, one file each ("name-3.png" for page 3 when there are several).</summary>
     public async Task ExportPng()
     {
+        if (!await PreflightFirst()) return;
         if (await AskExport("png") is not { } choice) return;
         var dpi = Math.Clamp(choice.Dpi, 72, 600);
         Settings.ExportDpi = dpi;
@@ -1185,6 +1204,7 @@ public sealed class MainWindow : Window
     /// <summary>Prints: the pages (or a booklet of them) as a PDF sent to the system's printing.</summary>
     public async Task Print()
     {
+        if (!await PreflightFirst()) return;
         if (await AskExport("print") is not { } choice) return;
         var pdf = Path.Combine(Path.GetTempPath(), $"AVAPageStream print {DateTime.Now:yyyyMMdd-HHmmss}.pdf");
         try

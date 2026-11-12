@@ -43,7 +43,21 @@ internal static class EpsRender
         }
         if (font is null) return null;
         var glyph = font.Typeface.GetGlyph(character);
-        if (glyph == 0 && character != 0) return null;
+        if (glyph == 0 && character != 0)
+        {
+            // A character Liberation hasn't (a dingbat, a rare symbol): from a font on this computer that has it.
+            var other = SKFontManager.Default.MatchCharacter(character);
+            if (other is null) return null;
+            using var fallback = new SKFont(other, 1000);
+            var g = other.GetGlyph(character);
+            if (g == 0) return null;
+            return Outline(fallback, g);
+        }
+        return Outline(font, glyph);
+    }
+
+    private static SystemGlyph Outline(SKFont font, ushort glyph)
+    {
         using var path = font.GetGlyphPath(glyph);
         var advance = font.GetGlyphWidths([glyph])[0];
         var ps = new PsPath();
@@ -82,6 +96,24 @@ internal static class EpsRender
 
     /// <summary>Makes sure the decoder is set before an EPS is run.</summary>
     public static void Ready() { }
+
+    /// <summary>
+    /// How many pixels a point the coarsest picture in a drawing has, where it is drawn (its unit square's sides, in
+    /// the EPS's points): what preflight checks a placed EPS by. Null if it has no pictures.
+    /// </summary>
+    public static double? PixelsPerPoint(PsDrawing d)
+    {
+        double? least = null;
+        foreach (var img in d.Ops.OfType<PsImage>())
+        {
+            var w = Math.Sqrt(img.Matrix.A * img.Matrix.A + img.Matrix.B * img.Matrix.B);
+            var h = Math.Sqrt(img.Matrix.C * img.Matrix.C + img.Matrix.D * img.Matrix.D);
+            if (w <= 0 || h <= 0) continue;
+            var ppp = Math.Min(img.Width / w, img.Height / h);
+            least = least is { } l ? Math.Min(l, ppp) : ppp;
+        }
+        return least;
+    }
 
     public static SKPicture Record(PsDrawing d)
     {

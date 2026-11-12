@@ -163,8 +163,9 @@ public sealed partial class Interpreter
         if (Resources("Font").Get(key) is PsDict resource) return resource;
         var name = Show(key);
         var n = name.ToLowerInvariant();
-        if (n.Contains("symbol") || n.Contains("dingbat")) throw new PsError("unsupported", "the " + name + " font");
-        var family = n.Contains("courier") || n.Contains("mono") || n.Contains("typewriter") || n.Contains("consol") ? "Liberation Mono"
+        // The Symbol and Dingbats fonts have characters of their own at each code, drawn from fonts that have them.
+        var special = n.Contains("symbol") ? "Symbol" : n.Contains("dingbat") ? "Dingbats" : null;
+        var family = special is not null ? "Liberation Serif" : n.Contains("courier") || n.Contains("mono") || n.Contains("typewriter") || n.Contains("consol") ? "Liberation Mono"
             : new[] { "helvetica", "arial", "sans", "gothic", "univers", "futura", "verdana", "tahoma", "calibri", "segoe", "frutiger", "avant", "myriad", "gill" }.Any(n.Contains) ? "Liberation Sans"
             : "Liberation Serif";
         var bold = new[] { "bold", "black", "heavy", "demi", "semibold" }.Any(n.Contains);
@@ -176,7 +177,7 @@ public sealed partial class Interpreter
         font.Put("FontBBox", new PsArray([-200, -250, 1200, 950]));
         font.Put("Encoding", SystemDict.Get("StandardEncoding")!);
         font.Put("PaintType", 0);
-        font.Put(SystemKey, new PsString($"{family}|{bold}|{italic}"));
+        font.Put(SystemKey, new PsString($"{family}|{bold}|{italic}{(special is null ? "" : "|" + special)}"));
         font.Put("FID", new PsFontId(name));
         FontDirectory.Put(key, font);
         return font;
@@ -190,7 +191,9 @@ public sealed partial class Interpreter
             var key = (sys.Text, name + "|" + code);
             if (_glyphs.TryGetValue(key, out var g)) return g;
             var parts = sys.Text.Split('|');
-            var unicode = Encodings.Unicode(name) ?? (code is >= 32 and < 127 ? code : null);
+            var unicode = parts.Length > 3
+                ? parts[3] == "Symbol" ? Encodings.Symbol(code) : Encodings.Dingbat(code)
+                : Encodings.Unicode(name) ?? (code is >= 32 and < 127 ? code : null);
             var glyph = unicode is { } u ? Glyphs?.Invoke(parts[0], parts[1] == "True", parts[2] == "True", u) : null;
             if (unicode is not null && Glyphs is null) throw new PsError("unsupported", "printer fonts without their outlines");
             var r = glyph is null ? (new PsPath(), 500.0, 0.0) : (glyph.Path, glyph.Advance, 0.0);

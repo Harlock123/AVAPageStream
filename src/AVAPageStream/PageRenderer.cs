@@ -421,6 +421,8 @@ internal sealed class PageRenderer
     public Core.PictureSize? PixelsOf(Document doc, string key) => PictureOf(doc, key) switch
     {
         RasterPicture r => new Core.PictureSize(r.Bitmap.PixelSize.Width, r.Bitmap.PixelSize.Height, r.Size.Width, r.Size.Height),
+        // An EPS with pictures in it: as many pixels as its coarsest picture would have over the whole of it.
+        VectorPicture { PixelsPerPoint: { } ppp } v => new Core.PictureSize((int)Math.Round(ppp * v.Size.Width), (int)Math.Round(ppp * v.Size.Height), v.Size.Width, v.Size.Height),
         PostScriptPicture { Shown: null } => null,
         _ => null,
     };

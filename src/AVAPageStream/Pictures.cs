@@ -17,7 +17,8 @@ internal abstract record PictureSource(Size Size);
 internal sealed record RasterPicture(Bitmap Bitmap, Size Size) : PictureSource(Size);
 
 /// <summary>An SVG drawing, kept as a Skia picture so it is drawn as vector on screen and in PDFs.</summary>
-internal sealed record VectorPicture(SKPicture Picture, SKRect Cull, Size Size, string What = "an SVG drawing") : PictureSource(Size);
+/// <param name="PixelsPerPoint">For an EPS with pictures in it: the fewest pixels its coarsest picture has a point, at its own size.</param>
+internal sealed record VectorPicture(SKPicture Picture, SKRect Cull, Size Size, string What = "an SVG drawing", double? PixelsPerPoint = null) : PictureSource(Size);
 
 /// <summary>An EPS: shown by its Ghostscript rendering or its own preview, or (with neither) as a labelled box.</summary>
 internal sealed record PostScriptPicture(Bitmap? Shown, Size Size, string How) : PictureSource(Size);
@@ -60,7 +61,7 @@ internal static class Pictures
         // Drawn by AVAPageStream itself when it can, so it stays vector; otherwise by Ghostscript or a preview.
         EpsRender.Ready();
         if (Eps.Draw(bytes, out _) is { } drawing)
-            return new VectorPicture(EpsRender.Record(drawing), new SKRect(0, 0, (float)box.W, (float)box.H), size, "an EPS drawing");
+            return new VectorPicture(EpsRender.Record(drawing), new SKRect(0, 0, (float)box.W, (float)box.H), size, "an EPS drawing", EpsRender.PixelsPerPoint(drawing));
         if (Ghostscript(bytes) is { } png)
             return new PostScriptPicture(new Bitmap(new MemoryStream(png)), size, "rendered by Ghostscript at 300 dpi");
         if (Eps.TiffPreview(bytes) is { } colour) return new PostScriptPicture(FromColour(colour), size, "its colour preview (install Ghostscript to see it in full)");
