@@ -30,9 +30,13 @@ public static class Chains
         foreach (var frame in FramesOf(doc, story))
         {
             var sheet = doc.SheetOf(frame.Id);
-            var objects = sheet?.All.ToList() ?? [];
+            // In drawing order, layers included; a hidden layer wraps nothing.
+            var objects = sheet is null ? [] : Shapes.Flatten(doc.Ordered(sheet.Objects)).ToList();
             var wrapping = objects.Skip(objects.IndexOf(frame) + 1);
-            if (sheet is Page page && doc.MasterFor(page) is { } master) wrapping = master.All.Concat(wrapping);
+            if (sheet is Page page && doc.MasterFor(page) is { } master) wrapping = Shapes.Flatten(doc.Ordered(master.Objects)).Concat(wrapping);
+            var hidden = (sheet?.Objects ?? []).Concat(sheet is Page pg && doc.MasterFor(pg) is { } m ? m.Objects : [])
+                .Where(o => !doc.LayerOf(o).Visible).SelectMany(o => Shapes.Flatten([o])).Select(o => o.Id).ToHashSet();
+            wrapping = wrapping.Where(o => !hidden.Contains(o.Id));
             // A turned frame sets its text in its own unturned frame, where the page's wrap boxes don't fall: it keeps its text whole.
             var keep = frame.Rotation != 0 ? [] : wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(Shapes.KeepOf).ToList();
             var column = 0;

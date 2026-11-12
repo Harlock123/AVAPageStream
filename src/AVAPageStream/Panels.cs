@@ -164,6 +164,23 @@ public sealed class SidePanel : TabControl
     public NumericUpDown DropLinesBox { get; } = new() { Minimum = 0, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public NumericUpDown DropCharsBox { get; } = new() { Minimum = 1, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public CheckBox HyphenateBox { get; } = new() { Content = "Hyphenate", FontSize = 12 };
+    public CheckBox KeepWithNextBox { get; } = new() { Content = "Keep with the next paragraph", FontSize = 12 };
+    public CheckBox KeepTogetherBox { get; } = new() { Content = "Keep its lines together", FontSize = 12 };
+    public NumericUpDown OrphansBox { get; } = new() { Minimum = 1, Maximum = 9, Increment = 1, FormatString = "0", FontSize = 12 };
+    public NumericUpDown WidowsBox { get; } = new() { Minimum = 1, Maximum = 9, Increment = 1, FormatString = "0", FontSize = 12 };
+    public ComboBox CharStyleChoice { get; } = new() { HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox CharStyleNameBox { get; } = Ui.Box("New character style's name");
+    public TextBlock CharStyleInfo { get; } = new() { Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap };
+
+    // Page numbering and layers (Pages tab)
+    public CheckBox SectionBox { get; } = new() { Content = "Start a section of numbering here", FontSize = 12 };
+    public NumericUpDown SectionStartBox { get; } = new() { Minimum = 0, Maximum = 99999, Increment = 1, FormatString = "0", FontSize = 12 };
+    public ComboBox SectionStyleChoice { get; } = new() { ItemsSource = new[] { "1, 2, 3", "i, ii, iii", "I, II, III", "a, b, c", "A, B, C" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox SectionPrefixBox { get; } = Ui.Box("such as A-");
+    private readonly StackPanel _sectionRows = new();
+    private readonly StackPanel _sectionBoxes = new();
+    public ListBox LayerList { get; } = new() { MaxHeight = 200, FontSize = 12 };
+    public TextBox LayerNameBox { get; } = Ui.Box("Layer's name");
     public CheckBox ArrowStartBox { get; } = new() { Content = "At its start", FontSize = 12 };
     public CheckBox ArrowEndBox { get; } = new() { Content = "At its end", FontSize = 12 };
     private readonly StackPanel _arrowRows = new();
@@ -629,6 +646,16 @@ public sealed class SidePanel : TabControl
             if (_refreshing || DropCharsBox.Value is not { } v) return;
             View.ApplyPara(p => p with { DropChars = (int)v }, "Drop cap");
         };
+        CharStyleChoice.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || CharStyleChoice.SelectedIndex < 0 || View.Editing is not { Length: > 0 } t) return;
+            var name = CharStyleChoice.SelectedIndex == 0 ? null : (string)CharStyleChoice.SelectedItem!;
+            Editor.ApplyCharStyle(t.StoryId, t.Start, t.Length, name);
+        };
+        KeepWithNextBox.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyPara(p => p with { KeepWithNext = KeepWithNextBox.IsChecked == true }, "Keep with next"); };
+        KeepTogetherBox.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyPara(p => p with { KeepTogether = KeepTogetherBox.IsChecked == true }, "Keep lines together"); };
+        OrphansBox.ValueChanged += (_, _) => { if (!_refreshing && OrphansBox.Value is { } v) View.ApplyPara(p => p with { Orphans = (int)v }, "Orphan control"); };
+        WidowsBox.ValueChanged += (_, _) => { if (!_refreshing && WidowsBox.Value is { } v) View.ApplyPara(p => p with { Widows = (int)v }, "Widow control"); };
         HyphenateBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -643,6 +670,15 @@ public sealed class SidePanel : TabControl
                 Ui.Button("Redefine", RedefineStyle, "Make the style match this paragraph; every paragraph in it changes"),
                 RenameStyleButton,
                 Ui.Button("Delete", DeleteStyle)),
+            Ui.Heading("Character style"),
+            Ui.Row(("Style", CharStyleChoice)),
+            CharStyleInfo,
+            Ui.Row(("New", CharStyleNameBox)),
+            Ui.Buttons(
+                Ui.Button("Add from text", NewCharStyle, "A character style of how the selected text differs from its paragraph's style"),
+                Ui.Button("Redefine", RedefineCharStyle, "Make the character style match the selected text; all its text changes"),
+                Ui.Button("Rename", RenameCharStyle),
+                Ui.Button("Delete", DeleteCharStyle)),
             Ui.Heading("Character"),
             Ui.Row(("Font", FontChoice)),
             Ui.Row(("Size", SizeBox)),
@@ -660,10 +696,13 @@ public sealed class SidePanel : TabControl
             Ui.Row(("First line", FirstIndentBox)),
             Ui.Row(("Before", SpaceBeforeBox), ("After", SpaceAfterBox)),
             Ui.Row(("Tabs", TabsBox)),
-            Ui.Row(("Drop cap", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = {
-                DropLinesBox, new TextBlock { Text = "lines", Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center },
-                DropCharsBox, new TextBlock { Text = "letters", Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center } } })),
+            Ui.Row(("Drop cap", DropLinesBox)),
+            Ui.Row(("Letters", DropCharsBox)),
             HyphenateBox,
+            KeepWithNextBox,
+            KeepTogetherBox,
+            Ui.Row(("Orphans", OrphansBox)),
+            Ui.Row(("Widows", WidowsBox)),
             new TextBlock
             {
                 Text = "Tabs: a measure, then left, right, centre or decimal, then a leader, such as 4in right . — Kern: Alt+Left and Alt+Right in the text.",
@@ -687,6 +726,47 @@ public sealed class SidePanel : TabControl
             }
             View.ApplyPara(p => set(p, v), label);
         });
+
+    private CharFormat? ParagraphBasis()
+    {
+        if (View.Editing is not { } t || !Doc.Stories.TryGetValue(t.StoryId, out var story)) return null;
+        return Doc.Style(story.Paras[story.ParagraphAt(t.Start)].Style).Char;
+    }
+
+    private void NewCharStyle()
+    {
+        var name = CharStyleNameBox.Text?.Trim() ?? "";
+        if (name.Length == 0) { _window.Say("Type the new character style's name first."); return; }
+        if (Doc.CharStyle(name) is not null) { _window.Say($"There is already a character style called {name}. Use Redefine to change it."); return; }
+        if (View.Editing is not { Length: > 0 } t || View.CurrentChar() is not { } c || ParagraphBasis() is not { } basis)
+        { _window.Say("Select some text formatted as the character style should be."); return; }
+        var set = CharOverrides.Difference(basis, c with { CharStyle = null });
+        _window.Say(Editor.DefineCharStyle(new CharacterStyle(name, set)) ?? $"Made the character style {name}: {set.Describe()}.");
+        Editor.ApplyCharStyle(t.StoryId, t.Start, t.Length, name);
+        CharStyleNameBox.Text = "";
+    }
+
+    private void RedefineCharStyle()
+    {
+        if (View.CurrentChar() is not { CharStyle: { } name } c || ParagraphBasis() is not { } basis)
+        { _window.Say("Select text in the character style, formatted as the style should be."); return; }
+        var set = CharOverrides.Difference(basis, c with { CharStyle = null });
+        _window.Say(Editor.DefineCharStyle(new CharacterStyle(name, set)) ?? $"Redefined {name}: {set.Describe()}.");
+    }
+
+    private void RenameCharStyle()
+    {
+        if (CharStyleChoice.SelectedIndex <= 0) { _window.Say("Pick the character style to rename first."); return; }
+        var old = (string)CharStyleChoice.SelectedItem!;
+        _window.Say(Editor.RenameCharStyle(old, CharStyleNameBox.Text ?? "") ?? $"Renamed the character style {old}.");
+    }
+
+    private void DeleteCharStyle()
+    {
+        if (CharStyleChoice.SelectedIndex <= 0) { _window.Say("Pick the character style to delete first."); return; }
+        var name = (string)CharStyleChoice.SelectedItem!;
+        _window.Say(Editor.DeleteCharStyle(name) ?? $"Deleted {name}; its text has its paragraph's style again.");
+    }
 
     private void NewStyle()
     {
@@ -754,6 +834,35 @@ public sealed class SidePanel : TabControl
             _window.ShowSheet(SheetRef.MasterAt(MasterList.SelectedIndex));
         };
         BuildMasterGuides();
+        BuildSections();
+        LayerList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<Layer>((layer, _) =>
+        {
+            if (layer is null) return new TextBlock();
+            CheckBox Tick(string label, bool on, Func<Layer, bool, Layer> set)
+            {
+                var b = new CheckBox { Content = label, IsChecked = on, FontSize = 11, MinWidth = 0, Margin = new Thickness(2, 0, 0, 0) };
+                b.IsCheckedChanged += (_, _) => { if (!_refreshing) Editor.SetLayer(layer.Name, l => set(l, b.IsChecked == true)); };
+                return b;
+            }
+            return new StackPanel
+            {
+                Orientation = Orientation.Horizontal,
+                Children =
+                {
+                    new TextBlock { Text = layer.Name, Foreground = Look.Text, Width = 72, TextTrimming = TextTrimming.CharacterEllipsis, VerticalAlignment = VerticalAlignment.Center },
+                    Tick("Shown", layer.Visible, (l, v) => l with { Visible = v }),
+                    Tick("Locked", layer.Locked, (l, v) => l with { Locked = v }),
+                    Tick("Prints", layer.Print, (l, v) => l with { Print = v }),
+                },
+            };
+        });
+        LayerList.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || SelectedLayer is not { } l) return;
+            Editor.CurrentLayer = l;
+            LayerNameBox.Text = l;
+            _window.Say($"New objects go on {l}.");
+        };
         MasterChoice.SelectionChanged += (_, _) =>
         {
             if (_refreshing || MasterChoice.SelectedIndex < 0 || View.Sheet.IsMaster) return;
@@ -774,10 +883,26 @@ public sealed class SidePanel : TabControl
                     Ui.Button("Move up", () => MovePage(-1)),
                     Ui.Button("Move down", () => MovePage(1))),
                 Ui.Row(("Master", MasterChoice)),
+                _sectionRows,
                 Ui.Heading("Master pages"),
                 MasterList,
                 Ui.Row(("Name", MasterNameBox)),
                 _masterGuides,
+                Ui.Heading("Layers"),
+                LayerList,
+                Ui.Row(("Name", LayerNameBox)),
+                Ui.Buttons(
+                    Ui.Button("Add", () => { Editor.AddLayer(LayerNameBox.Text); LayerNameBox.Text = ""; Refresh(); }, "A new layer above the one picked; new objects go on it"),
+                    Ui.Button("Rename", () => { if (SelectedLayer is { } l) _window.Say(Editor.RenameLayer(l, LayerNameBox.Text ?? "") ?? "Renamed the layer."); }),
+                    Ui.Button("Delete", () => { if (SelectedLayer is { } l) _window.Say(Editor.DeleteLayer(l) ?? $"Deleted {l}; what was on it is on the layer below now."); }),
+                    Ui.Button("Up", () => { if (SelectedLayer is { } l) Editor.MoveLayer(l, 1); }, "Draw this layer above the next"),
+                    Ui.Button("Down", () => { if (SelectedLayer is { } l) Editor.MoveLayer(l, -1); }),
+                    Ui.Button("Move selection here", () =>
+                    {
+                        if (SelectedLayer is not { } l || View.SelectedIds.Count == 0) { _window.Say("Select objects, and pick the layer to move them to."); return; }
+                        Editor.MoveToLayer(View.SelectedIds.ToList(), l);
+                        _window.Say($"Moved to {l}.");
+                    })),
                 Ui.Buttons(
                     Ui.Button("Rename", RenameMaster),
                     Ui.Button("Add master", () => { var name = Editor.AddMaster(); _window.ShowSheet(SheetRef.MasterAt(Doc.Masters.FindIndex(m => m.Name == name))); }),
@@ -807,6 +932,30 @@ public sealed class SidePanel : TabControl
         Editor.MovePage(from, to);
         _window.ShowSheet(SheetRef.PageAt(to));
         _window.Say($"Moved page {from + 1} to page {to + 1}.");
+    }
+
+    private string? SelectedLayer => (LayerList.SelectedItem as Layer)?.Name;
+
+    private void BuildSections()
+    {
+        _sectionBoxes.Children.AddRange([
+            Ui.Row(("Starts at", SectionStartBox)),
+            Ui.Row(("Numbers", SectionStyleChoice)),
+            Ui.Row(("Prefix", SectionPrefixBox)),
+        ]);
+        void Apply()
+        {
+            if (_refreshing || View.Sheet.IsMaster) return;
+            var page = View.Sheet.Index;
+            if (SectionBox.IsChecked != true) { Editor.SetSection(page, null); return; }
+            var section = new PageNumbering((int)(SectionStartBox.Value ?? 1), (NumberStyle)Math.Max(0, SectionStyleChoice.SelectedIndex), SectionPrefixBox.Text ?? "");
+            if (section != Doc.Pages[page].Section) Editor.SetSection(page, section);
+        }
+        SectionBox.IsCheckedChanged += (_, _) => Apply();
+        SectionStartBox.ValueChanged += (_, _) => Apply();
+        SectionStyleChoice.SelectionChanged += (_, _) => Apply();
+        Commit(SectionPrefixBox, _ => Apply());
+        _sectionRows.Children.AddRange([SectionBox, _sectionBoxes]);
     }
 
     private void BuildMasterGuides()
@@ -1200,6 +1349,14 @@ public sealed class SidePanel : TabControl
         DropLinesBox.Value = p.DropLines;
         DropCharsBox.Value = Math.Max(1, p.DropChars);
         HyphenateBox.IsChecked = p.Hyphenate;
+        KeepWithNextBox.IsChecked = p.KeepWithNext;
+        KeepTogetherBox.IsChecked = p.KeepTogether;
+        OrphansBox.Value = Math.Max(1, p.Orphans);
+        WidowsBox.Value = Math.Max(1, p.Widows);
+        CharStyleChoice.ItemsSource = Doc.CharStyles.Select(cs => cs.Name).Prepend("(none)").ToList();
+        CharStyleChoice.SelectedIndex = c.CharStyle is { } csName ? Math.Max(0, Doc.CharStyles.FindIndex(cs => cs.Name == csName) + 1) : 0;
+        CharStyleInfo.Text = c.CharStyle is { } shown && Doc.CharStyle(shown) is { } style
+            ? $"{shown}: {style.Set.Describe()}." : "Select text, then pick a character style for it.";
     }
 
     /// <summary>Gives a list new items only when they differ, so its items (and a drag among them) survive a refresh.</summary>
@@ -1211,12 +1368,27 @@ public sealed class SidePanel : TabControl
 
     private void RefreshPages()
     {
-        Fill(PageList, Doc.Pages.Select((pg, i) => $"Page {i + 1}   ·   {pg.Master ?? "no master"}").ToList());
+        Fill(PageList, Doc.Pages.Select((pg, i) =>
+            $"Page {i + 1}{(Doc.PageLabel(i) is var label && label != (i + 1).ToString(CultureInfo.InvariantCulture) ? $" ({label})" : "")}   ·   {pg.Master ?? "no master"}{(pg.Section is null ? "" : "   · new section")}").ToList());
         PageList.SelectedIndex = View.Sheet.IsMaster ? -1 : View.Sheet.Index;
         Fill(MasterList, Doc.Masters.Select(m => m.Name).ToList());
         MasterList.SelectedIndex = View.Sheet.IsMaster ? View.Sheet.Index : -1;
         MasterChoice.ItemsSource = Doc.Masters.Select(m => m.Name).Prepend("(none)").ToList();
         MasterChoice.IsEnabled = !View.Sheet.IsMaster;
+        _sectionRows.IsVisible = !View.Sheet.IsMaster;
+        if (!View.Sheet.IsMaster)
+        {
+            var section = Doc.Pages[View.Sheet.Index].Section;
+            SectionBox.IsChecked = section is not null;
+            _sectionBoxes.IsEnabled = section is not null;
+            SectionStartBox.Value = section?.Start ?? 1;
+            SectionStyleChoice.SelectedIndex = (int)(section?.Style ?? NumberStyle.Arabic);
+            Set(SectionPrefixBox, section?.Prefix ?? "");
+        }
+        // The layers, top first, as they are stacked.
+        var layers = Enumerable.Reverse(Doc.Layers).ToList();
+        if (LayerList.ItemsSource is not IEnumerable<Layer> shownLayers || !shownLayers.SequenceEqual(layers)) LayerList.ItemsSource = layers;
+        LayerList.SelectedItem = layers.FirstOrDefault(l => l.Name == (Editor.CurrentLayer ?? Doc.Layers[^1].Name));
         if (!View.Sheet.IsMaster)
         {
             var master = Doc.Pages[View.Sheet.Index].Master;

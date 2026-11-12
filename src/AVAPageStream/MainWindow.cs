@@ -603,7 +603,9 @@ public sealed class MainWindow : Window
         var doc = Editor.Doc;
         PageInfo.Text = View.Sheet.IsMaster
             ? doc.Masters[View.Sheet.Index].Name + (doc.Setup.Facing ? View.Sheet.Left ? " (left)" : " (right)" : "")
-            : $"Page {View.Sheet.Index + 1} of {doc.Pages.Count}";
+            : doc.PageLabel(View.Sheet.Index) is var label && label != (View.Sheet.Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)
+                ? $"Page {View.Sheet.Index + 1} ({label}) of {doc.Pages.Count}"
+                : $"Page {View.Sheet.Index + 1} of {doc.Pages.Count}";
         ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";
         SelectionInfo.Text = Describe();
         Panel.Refresh();

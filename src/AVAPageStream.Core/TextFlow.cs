@@ -66,8 +66,11 @@ public sealed record Area(Box Box, string FrameId, int Column, IReadOnlyList<Kee
     public override int GetHashCode() => HashCode.Combine(Box, FrameId, Column, Keep.Count);
 }
 
-/// <summary>What the page-number and page-count fields show: the page a story is drawn on (0 on a master page itself), and how many pages there are.</summary>
-public sealed record FieldContext(int Page, int Pages);
+/// <summary>
+/// What the page-number and page-count fields show: the page a story is drawn on (0 on a master page itself), how
+/// many pages there are, and the page's number as printed, if its section numbers it otherwise (iv, A-3).
+/// </summary>
+public sealed record FieldContext(int Page, int Pages, string? Label = null);
 
 /// <summary>
 /// Fields: characters in a story that stand for something worked out when it is set, such as the number of the page
@@ -84,7 +87,7 @@ public static class Fields
     public static string Expand(string text, FieldContext? context)
     {
         if (text.IndexOfAny([PageNumber, PageCount]) < 0) return text;
-        var page = context is { Page: > 0 } c ? c.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#";
+        var page = context is { Page: > 0 } c ? c.Label ?? c.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#";
         var pages = context is { Pages: > 0 } d ? d.Pages.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#";
         return text.Replace(PageNumber.ToString(), page).Replace(PageCount.ToString(), pages);
     }
@@ -327,8 +330,18 @@ public static class TextFlow
         var oversetFrom = text.Length;
         var done = false;
 
+        // Keeping text together sets a paragraph again: from where things stood before it (a snapshot of the state),
+        // starting in the next area, or with a break forced after so many of its lines.
+        var snaps = new (int Lines, int Area, double? Baseline, double? Jump, double Pending, int Overset, bool Done)[story.ParagraphCount];
+        var plans = new Dictionary<int, (bool NextArea, int BreakAfter)>();
+        var tries = new Dictionary<int, int>();
+
+        var back = 0; // the paragraph a retry goes back to
         for (var p = 0; p < story.ParagraphCount && !done; p++)
         {
+            snaps[p] = (lines.Count, areaIndex, previousBaseline, jumpTo, pendingSpace, oversetFrom, done);
+            (bool NextArea, int BreakAfter) plan = plans.GetValueOrDefault(p, (false, -1));
+            if (plan.NextArea && areaIndex < areas.Count) NextArea();
             var para = story.Paras[p];
             var (pStart, pEnd) = story.ParagraphRange(p);
             var stops = Tabs.Parse(para.Tabs);
@@ -443,14 +456,63 @@ public static class TextFlow
                     (w, charSplit) = (cw, cs);
                     firstLine = false;
                     linesInPara++;
+                    if (plan.BreakAfter > 0 && linesInPara == plan.BreakAfter && w < words.Count) NextArea();
                     break;
                 }
             } while (!done && w < words.Count);
 
+            if (Retry(p, para))
+            {
+                p = back - 1; // the loop's own increment brings it to back
+                continue;
+            }
             pendingSpace = para.SpaceAfter;
         }
 
         return new TextLayout(story, areas, lines, oversetFrom, measurer, fields);
+
+        // Whether paragraph p broke the rules for keeping text together; if so, things are put back as they were before
+        // it (or before the paragraph kept with it), with a plan for setting it again, and the loop goes back to it.
+        bool Retry(int p, ParaFormat para)
+        {
+            var start = snaps[p].Lines;
+            if (lines.Count == start) return false;
+            var mine = lines.Skip(start).ToList();
+            var atTop = start == 0 || lines[start - 1].Area != mine[0].Area;
+            // Counted by baseline: beside text wrap, one line can be in several pieces.
+            var rows = mine.Select(l => (l.Area, l.Baseline)).Distinct().ToList();
+            var firstArea = rows.Count(r => r.Area == mine[0].Area);
+            var lastArea = rows.Count(r => r.Area == mine[^1].Area);
+            var spans = mine[0].Area != mine[^1].Area;
+
+            // The paragraph before, kept with this one, but left behind in the column before.
+            if (p > 0 && story.Paras[p - 1].KeepWithNext && snaps[p].Lines > snaps[p - 1].Lines &&
+                lines[start - 1].Area != mine[0].Area && TryAgain(p - 1, (true, -1)))
+                return true;
+            if (!spans) return false;
+            if ((para.KeepTogether || firstArea < para.Orphans) && !atTop && TryAgain(p, (true, -1))) return true;
+            if (lastArea < para.Widows && rows.Count >= para.Widows + Math.Max(1, para.Orphans))
+            {
+                // Break earlier, so enough lines go on to the next column; if that leaves too few behind, move it all.
+                var before = rows.Count - lastArea;
+                var breakAfter = before - (para.Widows - lastArea);
+                if (breakAfter >= Math.Max(1, para.Orphans) && TryAgain(p, (false, breakAfter))) return true;
+                if (!atTop && TryAgain(p, (true, -1))) return true;
+            }
+            return false;
+        }
+
+        bool TryAgain(int p, (bool NextArea, int BreakAfter) plan)
+        {
+            if (tries.GetValueOrDefault(p) >= 2) return false;
+            tries[p] = tries.GetValueOrDefault(p) + 1;
+            plans[p] = plan;
+            var s = snaps[p];
+            lines.RemoveRange(s.Lines, lines.Count - s.Lines);
+            (areaIndex, previousBaseline, jumpTo, pendingSpace, oversetFrom, done) = (s.Area, s.Baseline, s.Jump, s.Pending, s.Overset, s.Done);
+            back = p;
+            return true;
+        }
 
         void NextArea()
         {

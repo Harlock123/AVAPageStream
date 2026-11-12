@@ -110,6 +110,8 @@ public static class DocumentFile
         if (doc.Masters.Count == 0) doc.Masters.Add(new MasterPage());
         if (doc.Setup.Facing) doc.EnsureSides();
         if (doc.Styles.Count == 0) doc.Styles = Document.DefaultStyles();
+        if (doc.Layers.Count == 0) doc.Layers = [new Layer("Layer 1")];
+        if (doc.CharStyles.Count == 0) doc.CharStyles = Document.DefaultCharStyles(); // from before there were any
         if (doc.Swatches.Count == 0) doc.Swatches = Colours.DefaultSwatches();
         var highest = 0;
         foreach (var id in doc.AllObjects.Select(o => o.Id).Concat(doc.Stories.Keys))

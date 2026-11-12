@@ -11,7 +11,8 @@ public sealed record CharFormat(
     double Tracking = 0, // thousandths of an em added after each character
     double Shift = 0,    // baseline shift, in points up
     bool SmallCaps = false,
-    Script Script = Script.Normal);
+    Script Script = Script.Normal,
+    string? CharStyle = null); // the character style it is in, by name
 
 /// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
 public enum Script { Normal, Super, Sub }
@@ -31,10 +32,85 @@ public sealed record ParaFormat(
     string Tabs = "",        // tab stops, as Core.Tabs keeps them
     int DropLines = 0,       // a drop cap this many lines deep (0: none)
     int DropChars = 1,       // and this many characters wide
-    bool Hyphenate = false); // break words at the end of lines with a hyphen
+    bool Hyphenate = false,  // break words at the end of lines with a hyphen
+    bool KeepWithNext = false, // in the same column as the next paragraph's first line (a heading)
+    bool KeepTogether = false, // all its lines in one column
+    int Orphans = 1,         // at least this many of its lines at the foot of a column it starts in
+    int Widows = 1);         // at least this many at the top of a column it runs on into
 
 /// <summary>A named set of character and paragraph settings.</summary>
 public sealed record ParagraphStyle(string Name, CharFormat Char, ParaFormat Para);
+
+/// <summary>Character settings a character style sets; those left null come from the paragraph's style.</summary>
+public sealed record CharOverrides(
+    string? Font = null,
+    double? Size = null,
+    bool? Bold = null,
+    bool? Italic = null,
+    bool? Underline = null,
+    string? Colour = null,
+    double? Tracking = null,
+    bool? SmallCaps = null,
+    Script? Script = null)
+{
+    public CharFormat ApplyTo(CharFormat f) => f with
+    {
+        Font = Font ?? f.Font,
+        Size = Size ?? f.Size,
+        Bold = Bold ?? f.Bold,
+        Italic = Italic ?? f.Italic,
+        Underline = Underline ?? f.Underline,
+        Colour = Colour ?? f.Colour,
+        Tracking = Tracking ?? f.Tracking,
+        SmallCaps = SmallCaps ?? f.SmallCaps,
+        Script = Script ?? f.Script,
+    };
+
+    /// <summary>Takes back what these set, to a base format's values.</summary>
+    public CharFormat Revert(CharFormat f, CharFormat basis) => f with
+    {
+        Font = Font is null ? f.Font : basis.Font,
+        Size = Size is null ? f.Size : basis.Size,
+        Bold = Bold is null ? f.Bold : basis.Bold,
+        Italic = Italic is null ? f.Italic : basis.Italic,
+        Underline = Underline is null ? f.Underline : basis.Underline,
+        Colour = Colour is null ? f.Colour : basis.Colour,
+        Tracking = Tracking is null ? f.Tracking : basis.Tracking,
+        SmallCaps = SmallCaps is null ? f.SmallCaps : basis.SmallCaps,
+        Script = Script is null ? f.Script : basis.Script,
+    };
+
+    /// <summary>The settings in which <paramref name="to"/> differs from <paramref name="from"/>.</summary>
+    public static CharOverrides Difference(CharFormat from, CharFormat to) => new(
+        to.Font != from.Font ? to.Font : null,
+        to.Size != from.Size ? to.Size : null,
+        to.Bold != from.Bold ? to.Bold : null,
+        to.Italic != from.Italic ? to.Italic : null,
+        to.Underline != from.Underline ? to.Underline : null,
+        to.Colour != from.Colour ? to.Colour : null,
+        to.Tracking != from.Tracking ? to.Tracking : null,
+        to.SmallCaps != from.SmallCaps ? to.SmallCaps : null,
+        to.Script != from.Script ? to.Script : null);
+
+    /// <summary>What it sets, in a few words: "Italic", "Bold, 14 pt".</summary>
+    public string Describe()
+    {
+        var parts = new List<string>();
+        if (Font is { } font) parts.Add(font);
+        if (Size is { } size) parts.Add(FormattableString.Invariant($"{size:0.#} pt"));
+        if (Bold is { } b) parts.Add(b ? "Bold" : "Not bold");
+        if (Italic is { } i) parts.Add(i ? "Italic" : "Not italic");
+        if (Underline is { } u) parts.Add(u ? "Underlined" : "Not underlined");
+        if (SmallCaps is { } sc) parts.Add(sc ? "Small caps" : "No small caps");
+        if (Script is { } sp) parts.Add(sp.ToString() is "Normal" ? "Normal script" : sp + "script");
+        if (Colour is { } c) parts.Add(c.TrimStart('@'));
+        if (Tracking is { } t) parts.Add(FormattableString.Invariant($"tracking {t:0.#}"));
+        return parts.Count == 0 ? "Nothing" : string.Join(", ", parts);
+    }
+}
+
+/// <summary>A named set of character settings laid over the paragraph style's (Emphasis: italic).</summary>
+public sealed record CharacterStyle(string Name, CharOverrides Set);
 
 /// <summary>A stretch of a story's characters in one format.</summary>
 public sealed record Run(int Length, CharFormat Format);
@@ -181,15 +257,42 @@ public sealed class Story
         for (var p = first; p <= last; p++) Paras[p] = change(Paras[p]);
     }
 
-    /// <summary>Sets every paragraph the selection touches, and all of their characters, to a style.</summary>
-    public void ApplyStyle(int index, int length, ParagraphStyle style)
+    /// <summary>
+    /// Sets every paragraph the selection touches, and all of their characters, to a style; text in a character
+    /// style (found by <paramref name="charStyles"/>) keeps it, over the new paragraph style.
+    /// </summary>
+    public void ApplyStyle(int index, int length, ParagraphStyle style, Func<string, CharacterStyle?>? charStyles = null)
     {
         var (first, last) = ParagraphsIn(index, length);
         for (var p = first; p <= last; p++)
         {
             Paras[p] = style.Para with { Style = style.Name };
             var (start, end) = ParagraphRange(p);
-            FormatChars(start, end - start + 1, _ => style.Char);
+            FormatChars(start, end - start + 1, f => Over(style.Char, f.CharStyle, charStyles));
+        }
+    }
+
+    /// <summary>A paragraph style's characters with a character style over them (if there is such a style).</summary>
+    private static CharFormat Over(CharFormat basis, string? charStyle, Func<string, CharacterStyle?>? charStyles) =>
+        charStyle is not null && charStyles?.Invoke(charStyle) is { } cs ? cs.Set.ApplyTo(basis) with { CharStyle = cs.Name } : basis;
+
+    /// <summary>Puts a stretch of text in a character style (or, with null, takes it out of its character style).</summary>
+    public void ApplyCharStyle(int index, int length, CharacterStyle? style, Func<string, CharacterStyle?> charStyles, Func<string, ParagraphStyle> paraStyles)
+    {
+        var (first, last) = ParagraphsIn(index, length);
+        for (var p = first; p <= last; p++)
+        {
+            var (start, end) = ParagraphRange(p);
+            var s = Math.Max(start, index);
+            var e = Math.Min(end + 1, index + length);
+            if (e <= s) continue;
+            var basis = paraStyles(Paras[p].Style).Char;
+            FormatChars(s, e - s, f =>
+            {
+                // Out of the old character style first, back to the paragraph style's settings it had changed.
+                if (f.CharStyle is not null && charStyles(f.CharStyle) is { } old) f = old.Set.Revert(f, basis);
+                return style is null ? f with { CharStyle = null } : style.Set.ApplyTo(f) with { CharStyle = style.Name };
+            });
         }
     }
 
@@ -197,14 +300,27 @@ public sealed class Story
     /// Makes every paragraph that uses a style take the style's settings again, keeping bold, italic and underline
     /// set on characters.
     /// </summary>
-    public void Restyle(ParagraphStyle style)
+    public void Restyle(ParagraphStyle style, Func<string, CharacterStyle?>? charStyles = null)
     {
         for (var p = 0; p < Paras.Count; p++)
         {
             if (Paras[p].Style != style.Name) continue;
             Paras[p] = style.Para with { Style = style.Name };
             var (start, end) = ParagraphRange(p);
-            FormatChars(start, end - start + 1, f => style.Char with { Bold = f.Bold, Italic = f.Italic, Underline = f.Underline });
+            FormatChars(start, end - start + 1, f => f.CharStyle is not null && charStyles?.Invoke(f.CharStyle) is not null
+                ? Over(style.Char, f.CharStyle, charStyles)
+                : style.Char with { Bold = f.Bold, Italic = f.Italic, Underline = f.Underline });
+        }
+    }
+
+    /// <summary>Brings the text in a character style up to date after it changes (<paramref name="was"/> is how it was).</summary>
+    public void RestyleChars(CharacterStyle was, CharacterStyle now, Func<string, ParagraphStyle> paraStyles)
+    {
+        for (var p = 0; p < Paras.Count; p++)
+        {
+            var (start, end) = ParagraphRange(p);
+            var basis = paraStyles(Paras[p].Style).Char;
+            FormatChars(start, end - start + 1, f => f.CharStyle == was.Name ? now.Set.ApplyTo(was.Set.Revert(f, basis)) with { CharStyle = now.Name } : f);
         }
     }
 

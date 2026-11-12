@@ -363,7 +363,7 @@ public sealed class PageView : Control
             CaretMoved();
             return;
         }
-        Select(CurrentSheet.Objects.Select(o => o.Id));
+        Select(CurrentSheet.Objects.Where(Pickable).Select(o => o.Id));
     }
 
     private IEnumerable<TextFrame> FramesOnSheet(string storyId) =>
@@ -875,7 +875,11 @@ public sealed class PageView : Control
     /// The top-most object of the sheet under a point. A group is hit where anything in it is; looking for a kind
     /// (<paramref name="which"/>) finds it inside groups.
     /// </summary>
-    private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null) => Hit(CurrentSheet.Objects, p, which);
+    private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null) =>
+        Hit(Doc.Ordered(CurrentSheet.Objects).Where(Pickable).ToList(), p, which);
+
+    /// <summary>Whether an object on the sheet can be picked: its layer shown and not locked.</summary>
+    private bool Pickable(PageObject o) => Doc.LayerOf(o) is { Visible: true, Locked: false };
 
     private PageObject? Hit(List<PageObject> list, Pt p, Func<PageObject, bool>? which)
     {
@@ -1522,7 +1526,7 @@ public sealed class PageView : Control
                 if (_dragMoved)
                 {
                     var area = Box.FromCorners(_dragStart, _dragNow);
-                    var hits = CurrentSheet.Objects.Where(o => Shapes.Extent(o).Inside(area)).Select(o => o.Id);
+                    var hits = CurrentSheet.Objects.Where(Pickable).Where(o => Shapes.Extent(o).Inside(area)).Select(o => o.Id);
                     Select(_shift ? _selection.Concat(hits).ToList() : hits);
                 }
                 break;

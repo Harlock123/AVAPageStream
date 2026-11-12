@@ -34,7 +34,11 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   colour, tracking and kerning; alignment
   (left, centre, right, justified), leading, indents, space before and after, tab stops (left, right, centre and
   decimal, with leaders), drop caps and hyphenation; and paragraph styles (Body, Heading, Subheading, Caption, and
-  your own) that update every paragraph using them when you redefine or rename one.
+  your own) that update every paragraph using them when you redefine or rename one. Character styles (Emphasis,
+  Strong, Small caps and your own) lay their settings over the paragraph's.
+- **Long documents.** Keep a heading with the next paragraph, keep a paragraph's lines together, and widow and orphan
+  control; sections of page numbering (i, ii, iii, then 1, 2, 3, or A-1 with a prefix); and layers, each shown or
+  hidden, locked, and printed or not.
 - **Colour swatches.** Pick colours by name from the document's swatches, at any tint; change a swatch and
   everything in it changes. Swatches can be CMYK, and spot inks, and the Document tab lists the inks a job needs.
 - **Tables** of rows and columns, each cell with text of its own: Tab from cell to cell, a shaded header row, rows

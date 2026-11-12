@@ -1,7 +1,7 @@
 namespace AVAPageStream.Core;
 
 /// <summary>A paragraph for a table of contents: its text, its level (by the styles chosen), and the page it is on (null if it is overset).</summary>
-public sealed record ContentsEntry(string Text, int Level, int? Page);
+public sealed record ContentsEntry(string Text, int Level, int? Page, string? Label = null);
 
 /// <summary>Building a table of contents from the paragraphs in chosen styles, with the pages they are set on.</summary>
 public static class Contents
@@ -21,7 +21,8 @@ public static class Contents
         {
             var story = doc.Stories[order[k]];
             if (story.Frames.Count == 0 || !pageOf.ContainsKey(story.Frames[0])) continue; // a master's story
-            var fields = new FieldContext(Chains.PageOf(doc, story), doc.Pages.Count);
+            var first = Chains.PageOf(doc, story);
+            var fields = new FieldContext(first, doc.Pages.Count, first > 0 ? doc.PageLabel(first - 1) : null);
             var layout = TextFlow.Layout(story, Chains.Areas(doc, story), measurer, fields);
             for (var p = 0; p < story.ParagraphCount; p++)
             {
@@ -32,7 +33,7 @@ public static class Contents
                 if (text.Length == 0) continue;
                 var line = layout.LineOf(start);
                 int? page = line >= 0 && pageOf.TryGetValue(Chains.ObjectOf(layout.Areas[layout.Lines[line].Area].FrameId), out var n) ? n : null;
-                found.Add((new ContentsEntry(text, level, page), k, start));
+                found.Add((new ContentsEntry(text, level, page, page is { } n2 ? doc.PageLabel(n2 - 1) : null), k, start));
             }
         }
         return found.OrderBy(f => f.Entry.Page ?? int.MaxValue).ThenBy(f => f.Story).ThenBy(f => f.Start).Select(f => f.Entry).ToList();
@@ -62,5 +63,5 @@ public static class Contents
 
     /// <summary>The entries as paragraphs to place: the text, a tab, the page number.</summary>
     public static List<PlacedPara> Paragraphs(IEnumerable<ContentsEntry> entries) =>
-        entries.Select(e => new PlacedPara(StyleFor(e.Level), [new PlacedRun(e.Text + "\t" + (e.Page?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "–"))])).ToList();
+        entries.Select(e => new PlacedPara(StyleFor(e.Level), [new PlacedRun(e.Text + "\t" + (e.Label ?? e.Page?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "–"))])).ToList();
 }

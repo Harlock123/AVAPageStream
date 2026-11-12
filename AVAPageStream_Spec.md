@@ -544,3 +544,26 @@ contents from paragraph styles; templates; booklet printing.
 
 **Status (11 November 2026):** done. Everything above is built and tested. Two parts go as far as the libraries do:
 PDFs are RGB (CMYK colours are converted), and EPS needs Ghostscript to be shown in full.
+
+### Milestone 4: a long-document program
+
+What books, magazines and reports need beyond milestone 3:
+
+- **Character styles**: named sets of character settings (Emphasis, Strong, Small caps…) applied to stretches of
+  text over their paragraph's style, which update their text when redefined.
+- **Keeping text together**: keep a paragraph with the next (a heading with its first paragraph), keep a paragraph's
+  lines together, and widow and orphan control (at least so many lines at the top and the foot of a column).
+- **Page-number sections**: a page can start a section, its numbers starting again from any number, as 1, 2, 3, as
+  i, ii, iii or I, II, III, or as a, b, c or A, B, C, with a prefix ("A-1").
+- **Layers**: the document's objects on named layers, drawn in the layers' order, each layer shown or hidden, locked
+  or not, printed or not.
+- **Tables that run on** across linked table frames, their header rows repeated.
+- **A baseline grid** for text to sit on across columns.
+- **Bleed and crop marks** in PDFs for printing to the edge.
+- **Linked pictures** kept as files beside the document, updated when the file changes.
+- **Autosave and recovery** after a crash.
+- **Text on a path.**
+- **Footnotes**, numbered and set at the foot of the column.
+
+**Status (11 November 2026):** started. Done: character styles, keeping text together, page-number sections and
+layers. Still to come: the rest of the list.

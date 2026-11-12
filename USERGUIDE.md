@@ -81,9 +81,32 @@ page's master under the page list, or none.
 adds the number of pages, for "Page 3 of 12". A page number in a frame on a page itself counts from the page the
 story starts on.
 
+**Sections of numbering.** Front matter numbered i, ii, iii and the chapters from 1, or an appendix numbered A-1,
+A-2: show the page a section starts on, and in the Pages tab tick **Start a section of numbering here**. Then set
+what its first page is numbered (**Starts at**), how (**Numbers**: 1, 2, 3; i, ii, iii; I, II, III; a, b, c or A, B,
+C) and a **Prefix**. Every page until the next section counts on from there. Page numbers, the page list, the status
+bar ("Page 5 (iii) of 40") and a table of contents all use the section's numbers.
+
 A master can have **its own margins and columns** (This master's guides, in the Pages tab), for the pages that use
 it: an index set in three columns, say, in a document of two. In a facing document each master has a left side and
 a right side, drawn under left and right pages, so page numbers can sit on the outside corners of both.
+
+## Layers
+
+![A layer of notes that doesn't print, above the page's text, and a section of numbering starting on page 3](docs/images/guide/layers.png)
+
+The Pages tab's **Layers** list holds the document's layers, top first. Every object is on one, and the layers are
+drawn in order, so a layer of notes or a watermark can sit above or below everything else whatever order things were
+drawn in. Each layer has three ticks:
+
+- **Shown**: untick it to hide the layer's objects, on screen and in print. A hidden layer's objects don't wrap text.
+- **Locked**: its objects are drawn but can't be clicked, dragged or selected, so artwork can't be nudged by
+  mistake.
+- **Prints**: untick it for a layer of notes or guides you want to see but not print or export.
+
+Click a layer to make it the one new objects go on. Type a name and click **Add** for a new layer, or **Rename**;
+**Delete** puts the layer's objects onto the layer below it (the last layer can't be deleted). **Up** and **Down**
+change the order, and **Move selection here** moves the selected objects onto the picked layer.
 
 ## Drawing
 
@@ -197,6 +220,36 @@ quick to change: to make every heading a size bigger, change one heading, then *
 - **Add from text**: type a name and click it, and the paragraph the caret is in becomes a new style.
 - **Rename** and **Delete** do as they say; deleting a style leaves its paragraphs looking as they did.
 
+### Character styles
+
+![A character style picked for the selected words in the Text tab](docs/images/guide/charstyles.png)
+
+A character style is a named set of a few character settings, laid over whatever paragraph style the text is in:
+**Emphasis** (italic), **Strong** (bold) and **Small caps** to start with. Select some words and pick one from the
+character **Style** list; pick **(none)** to take it off again. Because it holds only the settings it changes,
+Emphasis in a heading is italic heading type, and in body text italic body type, and changing the paragraph's style
+keeps it.
+
+- **Add from text**: format some words the way you want, type a name and click it. The new style is what those words
+  have that their paragraph's style doesn't, shown beneath the list.
+- **Redefine** makes the style what the selected words are now, and every word using it follows.
+- **Rename** and **Delete**; deleting a character style puts its words back to their paragraph's type.
+
+Placed Markdown uses Strong for `**bold**` and Emphasis for `*italic*`.
+
+### Keeping text together
+
+Four settings at the foot of the Text tab stop awkward breaks between columns and pages, for the paragraph the caret
+is in (or for a paragraph style, by redefining it):
+
+- **Keep with the next paragraph**: a heading never sits alone at the foot of a column; it goes on with the paragraph
+  after it.
+- **Keep its lines together**: the paragraph never breaks; if it doesn't fit, it all starts the next column.
+- **Orphans**: at least so many of its lines at the foot of a column, or none there.
+- **Widows**: at least so many of its lines at the top of the next, brought over from the column before if need be.
+
+A paragraph already at the top of a column, or too long for any column, is never moved, so text can't vanish.
+
 ## Tabs, drop caps and hyphenation
 
 ![A drop cap with justified, hyphenated text, and a list of contents with dot leaders](docs/images/guide/type.png)
@@ -207,7 +260,7 @@ decimal, then a leader character to fill the gap if you want one. `1in, 4in righ
 a right tab at four inches with dots leading to it, as in a list of contents. Decimal tabs line figures up on their
 decimal points. A hanging indent's left indent is a stop too, so a bullet, a tab and the text line up.
 
-**Drop caps.** **Drop cap** sets how many lines deep and how many letters wide. The capital stands from the last of
+**Drop caps.** **Drop cap** sets how many lines deep it goes (0 or 1 for none), and **Letters** how many letters it takes. The capital stands from the last of
 those lines' baseline up to the top of the first line's capitals, and the lines beside it make room.
 
 **Hyphenation.** Tick **Hyphenate** and words are broken at the ends of lines where the hyphenation patterns allow,

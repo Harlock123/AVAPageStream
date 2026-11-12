@@ -145,8 +145,10 @@ public partial class WindowTests
         var toc = w.Editor.Add(SheetRef.PageAt(0), new TextFrame { X = 340, Y = 72, W = 200, H = 120 });
         w.Editor.ReplaceText(toc.StoryId, 0, 0, "The harbour wall\t3\nThe net loft\t7\nTide tables\t12");
         w.Editor.FormatParas(toc.StoryId, 0, 40, p => p with { Tabs = "200R." });
-        w.View.Select([f.Id]);
-        Pump();
+        w.View.StartEditing((TextFrame)w.Editor.Doc.Find(f.Id)!);
+        w.View.Editing!.Anchor = w.View.Editing!.Caret = 20;
+        w.Refresh();
+        ShowTab(w, 1, 1000);
         Guide(w, "type");
         Done(w);
     }
@@ -264,6 +266,49 @@ public partial class WindowTests
         w.View.Select([t.Id]);
         ShowTab(w, 0, 300);
         Guide(w, "tables");
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Guide_character_styles_and_keeps()
+    {
+        var w = GuideWindow();
+        var f = w.Editor.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 460, H = 300 });
+        w.Editor.ReplaceText(f.StoryId, 0, 0, "The new harbour lamps\n" + Prose);
+        w.Editor.ApplyStyle(f.StoryId, 0, 0, "Heading");
+        w.Editor.FormatParas(f.StoryId, 0, 0, p => p with { KeepWithNext = true });
+        var story = w.Editor.Doc.Stories[f.StoryId];
+        w.Editor.ApplyCharStyle(f.StoryId, story.Text.IndexOf("new lamps", StringComparison.Ordinal), 9, "Emphasis");
+        var at = story.Text.IndexOf("fishing boats", StringComparison.Ordinal);
+        w.Editor.ApplyCharStyle(f.StoryId, at, 13, "Strong");
+        w.View.StartEditing((TextFrame)w.Editor.Doc.Find(f.Id)!);
+        w.View.Editing!.Anchor = at;
+        w.View.Editing!.Caret = at + 13;
+        w.Refresh();
+        ShowTab(w, 1, 150);
+        Guide(w, "charstyles");
+        Assert.Equal("Strong", w.Panel.CharStyleChoice.SelectedItem);
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Guide_layers_and_sections()
+    {
+        var w = GuideWindow();
+        for (var i = 0; i < 5; i++) w.AddPage(after: true);
+        w.Editor.SetSection(0, new PageNumbering(1, NumberStyle.LowerRoman));
+        w.Editor.SetSection(2, new PageNumbering(1));
+        w.ShowSheet(SheetRef.PageAt(2));
+        var f = w.Editor.Add(SheetRef.PageAt(2), new TextFrame { X = 72, Y = 72, W = 468, H = 600 });
+        w.Editor.ReplaceText(f.StoryId, 0, 0, Prose + "\n" + Prose);
+        w.Editor.AddLayer("Notes");
+        var note = w.Editor.Add(SheetRef.PageAt(2), new TextFrame { X = 340, Y = 200, W = 180, H = 60, Fill = "#FFF2A8", Stroke = "#C8A800" });
+        w.Editor.ReplaceText(note.StoryId, 0, 0, "Check the lamp count with the harbour master", new CharFormat(Fonts.Sans, 11));
+        w.Editor.SetLayer("Notes", l => l with { Print = false });
+        w.View.FitPage();
+        ShowTab(w, 2, 330);
+        Guide(w, "layers");
+        Assert.Equal("Page 3 (1) of 6", w.PageInfo.Text);
         Done(w);
     }
 }

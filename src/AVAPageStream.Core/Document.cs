@@ -70,6 +70,8 @@ public sealed class Document
     public int Version { get; set; } = FormatVersion;
     public Setup Setup { get; set; } = new();
     public List<ParagraphStyle> Styles { get; set; } = [];
+    public List<CharacterStyle> CharStyles { get; set; } = [];
+    public List<Layer> Layers { get; set; } = [new("Layer 1")];
     public List<Swatch> Swatches { get; set; } = [];
     public Dictionary<string, Story> Stories { get; set; } = [];
     public List<MasterPage> Masters { get; set; } = [];
@@ -95,11 +97,30 @@ public sealed class Document
         new("Caption", new CharFormat(Fonts.Sans, 9, Italic: true), new ParaFormat()),
     ];
 
+    public static List<CharacterStyle> DefaultCharStyles() =>
+    [
+        new("Emphasis", new CharOverrides(Italic: true)),
+        new("Strong", new CharOverrides(Bold: true)),
+        new("Small caps", new CharOverrides(SmallCaps: true)),
+    ];
+
+    public CharacterStyle? CharStyle(string name) => CharStyles.FirstOrDefault(s => s.Name == name);
+
+    /// <summary>Where an object's layer is in the list, bottom first (an unknown layer counts as the bottom).</summary>
+    public int LayerIndex(PageObject o) => Math.Max(0, Layers.FindIndex(l => l.Name == o.Layer));
+
+    /// <summary>The layer an object is on.</summary>
+    public Layer LayerOf(PageObject o) => Layers.Count == 0 ? new Layer("Layer 1") : Layers[LayerIndex(o)];
+
+    /// <summary>Objects in the order they are drawn: layer by layer, bottom first, and in their own order within a layer.</summary>
+    public IEnumerable<PageObject> Ordered(IEnumerable<PageObject> objects) => objects.OrderBy(LayerIndex);
+
     /// <summary>A new document: one page on the master "A-Master", with the default styles and colours.</summary>
     public static Document New(Setup? setup = null) => new()
     {
         Setup = setup ?? new Setup(),
         Styles = DefaultStyles(),
+        CharStyles = DefaultCharStyles(),
         Swatches = Colours.DefaultSwatches(),
         Masters = [new MasterPage()],
         Pages = [new Page()],
@@ -115,6 +136,18 @@ public sealed class Document
     /// <summary>The master sheet drawn under a page (in a facing document, a left page's master's left side).</summary>
     public Sheet? MasterFor(Page page) =>
         Master(page.Master) is { } m ? (IsLeft(page) && m.Left is { } side ? side : m) : null;
+
+    /// <summary>
+    /// A page's number as it is printed: counted from the start of its section (the nearest page at or before it that
+    /// starts one), in the section's style; pages before any section count from 1.
+    /// </summary>
+    public string PageLabel(int index)
+    {
+        index = Math.Clamp(index, 0, Pages.Count - 1);
+        for (var i = index; i >= 0; i--)
+            if (Pages[i].Section is { } section) return section.Format(section.Start + index - i);
+        return (index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
 
     /// <summary>Whether a page is a left-hand page: in a facing document, every even page (page 1 is on the right).</summary>
     public bool IsLeft(Page page) => Setup.Facing && (Pages.IndexOf(page) + 1) % 2 == 0;

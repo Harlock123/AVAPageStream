@@ -57,6 +57,13 @@ public sealed record Setup(
     }
 }
 
+/// <summary>
+/// A layer of the document: objects on it are drawn above those on the layers before it in the list. A hidden layer
+/// is neither drawn nor picked; a locked one is drawn but not picked; one that doesn't print is left out of PDFs,
+/// pictures and printing.
+/// </summary>
+public sealed record Layer(string Name, bool Visible = true, bool Locked = false, bool Print = true);
+
 /// <summary>A ruler guide on a page: a vertical one at an X, or a horizontal one at a Y.</summary>
 public sealed record Guide(bool Vertical, double Position);
 
@@ -115,6 +122,45 @@ public sealed class Page : Sheet
 {
     /// <summary>The master page under this page, by name, or null for none.</summary>
     public string? Master { get; set; } = "A-Master";
+
+    /// <summary>A section of page numbering that starts on this page, or null to go on from the page before.</summary>
+    public PageNumbering? Section { get; set; }
+}
+
+public enum NumberStyle { Arabic, LowerRoman, UpperRoman, LowerLetter, UpperLetter }
+
+/// <summary>How a section numbers its pages: from what number, in what style, after what prefix ("A-" for A-1).</summary>
+public sealed record PageNumbering(int Start = 1, NumberStyle Style = NumberStyle.Arabic, string Prefix = "")
+{
+    /// <summary>A number in the section's style, with its prefix.</summary>
+    public string Format(int n) => Prefix + Style switch
+    {
+        NumberStyle.LowerRoman => Roman(n).ToLowerInvariant(),
+        NumberStyle.UpperRoman => Roman(n),
+        NumberStyle.LowerLetter => Letters(n).ToLowerInvariant(),
+        NumberStyle.UpperLetter => Letters(n),
+        _ => n.ToString(System.Globalization.CultureInfo.InvariantCulture),
+    };
+
+    /// <summary>A number in Roman numerals (as plain figures past 3999 or below 1).</summary>
+    public static string Roman(int n)
+    {
+        if (n is < 1 or > 3999) return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        (int Value, string Numeral)[] table = [(1000, "M"), (900, "CM"), (500, "D"), (400, "CD"), (100, "C"), (90, "XC"), (50, "L"), (40, "XL"), (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I")];
+        var sb = new System.Text.StringBuilder();
+        foreach (var (value, numeral) in table)
+            while (n >= value) { sb.Append(numeral); n -= value; }
+        return sb.ToString();
+    }
+
+    /// <summary>A number as letters: A to Z, then AA, AB… (as figures below 1).</summary>
+    public static string Letters(int n)
+    {
+        if (n < 1) return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var s = "";
+        while (n > 0) { n--; s = (char)('A' + n % 26) + s; n /= 26; }
+        return s;
+    }
 }
 
 public enum Fit { Stretch, Fit, Fill, Actual }
@@ -152,6 +198,9 @@ public abstract class PageObject
     /// <summary>The box text keeps out of when this object wraps.</summary>
     [JsonIgnore]
     public Box WrapBox => Shapes.Extent(this).Inflate(WrapGap);
+
+    /// <summary>The layer it is on, by name (null: the bottom layer). Inside a group, the group's layer counts.</summary>
+    public string? Layer { get; set; }
 
     /// <summary>Turned clockwise about the frame's centre, in degrees.</summary>
     public double Rotation { get; set; }

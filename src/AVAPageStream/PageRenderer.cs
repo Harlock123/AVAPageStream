@@ -33,7 +33,8 @@ internal sealed class Layouts(ITextMeasurer measurer)
     public TextLayout? Of(Document doc, string storyId, int? page = null)
     {
         if (!doc.Stories.TryGetValue(storyId, out var story)) return null;
-        var fields = new FieldContext(page ?? Chains.PageOf(doc, story), doc.Pages.Count);
+        var number = page ?? Chains.PageOf(doc, story);
+        var fields = new FieldContext(number, doc.Pages.Count, number > 0 ? doc.PageLabel(number - 1) : null);
         var key = (storyId, page ?? -1);
         var areas = Chains.Areas(doc, story);
         if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields &&
@@ -71,11 +72,14 @@ internal sealed class PageRenderer
             if (sheet is Page page && doc.MasterFor(page) is { } master)
             {
                 var number = doc.Pages.IndexOf(page) + 1;
-                foreach (var o in master.Objects) DrawObject(dc, doc, o, number);
+                foreach (var o in doc.Ordered(master.Objects).Where(o => Shown(doc, o))) DrawObject(dc, doc, o, number);
             }
-            foreach (var o in sheet.Objects) DrawObject(dc, doc, o);
+            foreach (var o in doc.Ordered(sheet.Objects).Where(o => Shown(doc, o))) DrawObject(dc, doc, o);
         }
     }
+
+    /// <summary>Whether an object's layer is drawn: shown, and (in a PDF, a picture or a print) printing.</summary>
+    private bool Shown(Document doc, PageObject o) => doc.LayerOf(o) is var l && l.Visible && (Screen || l.Print);
 
     /// <summary>Draws one object; <paramref name="page"/> is the page a master's object is drawn under.</summary>
     public void DrawObject(DrawingContext dc, Document doc, PageObject o, int? page = null)

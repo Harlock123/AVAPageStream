@@ -112,6 +112,15 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **Fields are characters, shown through the layout.** Story text holds `Fields.PageNumber`/`PageCount`; anything that
   shows or measures set text goes through `TextLayout.Display` (or `Fields.Expand`), never `Story.Slice` directly. A
   master's story is laid out once per page it is drawn under (`Layouts.Of(doc, id, page)`).
+- **Draw and hit-test through `Document.Ordered`**, which sorts a sheet's objects by layer (stably, so their own
+  order holds within a layer); a hidden layer is not drawn or wrapped round, a locked one not picked, and one that
+  doesn't print is drawn only on screen. New objects go on `Editor.CurrentLayer`.
+- **Character styles hold only what they change** (`CharOverrides`), and a run names its style in
+  `CharFormat.CharStyle`; applying a paragraph style lays the run's character style over it again. Page labels come
+  from `Document.PageLabel`, never from the index, and `FieldContext.Label` carries them into fields.
+- **Keeping text together sets paragraphs again.** `TextFlow.Layout` snapshots its state before each paragraph and,
+  when one breaks a keep rule, puts the state back and sets it again with a plan (start in the next area, or break
+  after so many lines), at most twice per paragraph so it always ends.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever

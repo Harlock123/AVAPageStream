@@ -17,6 +17,11 @@ public sealed class Editor
 
     public Editor(Document doc) => Doc = doc;
 
+    /// <summary>The layer new objects go on, by name (null: the top layer).</summary>
+    public string? CurrentLayer { get; set; }
+
+    private string? NewLayer(Document d) => d.Layers.Any(l => l.Name == CurrentLayer) ? CurrentLayer : d.Layers.LastOrDefault()?.Name;
+
     public Document Doc { get; private set; }
 
     /// <summary>Raised after every change, undo and redo.</summary>
@@ -129,6 +134,7 @@ public sealed class Editor
     {
         sheet.Resolve(d).Objects.Add(obj);
         obj.Id = d.NewId(obj is TextFrame ? "frame" : "object");
+        obj.Layer ??= NewLayer(d);
         if (obj is TextFrame frame && !d.Stories.ContainsKey(frame.StoryId)) Chains.NewStory(d, frame, d.Style("Body"));
         return obj;
     });
@@ -232,6 +238,7 @@ public sealed class Editor
             if (from.Find(id) is not { } obj) continue;
             var copy = Copy(d, obj, from);
             copy.MoveBy(offset, offset);
+            if (!d.Layers.Any(l => l.Name == copy.Layer)) copy.Layer = NewLayer(d); // pasted from a document without its layer
             sheet.Resolve(d).Objects.Add(copy);
             made.Add(copy.Id);
         }
@@ -284,6 +291,7 @@ public sealed class Editor
     public TableObject AddTable(SheetRef sheet, Box box, int rows, int columns) => Change("New table", d =>
     {
         var t = Tables.Make(d, box, rows, columns);
+        t.Layer = NewLayer(d);
         sheet.Resolve(d).Objects.Add(t);
         return t;
     });
@@ -425,6 +433,91 @@ public sealed class Editor
         });
     }
 
+    // ---- Layers ----------------------------------------------------------------------------------------------
+
+    /// <summary>Adds a layer above the current one (or at the top), and makes it current.</summary>
+    public string AddLayer(string? name = null)
+    {
+        var n = Doc.Layers.Count + 1;
+        name = string.IsNullOrWhiteSpace(name) ? null : name.Trim();
+        while (name is null || Doc.Layers.Any(l => l.Name == name)) name = $"Layer {n++}";
+        var at = Doc.Layers.FindIndex(l => l.Name == CurrentLayer) is var i and >= 0 ? i + 1 : Doc.Layers.Count;
+        var made = name;
+        Change("Add layer", d => d.Layers.Insert(Math.Min(at, d.Layers.Count), new Layer(made)));
+        CurrentLayer = made;
+        return made;
+    }
+
+    public string? RenameLayer(string old, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Type the layer's new name first.";
+        if (name == old) return null;
+        if (Doc.Layers.Any(l => l.Name == name)) return $"There is already a layer called {name}.";
+        var i = Doc.Layers.FindIndex(l => l.Name == old);
+        if (i < 0) return $"There is no layer called {old}.";
+        var bottom = i == 0;
+        Change("Rename layer", d =>
+        {
+            d.Layers[i] = d.Layers[i] with { Name = name };
+            foreach (var sheet in d.Sheets)
+                foreach (var o in sheet.Objects)
+                    if (o.Layer == old || (bottom && !d.Layers.Any(l => l.Name == o.Layer))) o.Layer = name;
+        });
+        if (CurrentLayer == old) CurrentLayer = name;
+        return null;
+    }
+
+    /// <summary>Deletes a layer (never the last); what was on it goes onto the layer below it (or above, for the bottom one).</summary>
+    public string? DeleteLayer(string name)
+    {
+        if (Doc.Layers.Count <= 1) return "A document needs at least one layer.";
+        var i = Doc.Layers.FindIndex(l => l.Name == name);
+        if (i < 0) return $"There is no layer called {name}.";
+        var onto = Doc.Layers[i == 0 ? 1 : i - 1].Name;
+        Change("Delete layer " + name, d =>
+        {
+            foreach (var sheet in d.Sheets)
+                foreach (var o in sheet.Objects.Where(o => d.LayerIndex(o) == i)) o.Layer = onto;
+            d.Layers.RemoveAt(i);
+        });
+        if (CurrentLayer == name) CurrentLayer = onto;
+        return null;
+    }
+
+    /// <summary>Moves a layer up (toward the top, drawn later) or down the list.</summary>
+    public void MoveLayer(string name, int delta)
+    {
+        var i = Doc.Layers.FindIndex(l => l.Name == name);
+        var j = i + delta;
+        if (i < 0 || j < 0 || j >= Doc.Layers.Count) return;
+        Change(delta > 0 ? "Move layer up" : "Move layer down", d =>
+        {
+            // Name every object's layer first, so the bottom layer's unnamed objects stay on it.
+            foreach (var sheet in d.Sheets)
+                foreach (var o in sheet.Objects) o.Layer = d.LayerOf(o).Name;
+            (d.Layers[i], d.Layers[j]) = (d.Layers[j], d.Layers[i]);
+        });
+    }
+
+    /// <summary>Shows or hides, locks or unlocks a layer, or has it print or not.</summary>
+    public void SetLayer(string name, Func<Layer, Layer> change) => Change("Layer " + name, d =>
+    {
+        var i = d.Layers.FindIndex(l => l.Name == name);
+        if (i >= 0) d.Layers[i] = change(d.Layers[i]) with { Name = name };
+    });
+
+    /// <summary>Puts objects (on top of their sheets) onto a layer.</summary>
+    public void MoveToLayer(IReadOnlyCollection<string> ids, string layer) => Change("Move to layer " + layer, d =>
+    {
+        foreach (var sheet in d.Sheets)
+            foreach (var o in sheet.Objects.Where(o => ids.Contains(o.Id))) o.Layer = layer;
+    });
+
+    /// <summary>Starts a section of page numbering on a page (or, with null, has it go on from the page before).</summary>
+    public void SetSection(int page, PageNumbering? section) =>
+        Change(section is null ? "No section" : "Page numbering", d => d.Pages[page].Section = section);
+
     /// <summary>Adds a master page with a name no other has.</summary>
     public string AddMaster()
     {
@@ -529,7 +622,10 @@ public sealed class Editor
             var run = at;
             foreach (var r in para.Runs)
             {
-                if (r.Bold || r.Italic) story.FormatChars(run, r.Text.Length, f => f with { Bold = f.Bold || r.Bold, Italic = f.Italic || r.Italic });
+                // Bold and italic go in as the Strong and Emphasis character styles where the document has them.
+                var style = r.Bold && r.Italic ? null : r.Bold ? d.CharStyle("Strong") : r.Italic ? d.CharStyle("Emphasis") : null;
+                if (style is not null) story.ApplyCharStyle(run, r.Text.Length, style, d.CharStyle, d.Style);
+                else if (r.Bold || r.Italic) story.FormatChars(run, r.Text.Length, f => f with { Bold = f.Bold || r.Bold, Italic = f.Italic || r.Italic });
                 run += r.Text.Length;
             }
             at += para.Text.Length + 1;
@@ -564,7 +660,63 @@ public sealed class Editor
         Change(label, d => d.Stories[storyId].FormatParas(start, length, change));
 
     public void ApplyStyle(string storyId, int start, int length, string style) =>
-        Change("Apply style " + style, d => d.Stories[storyId].ApplyStyle(start, length, d.Style(style)));
+        Change("Apply style " + style, d => d.Stories[storyId].ApplyStyle(start, length, d.Style(style), d.CharStyle));
+
+    /// <summary>Puts a stretch of text in a character style, or (with null) out of one.</summary>
+    public void ApplyCharStyle(string storyId, int start, int length, string? style) =>
+        Change(style is null ? "No character style" : "Character style " + style,
+            d => d.Stories[storyId].ApplyCharStyle(start, length, style is null ? null : d.CharStyle(style), d.CharStyle, d.Style));
+
+    /// <summary>Makes or redefines a character style; the text in it changes with it.</summary>
+    public string? DefineCharStyle(CharacterStyle style)
+    {
+        if (style.Name.Trim().Length == 0) return "A character style needs a name.";
+        Change("Character style " + style.Name, d =>
+        {
+            var i = d.CharStyles.FindIndex(s => s.Name == style.Name);
+            if (i < 0) { d.CharStyles.Add(style); return; }
+            var was = d.CharStyles[i];
+            d.CharStyles[i] = style;
+            foreach (var story in d.Stories.Values) story.RestyleChars(was, style, d.Style);
+        });
+        return null;
+    }
+
+    public string? RenameCharStyle(string old, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Type the character style's new name first.";
+        if (name == old) return null;
+        if (Doc.CharStyles.Any(s => s.Name == name)) return $"There is already a character style called {name}.";
+        if (Doc.CharStyle(old) is null) return $"There is no character style called {old}.";
+        Change("Rename character style " + old, d =>
+        {
+            var i = d.CharStyles.FindIndex(s => s.Name == old);
+            d.CharStyles[i] = d.CharStyles[i] with { Name = name };
+            foreach (var story in d.Stories.Values)
+                story.FormatChars(0, story.Length + 1, f => f.CharStyle == old ? f with { CharStyle = name } : f);
+        });
+        return null;
+    }
+
+    /// <summary>Deletes a character style; its text goes back to its paragraph style's settings.</summary>
+    public string? DeleteCharStyle(string name)
+    {
+        if (Doc.CharStyle(name) is null) return $"There is no character style called {name}.";
+        Change("Delete character style " + name, d =>
+        {
+            var style = d.CharStyle(name)!;
+            foreach (var story in d.Stories.Values)
+                for (var p = 0; p < story.ParagraphCount; p++)
+                {
+                    var (start, end) = story.ParagraphRange(p);
+                    var basis = d.Style(story.Paras[p].Style).Char;
+                    story.FormatChars(start, end - start + 1, f => f.CharStyle == name ? style.Set.Revert(f, basis) with { CharStyle = null } : f);
+                }
+            d.CharStyles.RemoveAll(s => s.Name == name);
+        });
+        return null;
+    }
 
     /// <summary>Makes or replaces a style, and brings every paragraph using it up to date.</summary>
     public void DefineStyle(ParagraphStyle style) => Change("Define style " + style.Name, d =>
@@ -572,7 +724,7 @@ public sealed class Editor
         var i = d.Styles.FindIndex(s => s.Name == style.Name);
         if (i >= 0) d.Styles[i] = style;
         else d.Styles.Add(style);
-        foreach (var story in d.Stories.Values) story.Restyle(style);
+        foreach (var story in d.Stories.Values) story.Restyle(style, d.CharStyle);
     });
 
     // ---- Swatches -------------------------------------------------------------------------------------------
