@@ -509,4 +509,47 @@ public partial class WindowTests
         Assert.Contains(layout.Lines, l => l.Baseline - l.Ascent > placed.Y + placed.H + 6 && Math.Abs(l.Pieces[0].X - 72) < 0.01);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void A_cross_reference_keeps_up_with_its_heading_and_links_to_it()
+    {
+        var w = Open();
+        var e = w.Editor;
+        e.AddPage(1);
+        var a = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 300, H = 300 });
+        var b = e.Add(SheetRef.PageAt(1), new TextFrame { X = 72, Y = 72, W = 300, H = 300 });
+        e.ReplaceText(a.StoryId, 0, 0, "The tides are on page .");
+        e.ReplaceText(b.StoryId, 0, 0, "Tide tables\nHigh water is at noon.");
+        e.ApplyStyle(b.StoryId, 0, 0, "Heading");
+        w.View.StartEditing((TextFrame)e.Doc.Find(a.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = 22; // before the full stop
+        IReadOnlyList<string>? offered = null;
+        w.AskReference = targets => { offered = targets; return Task.FromResult<ReferenceChoice?>(new ReferenceChoice(targets.ToList().IndexOf("Tide tables"), RefKind.Page)); };
+        Wait(w.InsertCrossReference());
+        Assert.Contains("Tide tables", offered!);
+        string Shown() => w.View.Layouts.Of(e.Doc, a.StoryId)!.Display(0, e.Doc.Stories[a.StoryId].Length);
+        Assert.Equal("The tides are on page 2.", Shown());
+        // A page before the heading's: the reference follows it.
+        e.AddPage(1);
+        Assert.Equal("The tides are on page 3.", Shown());
+        // Named by hand, a place can be referred to by its text too.
+        w.View.StartEditing((TextFrame)e.Doc.Find(b.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[b.StoryId].Text.IndexOf("High", StringComparison.Ordinal);
+        w.AskText = (_, _, _) => Task.FromResult<string?>("Noon");
+        Wait(w.NamePlace());
+        w.View.StartEditing((TextFrame)e.Doc.Find(a.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[a.StoryId].Length;
+        w.AskReference = targets => Task.FromResult<ReferenceChoice?>(new ReferenceChoice(targets.ToList().IndexOf("Place: Noon"), RefKind.Text));
+        Wait(w.InsertCrossReference());
+        Assert.Equal("The tides are on page 3.High water is at noon.", Shown());
+        // In a PDF, it links to its place.
+        var pdf = Path.Combine(Folder(), "xref.pdf");
+        Wait(Export.Pdf(e.Doc, pdf));
+        if (Environment.GetEnvironmentVariable("AVAPS_KEEP") is { } keep) File.Copy(pdf, keep, true);
+        var text = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdf));
+        Assert.Contains("/Dest /p:Tide#20tables", text); // the link, to the place by name (its space written as #20)
+        Assert.Contains("/Dests", text);
+        Assert.Contains("/Link", text);
+        Done(w);
+    }
 }

@@ -760,3 +760,9 @@ against it afterwards (custom; a story is laid out twice when one wraps text), a
 `Document.AllObjects` includes them, so they are found, saved, styled and preflighted as any; the page view picks
 those set on its sheet. Not done: anchoring in table cells and footnotes, and objects that are anchored and also
 in groups.
+
+Stage 2 done: a named place is a marker (`Fields.Place`, `CharFormat.Mark`); a cross-reference a field
+(`Fields.Reference`, `CharFormat.Ref` = "name|kind"). `References.Resolve` works out what a story's references show
+from the layouts, and `Layouts.Of` lays a story out again until its references to itself stop changing (each story
+being worked out gives its last layout to the others, so there is no endless loop). Referring to a heading names
+its start. PDFs get a named destination for each place and a link for each reference.

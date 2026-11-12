@@ -14,7 +14,10 @@ public sealed record CharFormat(
     Script Script = Script.Normal,
     string? CharStyle = null,  // the character style it is in, by name
     string? Note = null,       // on a footnote reference, the note's story
-    string? Anchor = null);    // on an anchored object's marker, the object
+    string? Anchor = null,     // on an anchored object's marker, the object
+    string? Mark = null,       // on a named place's marker, its name
+    string? Ref = null,        // on a cross-reference, the place it refers to and how ("name|page")
+    string? Index = null);     // on an index entry's marker, its topic (and sub-topic after a tab, or "see" after a second)
 
 /// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
 public enum Script { Normal, Super, Sub }
@@ -227,7 +230,9 @@ public sealed class Story
     public CharFormat TypingFormat(int index) =>
         (index > 0 && Text[index - 1] != '\n' ? FormatAt(index - 1) : FormatAt(index)) is var f && f.Note is not null
             ? f with { Note = null, Script = Script.Normal } // typing after a footnote's reference makes no reference
-            : f.Anchor is not null ? f with { Anchor = null } : f; // nor after an anchored object another
+            : f.Anchor is not null || f.Mark is not null || f.Ref is not null || f.Index is not null
+                ? f with { Anchor = null, Mark = null, Ref = null, Index = null } // nor after a marker or a reference another
+                : f;
 
     /// <summary>The paragraph the character at <paramref name="index"/> is in.</summary>
     public int ParagraphAt(int index)

@@ -18,6 +18,9 @@ internal sealed class Layouts(ITextMeasurer measurer)
 
     // By story, and by the page a master's story is drawn on: its page-number fields differ from page to page.
     private readonly Dictionary<(string, int), Entry> _layouts = [];
+    private readonly HashSet<string> _resolving = [];
+
+    private TextLayout? Previous(string storyId, int? page) => _layouts.TryGetValue((storyId, page ?? -1), out var e) ? e.Layout : null;
 
     public ITextMeasurer Measurer => measurer;
 
@@ -62,12 +65,30 @@ internal sealed class Layouts(ITextMeasurer measurer)
                 ? n.Text + string.Concat(n.Runs) + string.Concat(n.Paras) : ""));
         }
         var anchored = Anchors.Signature(story);
+        // What its cross-references show, from where their places are set now (a story being worked out meanwhile
+        // gives its last layout, so two stories referring to each other don't go round for ever).
+        if (References.In(story).Count > 0)
+        {
+            _resolving.Add(storyId);
+            try { fields = fields with { Refs = References.Resolve(doc, story, s => _resolving.Contains(s.Id) ? Previous(s.Id, page) : Of(doc, s.Id)) }; }
+            finally { _resolving.Remove(storyId); }
+        }
         if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid && e.Notes == notes && e.Anchored == anchored &&
             e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) && e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) &&
             e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
             return e.Layout;
         var layout = TextFlow.Layout(story, areas, measurer, fields, grid, heights);
         LaidOut++;
+        // References to places in this story itself: set again until what they show stops changing.
+        for (var pass = 0; pass < 3 && fields.Refs is not null; pass++)
+        {
+            var mine = layout;
+            var again = References.Resolve(doc, story, s => s.Id == storyId ? mine : _resolving.Contains(s.Id) ? Previous(s.Id, page) : Of(doc, s.Id));
+            if (Equals(again, fields.Refs)) break;
+            fields = fields with { Refs = again };
+            layout = TextFlow.Layout(story, areas, measurer, fields, grid, heights);
+            LaidOut++;
+        }
         Anchors.Place(story, layout);
         // Objects placed by hand that wrap text: kept out of the area they fall in, and the story laid out again.
         var wrapping = story.Anchored.Where(o => o.Anchoring?.Kind == AnchorKind.Custom && o.Wrap && o.PlacedIn is not null).ToList();

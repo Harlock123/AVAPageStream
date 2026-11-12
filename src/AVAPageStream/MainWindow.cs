@@ -62,6 +62,12 @@ public sealed class MainWindow : Window
     /// <summary>Asks which pages to export (kind "pdf" or "png") and at what resolution; tests answer it themselves.</summary>
     public Func<string, Task<ExportChoice?>> AskExport { get; set; }
 
+    /// <summary>Asks for a line of text (title, message, what it starts as); null if cancelled.</summary>
+    public Func<string, string, string, Task<string?>> AskText { get; set; }
+
+    /// <summary>Asks what to refer to, from a list of headings and places, and how.</summary>
+    public Func<IReadOnlyList<string>, Task<ReferenceChoice?>> AskReference { get; set; }
+
     /// <summary>Asks which styles a table of contents lists; tests answer it themselves.</summary>
     public Func<IReadOnlyList<string>, Task<List<string>?>> AskContents { get; set; } = _ => Task.FromResult<List<string>?>(null);
 
@@ -210,6 +216,8 @@ public sealed class MainWindow : Window
 
         View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides, ShowGrid = Settings.ShowGrid, SnapGrid = Settings.SnapGrid, CheckSpelling = Settings.CheckSpelling };
         View.SpellingWords = SpellingWords;
+        AskText = (title, message, start) => TextDialog.Show(this, title, message, start);
+        AskReference = targets => ReferenceDialog.Show(this, targets);
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
         View.AskPassword = (file, wrong) => PasswordDialog.Show(this, file, wrong);
@@ -434,6 +442,8 @@ public sealed class MainWindow : Window
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
                         Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
                         Item("Insert _footnote", () => InsertFootnote(), "Ctrl+Alt+F"),
+                        Item("_Name this place…", () => _ = NamePlace()),
+                        Item("Insert _cross-reference…", () => _ = InsertCrossReference()),
                         Item("_Edit footnote", () => EditFootnote()),
                         new Separator(),
                         Item("Align _left", () => View.ApplyPara(p => p with { Align = Align.Left }, "Alignment")),
@@ -800,6 +810,54 @@ public sealed class MainWindow : Window
     }
 
     /// <summary>Puts a footnote at the caret and the caret in the note, at the foot of its column, to write it.</summary>
+    /// <summary>Names the place at the caret, for cross-references to point at.</summary>
+    public async Task NamePlace()
+    {
+        if (View.Editing is not { } t) { Say("Put the caret where the place is first."); return; }
+        if (await AskText("Name this place", "A name for this place in the text, for cross-references to point at:", "") is not { } name) return;
+        if (Editor.NamePlace(t.StoryId, t.Start, name) is { } why) { Say(why); return; }
+        t.Caret = t.Anchor = t.Start + 1;
+        Say($"Named this place {name.Trim()}: Text › Insert cross-reference can point at it.");
+    }
+
+    /// <summary>Puts a cross-reference at the caret, to a heading or a named place.</summary>
+    public async Task InsertCrossReference()
+    {
+        if (View.Editing is not { } t) { Say("Put the caret where the cross-reference goes first."); return; }
+        var doc = Editor.Doc;
+        // The places named by hand, then the headings (in the styles PDF bookmarks are made from), in reading order.
+        var targets = new List<(string Label, string? Place, string? Story, int Paragraph)>();
+        foreach (var p in References.Places(doc).OrderBy(p => p.Name, StringComparer.CurrentCultureIgnoreCase))
+            if (!IsHeadingPlace(p)) targets.Add(($"Place: {p.Name}", p.Name, null, 0));
+        var headings = PdfExtras.OutlineStyles(doc).ToHashSet();
+        foreach (var id in Search.StoryOrder(doc))
+        {
+            var story = doc.Stories[id];
+            for (var k = 0; k < story.ParagraphCount; k++)
+            {
+                if (!headings.Contains(story.Paras[k].Style)) continue;
+                var (start, end) = story.ParagraphRange(k);
+                var text = Fields.Expand(story.Text[start..end], null).Trim();
+                if (text.Length > 0) targets.Add((text, null, id, k));
+            }
+        }
+        if (targets.Count == 0) { Say("There are no headings or named places to refer to yet."); return; }
+        if (await AskReference(targets.Select(x => x.Label).ToList()) is not { } choice || choice.Target < 0 || choice.Target >= targets.Count) return;
+        var target = targets[choice.Target];
+        var name = target.Place ?? Editor.PlaceForParagraph(target.Story!, target.Paragraph);
+        var at = t.Start;
+        // Naming a heading's place earlier in the same story moves the caret on by its marker.
+        if (target.Story == t.StoryId && doc.Stories[t.StoryId].ParagraphRange(target.Paragraph).Start <= at && target.Place is null) at++;
+        Editor.InsertReference(t.StoryId, at, name, choice.Kind);
+        t.Caret = t.Anchor = at + 1;
+        View.Reveal(t.StoryId, t.Caret, 0);
+        Say("Inserted a cross-reference: it keeps up as pages move, and links to its place in PDFs.");
+
+        bool IsHeadingPlace(NamedPlace p) =>
+            doc.Stories.TryGetValue(p.StoryId, out var s) && PdfExtras.OutlineStyles(doc).Contains(s.Paras[s.ParagraphAt(p.Index)].Style)
+            && s.Text[s.ParagraphRange(s.ParagraphAt(p.Index)).Start..p.Index].All(Fields.IsField);
+    }
+
     public bool InsertFootnote()
     {
         if (View.Editing is not { } t) { Say("Put the caret where the footnote's number goes first."); return false; }

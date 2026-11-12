@@ -203,6 +203,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   object. Their X and Y are derived: `Anchors.Place` sets them (and `PlacedIn`) after each layout, from
   `Layouts.Of`. `Document.AllObjects` and `Find` include them, but `SheetOf` doesn't: code that takes an object off a
   sheet must handle anchored ones (as `Editor.Delete` does). The page view's `Here()` is what can be selected.
+- **Cross-references**: `References.cs`. A story's `FieldContext.Refs` (a `RefMap`, equal by what it shows) is
+  worked out in `Layouts.Of` before the layout and checked again after it.
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

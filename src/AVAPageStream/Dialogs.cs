@@ -46,6 +46,80 @@ internal sealed class AskDialog : Window
     }
 }
 
+/// <summary>Asks for a short piece of text: a name, say.</summary>
+internal sealed class TextDialog : Window
+{
+    private TextDialog(string title, string message, string start)
+    {
+        Title = title;
+        Width = 420;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = Look.Window;
+        var box = new TextBox { Text = start, FontSize = 14 };
+        var ok = new Button { Content = "OK", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        ok.Classes.Add("accent");
+        ok.Click += (_, _) => Close(box.Text ?? "");
+        var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        cancel.Click += (_, _) => Close(null);
+        box.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) Close(box.Text ?? ""); };
+        Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 14,
+            Children =
+            {
+                new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap, Foreground = Look.Text, FontSize = 14 },
+                box,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } },
+            },
+        };
+        Opened += (_, _) => { box.Focus(); box.SelectAll(); };
+    }
+
+    public static Task<string?> Show(Window owner, string title, string message, string start = "") => new TextDialog(title, message, start).ShowDialog<string?>(owner);
+}
+
+/// <summary>What a cross-reference points at (an index into the list it was chosen from) and how it shows it.</summary>
+public sealed record ReferenceChoice(int Target, RefKind Kind);
+
+/// <summary>Chooses a heading or named place to refer to, and whether the reference shows its page, its text or both.</summary>
+internal sealed class ReferenceDialog : Window
+{
+    private ReferenceDialog(IReadOnlyList<string> targets)
+    {
+        Title = "Cross-reference";
+        Width = 480;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = Look.Window;
+        var list = new ListBox { ItemsSource = targets, Height = 240, SelectedIndex = targets.Count > 0 ? 0 : -1 };
+        var kind = new ComboBox { ItemsSource = new[] { "Its page number", "Its text", "Its text and page" }, SelectedIndex = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+        var ok = new Button { Content = "Insert", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        ok.Classes.Add("accent");
+        ok.Click += (_, _) => { if (list.SelectedIndex >= 0) Close(new ReferenceChoice(list.SelectedIndex, (RefKind)kind.SelectedIndex)); };
+        var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        cancel.Click += (_, _) => Close(null);
+        Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "Refer to a heading, or a place named with Text › Name this place:", TextWrapping = TextWrapping.Wrap, Foreground = Look.Text, FontSize = 14 },
+                list,
+                new TextBlock { Text = "Show", Foreground = Look.Text },
+                kind,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } },
+            },
+        };
+    }
+
+    public static Task<ReferenceChoice?> Show(Window owner, IReadOnlyList<string> targets) => new ReferenceDialog(targets).ShowDialog<ReferenceChoice?>(owner);
+}
+
 /// <summary>Asks for a protected PDF's password.</summary>
 internal sealed class PasswordDialog : Window
 {

@@ -1047,6 +1047,41 @@ public sealed class Editor
     /// <summary>Changes how an anchored object is placed.</summary>
     public void Reanchor(string objectId, Anchoring anchoring) => Change("Anchored object", d => { if (d.Find(objectId) is { } o) o.Anchoring = anchoring; });
 
+    /// <summary>Names a place in the text, for cross-references to point at. Gives why not, or null.</summary>
+    public string? NamePlace(string storyId, int index, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0 || name.Contains('|')) return "A place needs a name (without |).";
+        if (References.Places(Doc).Any(p => p.Name == name)) return $"There is already a place called {name}.";
+        Change("Name place " + name, d =>
+        {
+            var story = d.Stories[storyId];
+            index = Math.Clamp(index, 0, story.Length);
+            story.Insert(index, Fields.Place.ToString(), story.TypingFormat(index) with { Mark = name });
+        });
+        return null;
+    }
+
+    /// <summary>The name of the place at a paragraph's start, made (from its words) if it has none.</summary>
+    public string PlaceForParagraph(string storyId, int paragraph)
+    {
+        var story = Doc.Stories[storyId];
+        var (start, end) = story.ParagraphRange(paragraph);
+        foreach (var p in References.Places(Doc))
+            if (p.StoryId == storyId && p.Index >= start && p.Index <= end && story.Text[start..p.Index].All(Fields.IsField)) return p.Name;
+        var name = References.NameFor(Doc, Fields.Expand(story.Text[start..end], null).Trim());
+        NamePlace(storyId, start, name);
+        return name;
+    }
+
+    /// <summary>Puts a cross-reference to a place in the text, showing its page, its text or both.</summary>
+    public void InsertReference(string storyId, int index, string place, RefKind kind) => Change("Cross-reference", d =>
+    {
+        var story = d.Stories[storyId];
+        index = Math.Clamp(index, 0, story.Length);
+        story.Insert(index, Fields.Reference.ToString(), story.TypingFormat(index) with { Ref = References.Key(place, kind) });
+    });
+
     /// <summary>Gives objects an object style's look, or (with null) takes them out of their style, keeping their look.</summary>
     public string? ApplyObjectStyle(IEnumerable<string> ids, string? style)
     {

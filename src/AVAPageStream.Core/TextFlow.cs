@@ -81,7 +81,17 @@ public sealed record Area(Box Box, string FrameId, int Column, IReadOnlyList<Kee
 /// many pages there are, and the page's number as printed, if its section numbers it otherwise (iv, A-3).
 /// </summary>
 /// For a footnote's own text, <see cref="Note"/> is its number.
-public sealed record FieldContext(int Page, int Pages, string? Label = null, int Note = 0);
+/// <param name="Refs">What the story's cross-references show, worked out from where their places are set.</param>
+public sealed record FieldContext(int Page, int Pages, string? Label = null, int Note = 0, RefMap? Refs = null);
+
+/// <summary>Cross-references and what each shows (by its "name|kind"); two are the same if they show the same.</summary>
+public sealed class RefMap(IReadOnlyDictionary<string, string> shown)
+{
+    public IReadOnlyDictionary<string, string> Shown { get; } = shown;
+    private readonly string _signature = string.Join("\u0001", shown.OrderBy(k => k.Key, StringComparer.Ordinal).Select(k => k.Key + "=" + k.Value));
+    public override bool Equals(object? obj) => obj is RefMap m && m._signature == _signature;
+    public override int GetHashCode() => _signature.GetHashCode();
+}
 
 /// <summary>
 /// Fields: characters in a story that stand for something worked out when it is set, such as the number of the page
@@ -101,12 +111,22 @@ public static class Fields
     /// <summary>Where an object is anchored in the text: as wide as it is, for one set in the line; shows nothing itself.</summary>
     public const char Anchor = '\uE004';
 
-    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber or Anchor;
+    /// <summary>A named place in the text, which cross-references point at; shows nothing.</summary>
+    public const char Place = '\uE005';
+
+    /// <summary>A cross-reference: shows its place's page, text or both, its format saying which place and how.</summary>
+    public const char Reference = '\uE006';
+
+    /// <summary>An index entry's marker: its format holds the topic; shows nothing.</summary>
+    public const char IndexEntry = '\uE007';
+
+    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber or Anchor or Place or Reference or IndexEntry;
 
     /// <summary>Text with its fields replaced by what they show ("#" for a page number on a master page itself).</summary>
     public static string Expand(string text, FieldContext? context)
     {
-        if (text.Contains(Anchor)) text = text.Replace(Anchor.ToString(), "");
+        if (text.IndexOfAny([Anchor, Place, IndexEntry, Reference]) >= 0)
+            text = text.Replace(Anchor.ToString(), "").Replace(Place.ToString(), "").Replace(IndexEntry.ToString(), "").Replace(Reference.ToString(), "");
         if (text.IndexOfAny([PageNumber, PageCount, Footnote, NoteNumber]) < 0) return text;
         if (text.IndexOfAny([Footnote, NoteNumber]) >= 0)
             text = text.Replace(Footnote.ToString(), "").Replace(NoteNumber.ToString(), context is { Note: > 0 } n ? n.Note.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#");
@@ -177,6 +197,7 @@ public sealed class TextLayout
     {
         var text = Story.Slice(start, length);
         if (text.Contains(Core.Fields.Footnote)) text = Footnotes.Number(Story, start, text, NoteNumbers);
+        if (text.Contains(Core.Fields.Reference)) text = References.Show(Story, start, text, Fields?.Refs);
         return Core.Fields.Expand(text, Fields);
     }
 
@@ -350,6 +371,7 @@ public static class TextFlow
         public double Measure(string text, CharFormat f)
         {
             var objects = f.Anchor is { } id && text.Contains(Core.Fields.Anchor) && Anchors.Inline(Story, id) is { } o ? o.W * text.Count(c => c == Core.Fields.Anchor) : 0;
+            if (f.Ref is { } r && text.Contains(Core.Fields.Reference)) text = text.Replace(Core.Fields.Reference.ToString(), References.Text(r, Fields?.Refs));
             return objects + TextFlow.Measure(M, Core.Fields.Expand(
                 f.Note is { } note && text.Contains(Core.Fields.Footnote) ? text.Replace(Core.Fields.Footnote.ToString(), Numbers.TryGetValue(note, out var n) ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") : text,
                 Fields), f);

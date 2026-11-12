@@ -600,6 +600,19 @@ selected frame (or the one you're typing in) as plain text in a window of its ow
 as you go, the formatting round your changes kept; change the page and it shows there. The paragraph style of the
 paragraph you're in is shown at the top, to see and to set, with the story's word count and how much is overset.
 
+## Cross-references
+
+A cross-reference points the reader at another part of the document, "see page 12", and keeps up as pages move.
+
+- Put the caret where it goes and choose Text › **Insert cross-reference…**. Pick a heading (any paragraph in a
+  heading style), or a place you have named, and what to show: **its page number**, **its text**, or **its text and
+  page** ("Tide tables" on page 12).
+- To refer to somewhere that isn't a heading, put the caret there and choose Text › **Name this place…** first.
+
+A reference shows the page as it is numbered (in a section's own numbering, if it has one), and changes when its
+place moves to another page or its words change. One whose place has been deleted shows `??`. In PDFs, each is a
+link to its place.
+
 ## A table of contents
 
 Put the caret where the contents should go (or select an empty text frame) and choose Text › Table of contents….

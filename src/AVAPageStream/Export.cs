@@ -60,7 +60,11 @@ internal static class Export
                         var rect = new SKRect((float)(slug + link.Box.X), (float)(slug + link.Box.Y), (float)(slug + link.Box.Right), (float)(slug + link.Box.Bottom));
                         if (link.Url is { } url) canvas.DrawUrlAnnotation(rect, url);
                         else if (link.Bookmark is { } to && chosen.Contains(bookmarks[to].Page)) canvas.DrawLinkDestinationAnnotation(rect, "h" + to);
+                        else if (link.Place is { } place) canvas.DrawLinkDestinationAnnotation(rect, "p:" + place);
                     }
+                    // Where cross-references land.
+                    foreach (var (name, px, py) in PdfExtras.PlacesOn(doc, index, id => renderer.Layouts.Of(doc, id)))
+                        canvas.DrawNamedDestinationAnnotation(new SKPoint((float)(slug + px), (float)(slug + py)), "p:" + name);
                     if (marks)
                     {
                         // In PDF units, up from the sheet's foot.

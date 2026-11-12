@@ -9,7 +9,8 @@ namespace AVAPageStream.Core;
 public sealed record Bookmark(string Title, int Level, int Page, double Y);
 
 /// <summary>A part of a page that links somewhere: to a web address, or to a bookmark (by its number).</summary>
-public sealed record PdfLink(Box Box, string? Url, int? Bookmark);
+/// <summary>A link on a page: to the web, to a heading's bookmark, or to a named place (a cross-reference).</summary>
+public sealed record PdfLink(Box Box, string? Url, int? Bookmark, string? Place = null);
 
 /// <summary>An outline entry as written into a PDF: its title and level, the PDF page (from 0) and the top in PDF units.</summary>
 public sealed record OutlineEntry(string Title, int Level, int Page, double Top);
@@ -63,6 +64,16 @@ public static partial class PdfExtras
                 var target = url.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? "https://" + url : url;
                 foreach (var b in Boxes(m.Index, m.Index + url.Length)) links.Add(new PdfLink(b, target, null));
             }
+            // Cross-references, each to its place.
+            var at = 0;
+            foreach (var run in story.Runs)
+            {
+                if (run.Format.Ref is { } key)
+                    for (var i = at; i < at + run.Length && i < story.Text.Length; i++)
+                        if (story.Text[i] == Fields.Reference)
+                            foreach (var b in Boxes(i, i + 1)) links.Add(new PdfLink(b, null, null, References.Parse(key).Name));
+                at += run.Length;
+            }
             for (var p = 0; p < story.ParagraphCount; p++)
             {
                 if (!story.Paras[p].Style.StartsWith("Contents ", StringComparison.Ordinal)) continue;
@@ -77,6 +88,21 @@ public static partial class PdfExtras
             }
         }
         return links;
+    }
+
+    /// <summary>The named places set on a page, with where each is (its line's top), for links to land on.</summary>
+    public static List<(string Name, double X, double Y)> PlacesOn(Document doc, int page, Func<string, TextLayout?> layoutOf)
+    {
+        var frames = doc.Pages[page].All.Select(o => o.Id).ToHashSet();
+        var found = new List<(string, double, double)>();
+        foreach (var place in References.Places(doc))
+        {
+            if (layoutOf(place.StoryId) is not { } layout || layout.LineOf(place.Index) is not (var li and >= 0)) continue;
+            var line = layout.Lines[li];
+            if (!frames.Contains(Chains.ObjectOf(layout.Areas[line.Area].FrameId))) continue;
+            found.Add((place.Name, layout.Areas[line.Area].Box.X, line.Baseline - line.Ascent));
+        }
+        return found;
     }
 
     /// <summary>
