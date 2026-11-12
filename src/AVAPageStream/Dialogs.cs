@@ -87,7 +87,7 @@ internal sealed class PasswordDialog : Window
 }
 
 /// <summary>What to export or print: the pages (counting from 0), for PNG the resolution, and for PDF or print whether as a booklet.</summary>
-public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false, bool Marks = false, bool Cmyk = false);
+public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false, bool Marks = false, bool Cmyk = false, bool PdfX = false);
 
 /// <summary>Asks which pages to export (all, this one, or a range like "1-3, 5") and, for PNG, at what resolution.</summary>
 internal sealed class ExportDialog : Window
@@ -116,6 +116,10 @@ internal sealed class ExportDialog : Window
         booklet.IsCheckedChanged += (_, _) => { if (booklet.IsChecked == true) marks.IsChecked = false; };
         marks.IsCheckedChanged += (_, _) => { if (marks.IsChecked == true) booklet.IsChecked = false; };
         var cmyk = CmykBox = new CheckBox { Content = "In CMYK, for a printing press: each colour as the inks it prints with, spot colours as their own inks", IsVisible = kind == "pdf" };
+        var pdfx = PdfXBox = new CheckBox { Content = "PDF/X-4, for handing to a printer: CMYK with its output intent, everything a print shop's checks look for (no links)", IsVisible = kind == "pdf" };
+        pdfx.IsCheckedChanged += (_, _) => { if (pdfx.IsChecked == true) { cmyk.IsChecked = true; booklet.IsChecked = false; } };
+        cmyk.IsCheckedChanged += (_, _) => { if (cmyk.IsChecked != true) pdfx.IsChecked = false; };
+        booklet.IsCheckedChanged += (_, _) => { if (booklet.IsChecked == true) pdfx.IsChecked = false; };
         var error = Error = new TextBlock { Foreground = Look.Error, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
         var export = ExportButton = new Button { Content = kind == "print" ? "Print" : "Export", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
@@ -138,7 +142,7 @@ internal sealed class ExportDialog : Window
                 pages = chosen;
             }
             else pages = [.. Enumerable.Range(0, pageCount)];
-            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi), booklet.IsChecked == true, marks.IsChecked == true, cmyk.IsChecked == true));
+            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi), booklet.IsChecked == true, marks.IsChecked == true, cmyk.IsChecked == true, pdfx.IsChecked == true));
         };
 
         Content = new StackPanel
@@ -166,6 +170,7 @@ internal sealed class ExportDialog : Window
                 booklet,
                 marks,
                 cmyk,
+                pdfx,
                 error,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { export, cancel } },
             },
@@ -175,6 +180,7 @@ internal sealed class ExportDialog : Window
     internal CheckBox BookletBox { get; }
     internal CheckBox MarksBox { get; }
     internal CheckBox CmykBox { get; }
+    internal CheckBox PdfXBox { get; }
     internal RadioButton Some { get; }
     internal TextBox Range { get; }
     internal NumericUpDown Resolution { get; }

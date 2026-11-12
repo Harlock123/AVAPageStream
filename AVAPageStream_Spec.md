@@ -711,11 +711,26 @@ stages, each usable on its own:
    trim and bleed boxes, fonts embedded, XMP metadata naming the standard; and preflight's checks for what PDF/X
    doesn't allow. With it, the reader's last gaps: knockout groups and Type 3 glyphs as a clip.
 
-**Status (12 November 2026):** started. Stage 1 done: `PdfSecurity` opens files of every revision with the empty
+**Status (12 November 2026):** done. Stage 1: `PdfSecurity` opens files of every revision with the empty
 password, the user's or the owner's (AES-256 by revision 6's hash), and `PdfReader` decrypts objects as it loads
 them (not the protection's dictionary, cross-reference streams, objects inside object streams, or metadata left
 plain). Passwords are kept in `Document.Passwords`, by image. The tests protect PDFs with an encryptor of their
-own (`PdfCrypt`) and check each file against Poppler as well, when it is installed. Stage 2 started: CCITT fax
-(`Ccitt.cs`, Group 3 and 4, checked bit for bit against ImageMagick's coding of a known picture). Next: JBIG2 (its
-MQ arithmetic decoder, generic and refinement regions, then symbol dictionaries, text and halftone regions), then
-JPEG 2000.
+own (`PdfCrypt`) and check each file against Poppler as well, when it is installed.
+
+Stage 2 done: CCITT fax (`Ccitt.cs`, checked bit for bit against ImageMagick's coding of a known picture); JBIG2
+(`Jbig2.cs` on `MqDecoder.cs`: generic regions in every template with prediction, MMR, refinement, symbol
+dictionaries with refinement and aggregation, text regions, patterns and halftones; tested with streams from an
+encoder in the tests, against Poppler and, for refinement, pdf.js; Huffman-coded symbols and text not read); and
+JPEG 2000 (`Jpx.cs`: JP2 boxes, tiles, every progression and POC, precincts, PPM/PPT, SOP/EPH, every code-block
+style, quantisation, ROI, both wavelets and colour transforms; OpenJPEG's samples decode exactly when lossless, and
+within its single-precision rounding when lossy). Poppler, found wanting twice: it ORs the last byte of a replaced
+JBIG2 region, and garbles a four-component JP2 with SMaskInData.
+
+Stage 3 done: Adobe's CMaps (180, bundled by `tools/make_cmaps.py` as 1.7 MB) and each collection's CIDs to Unicode;
+vertical writing by W2 and DW2.
+
+Stage 4 done: PDF/X-4 (`PdfX.cs`, `IccCmyk.cs`): an output intent with a profile of the plain CMYK conversion
+(checked with LittleCMS: it reads it as a CMYK output profile and converts as AVAPageStream does), XMP and Info that
+agree, an /ID, PDF 1.6, trim boxes, transparency groups in CMYK, JPEGs converted, links left out. Knockout groups and
+Type 3 glyphs as a clip are drawn. (With it, a bug in CMYK export fixed: SkiaSharp's small uncompressed forms were
+written back deflated without saying so.) Not validated by a PDF/X checker, none being free to run here.

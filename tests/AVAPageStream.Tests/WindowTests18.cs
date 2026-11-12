@@ -362,4 +362,69 @@ public partial class WindowTests
         Assert.Contains("needs its password", w.Message.Text);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void A_pdf_x4_has_its_output_intent_and_nothing_in_rgb()
+    {
+        var doc = Document.New(new Setup(300, 200));
+        doc.Title = "Harbour notice";
+        var f = new TextFrame { Id = "f", X = 20, Y = 20, W = 260, H = 40 };
+        doc.Pages[0].Objects.Add(f);
+        Chains.NewStory(doc, f, doc.Style("Body"));
+        doc.Stories[f.StoryId].Insert(0, "Tides at https://example.com", new CharFormat(Fonts.Sans, 14, Colour: "@Red"));
+        // A JPEG photograph, a gradient and a see-through box.
+        using (var bmp = new SkiaSharp.SKBitmap(40, 30))
+        {
+            using (var c = new SkiaSharp.SKCanvas(bmp)) { c.Clear(new SkiaSharp.SKColor(30, 120, 200)); }
+            using var data = SkiaSharp.SKImage.FromBitmap(bmp).Encode(SkiaSharp.SKEncodedImageFormat.Jpeg, 90);
+            var key = doc.Images.Add(data.ToArray());
+            doc.Pages[0].Objects.Add(new PictureObject { Id = "p", X = 20, Y = 80, W = 80, H = 60, Image = key, Fit = Fit.Fill });
+        }
+        doc.Pages[0].Objects.Add(new RectangleObject { Id = "g", X = 120, Y = 80, W = 80, H = 60, Stroke = null, Gradient = new Gradient(false, [new ColourStop(0, "@Blue"), new ColourStop(1, "@Yellow")]) });
+        doc.Pages[0].Objects.Add(new RectangleObject { Id = "o", X = 150, Y = 100, W = 100, H = 60, Stroke = null, Fill = "@Green", Opacity = 0.5 });
+        var path = Path.Combine(Folder(), "x4.pdf");
+        Wait(Export.Pdf(doc, path, cmyk: true, pdfx: true));
+        if (Environment.GetEnvironmentVariable("AVAPS_KEEP") is { } keep) File.Copy(path, keep, true);
+        var bytes = File.ReadAllBytes(path);
+        Assert.Equal("%PDF-1.6", System.Text.Encoding.ASCII.GetString(bytes, 0, 8));
+        var r = new AVAPageStream.Core.PostScript.PdfReader(bytes);
+        Assert.IsType<AVAPageStream.Core.PostScript.PsString>(((AVAPageStream.Core.PostScript.PsArray)r.Trailer.Get("ID")!)[0]);
+        var catalog = (AVAPageStream.Core.PostScript.PsDict)r.Deep(r.Trailer.Get("Root"));
+        var intent = (AVAPageStream.Core.PostScript.PsDict)((AVAPageStream.Core.PostScript.PsArray)catalog.Get("OutputIntents")!)[0];
+        Assert.Equal("GTS_PDFX", ((AVAPageStream.Core.PostScript.PsName)intent.Get("S")!).Value);
+        var profile = (AVAPageStream.Core.PostScript.PsDict)intent.Get("DestOutputProfile")!;
+        Assert.Equal(4, profile.Get("N"));
+        Assert.Equal(IccCmyk.Profile, r.Decode(profile));
+        var xmp = System.Text.Encoding.UTF8.GetString(r.Decode((AVAPageStream.Core.PostScript.PsDict)catalog.Get("Metadata")!));
+        Assert.Contains("<pdfxid:GTS_PDFXVersion>PDF/X-4</pdfxid:GTS_PDFXVersion>", xmp);
+        Assert.Contains("Harbour notice", xmp);
+        var info = (AVAPageStream.Core.PostScript.PsDict)r.Deep(r.Trailer.Get("Info"));
+        Assert.Equal("PDF/X-4", ((AVAPageStream.Core.PostScript.PsString)info.Get("GTS_PDFXVersion")!).Text);
+        Assert.Equal("False", ((AVAPageStream.Core.PostScript.PsName)info.Get("Trapped")!).Value);
+        var page = r.Pages[0];
+        Assert.NotNull(page.Get("TrimBox"));
+        Assert.Null(page.Get("Annots"));                 // the web address's link is left out
+        // Nothing in RGB: not the text's colour, the picture, the gradient, nor the group the transparency is blended in.
+        var text = System.Text.Encoding.Latin1.GetString(bytes);
+        var objects = System.Text.RegularExpressions.Regex.Matches(text, @"(\d+) 0 obj").Select(m => int.Parse(m.Groups[1].Value)).Distinct();
+        foreach (var n in objects)
+        {
+            if (r.Fetch(new AVAPageStream.Core.PostScript.PdfRef(n, 0)) is not AVAPageStream.Core.PostScript.PsDict d) continue;
+            var dict = Describe(d);
+            // A stream compressed as zlib says so (CMYK conversion once lost a small form's filter).
+            if (d.Get(AVAPageStream.Core.PostScript.PdfReader.StreamKey) is AVAPageStream.Core.PostScript.PdfStreamBytes raw && raw.Span is [0x78, 0x9C or 0xDA or 0x01 or 0x5E, ..])
+                Assert.Contains("FlateDecode", dict);
+            Assert.DoesNotContain("DeviceRGB", dict);
+            Assert.DoesNotContain("DCTDecode", dict);
+            if (d.Get(AVAPageStream.Core.PostScript.PdfReader.StreamKey) is not null && d.Get("Subtype") is null && d.Get("Type") is null && d.Get("FunctionType") is null && d.Get("ShadingType") is null && d.Get("N") is null)
+                Assert.DoesNotMatch(@"\d\s+rg\b|\d\s+RG\b", System.Text.Encoding.Latin1.GetString(r.Decode(d))); // a content stream
+        }
+        // And it still draws.
+        var drawn = AVAPageStream.Core.PdfPages.Draw(bytes, 1, out var why, out _);
+        Assert.True(drawn is not null, why);
+        Assert.True(drawn!.Ops.Count > 3);
+    }
+
+    private static string Describe(AVAPageStream.Core.PostScript.PsDict d, int depth = 0) => depth > 4 ? "" :
+        string.Join(" ", d.Entries.Select(e => $"{e.Key} {e.Value switch { AVAPageStream.Core.PostScript.PsDict inner => "<<" + Describe(inner, depth + 1) + ">>", AVAPageStream.Core.PostScript.PsArray a => "[" + string.Join(" ", a.All().Select(x => x is AVAPageStream.Core.PostScript.PsDict xd ? "<<" + Describe(xd, depth + 1) + ">>" : x.ToString())) + "]", var v => v?.ToString() }}"));
 }

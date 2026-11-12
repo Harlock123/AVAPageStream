@@ -18,7 +18,8 @@ internal static class Export
     /// The PDF has the document's title and author, a bookmark for each heading, links from a table of contents to
     /// its headings and from web addresses to the web, and (with marks) trim and bleed boxes for the printer.
     /// </remarks>
-    public static async Task<CmykResult?> Pdf(Document doc, string path, IEnumerable<int>? pages = null, string? title = null, bool marks = false, bool cmyk = false)
+    /// <param name="pdfx">As PDF/X-4 (in CMYK, JPEG pictures too, with its output intent and metadata).</param>
+    public static async Task<CmykResult?> Pdf(Document doc, string path, IEnumerable<int>? pages = null, string? title = null, bool marks = false, bool cmyk = false, bool pdfx = false)
     {
         var renderer = new PageRenderer(new Layouts(FontMeasurer.Shared)) { Screen = false };
         var chosen = (pages ?? Enumerable.Range(0, doc.Pages.Count)).ToList();
@@ -76,11 +77,17 @@ internal static class Export
             CmykResult? converted = null;
             if (cmyk)
             {
-                converted = PdfColour.Convert(await File.ReadAllBytesAsync(temp), PdfColour.InksOf(doc));
+                EpsRender.Ready();
+                converted = PdfColour.Convert(await File.ReadAllBytesAsync(temp), PdfColour.InksOf(doc), pdfx ? EpsRender.DecodeJpeg : null);
                 if (converted is not null) await File.WriteAllBytesAsync(temp, converted.Pdf);
             }
             if (outline.Count > 0 || boxes.Count > 0)
                 await File.WriteAllBytesAsync(temp, PdfExtras.Finish(await File.ReadAllBytesAsync(temp), outline, boxes.Count > 0 ? boxes : null));
+            if (pdfx)
+            {
+                var name = doc.Title.Length > 0 ? doc.Title : title ?? Path.GetFileNameWithoutExtension(path);
+                if (PdfX.Make(await File.ReadAllBytesAsync(temp), name, doc.Author, DateTimeOffset.Now) is { } x) await File.WriteAllBytesAsync(temp, x);
+            }
             File.Move(temp, path, overwrite: true);
             return converted;
         }

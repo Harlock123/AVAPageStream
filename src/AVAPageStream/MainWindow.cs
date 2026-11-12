@@ -1210,8 +1210,8 @@ public sealed class MainWindow : Window
         {
             if (choice.Booklet) await Export.Booklet(Editor.Doc, path, choice.Pages, BaseName);
             CmykResult? cmyk = null;
-            if (!choice.Booklet) cmyk = await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks, choice.Cmyk);
-            var inks = cmyk is null ? "" : " In CMYK" + (cmyk.PicturesLeft > 0 ? $"; {cmyk.PicturesLeft} JPEG picture{(cmyk.PicturesLeft == 1 ? " is" : "s are")} still RGB, to keep {(cmyk.PicturesLeft == 1 ? "its" : "their")} quality." : ".");
+            if (!choice.Booklet) cmyk = await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks, choice.Cmyk || choice.PdfX, choice.PdfX);
+            var inks = cmyk is null ? "" : choice.PdfX ? $" As {PdfX.Version}, in CMYK." : " In CMYK" + (cmyk.PicturesLeft > 0 ? $"; {cmyk.PicturesLeft} JPEG picture{(cmyk.PicturesLeft == 1 ? " is" : "s are")} still RGB, to keep {(cmyk.PicturesLeft == 1 ? "its" : "their")} quality." : ".");
             Say((choice.Booklet
                 ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
                 : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + inks + PreflightNote());

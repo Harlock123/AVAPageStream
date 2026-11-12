@@ -54,7 +54,8 @@ public static class PdfColour
     /// <summary>A PostScript calculator function's ending that turns its red, green and blue into cyan, magenta, yellow and black (the plain way).</summary>
     public const string CalculatorToCmyk = " 3 copy 2 copy lt {exch} if pop 2 copy lt {exch} if pop 1 exch sub 3 index 1 exch sub 1 index sub 3 index 1 exch sub 2 index sub 3 index 1 exch sub 3 index sub 4 -1 roll 7 -3 roll pop pop pop";
 
-    public static CmykResult? Convert(byte[] pdf, IReadOnlyDictionary<(int R, int G, int B), Ink> inks)
+    /// <param name="jpeg">A JPEG decoder: with one, JPEG pictures in RGB are converted too (as Flate CMYK).</param>
+    public static CmykResult? Convert(byte[] pdf, IReadOnlyDictionary<(int R, int G, int B), Ink> inks, Func<byte[], ColourImage?>? jpeg = null)
     {
         if (PdfFile.Read(pdf) is not { } file) return null;
         var written = new Dictionary<int, (string Body, byte[]? Stream)>();
@@ -109,13 +110,27 @@ public static class PdfColour
                     var (c, mg, y, k) = Plain(r, g, b);
                     return $"{N(c)} {N(mg)} {N(y)} {N(k)} {(stroke ? "K" : "k")}";
                 });
-                written[o.Number] = (Regex.Replace(o.Body, @"/Filter\s*/FlateDecode", "/Filter /FlateDecode"), PdfFile.Deflate(Encoding.Latin1.GetBytes(text)));
+                written[o.Number] = (Flated(o.Body), PdfFile.Deflate(Encoding.Latin1.GetBytes(text)));
                 if (used.Count > 0) spotsIn[o.Number] = used;
                 continue;
             }
             // Pictures in RGB: Flate ones converted pixel by pixel.
             if (Regex.IsMatch(o.Body, @"/Subtype\s*/Image") && Regex.IsMatch(o.Body, @"/ColorSpace\s*/DeviceRGB"))
             {
+                if (jpeg is not null && Regex.IsMatch(o.Body, @"/DCTDecode") && jpeg(o.Stream!) is { } img)
+                {
+                    var converted = new byte[img.Width * img.Height * 4];
+                    for (var i = 0; i < img.Width * img.Height; i++)
+                    {
+                        var (c, m, y, k) = Plain(img.Rgba[i * 4] / 255.0, img.Rgba[i * 4 + 1] / 255.0, img.Rgba[i * 4 + 2] / 255.0);
+                        (converted[i * 4], converted[i * 4 + 1], converted[i * 4 + 2], converted[i * 4 + 3]) = ((byte)Math.Round(c * 255), (byte)Math.Round(m * 255), (byte)Math.Round(y * 255), (byte)Math.Round(k * 255));
+                    }
+                    var jb = Regex.Replace(o.Body, @"/ColorSpace\s*/DeviceRGB", "/ColorSpace /DeviceCMYK");
+                    jb = Regex.Replace(jb, @"/Filter\s*/DCTDecode", "/Filter /FlateDecode");
+                    written[o.Number] = (Flated(jb), PdfFile.Deflate(converted));
+                    pictures++;
+                    continue;
+                }
                 if (Regex.IsMatch(o.Body, @"/BitsPerComponent\s+8") && o.Decoded() is { } px && px.Length % 3 == 0)
                 {
                     var cmyk = new byte[px.Length / 3 * 4];
@@ -124,7 +139,7 @@ public static class PdfColour
                         var (c, m, y, k) = Plain(px[i * 3] / 255.0, px[i * 3 + 1] / 255.0, px[i * 3 + 2] / 255.0);
                         (cmyk[i * 4], cmyk[i * 4 + 1], cmyk[i * 4 + 2], cmyk[i * 4 + 3]) = ((byte)Math.Round(c * 255), (byte)Math.Round(m * 255), (byte)Math.Round(y * 255), (byte)Math.Round(k * 255));
                     }
-                    written[o.Number] = (Regex.Replace(o.Body, @"/ColorSpace\s*/DeviceRGB", "/ColorSpace /DeviceCMYK"), PdfFile.Deflate(cmyk));
+                    written[o.Number] = (Flated(Regex.Replace(o.Body, @"/ColorSpace\s*/DeviceRGB", "/ColorSpace /DeviceCMYK")), PdfFile.Deflate(cmyk));
                     pictures++;
                 }
                 else left++;
@@ -138,7 +153,7 @@ public static class PdfColour
                 var close = program.LastIndexOf('}');
                 if (close < 0) continue;
                 program = program[..close] + CalculatorToCmyk + " }";
-                written[o.Number] = (Regex.Replace(o.Body, @"/Range\s*\[[^\]]*\]", "/Range [0 1 0 1 0 1 0 1]"), PdfFile.Deflate(Encoding.Latin1.GetBytes(program)));
+                written[o.Number] = (Flated(Regex.Replace(o.Body, @"/Range\s*\[[^\]]*\]", "/Range [0 1 0 1 0 1 0 1]")), PdfFile.Deflate(Encoding.Latin1.GetBytes(program)));
                 shadings++;
             }
         }
@@ -175,6 +190,13 @@ public static class PdfColour
             }
         }
         return new CmykResult(file.Update(written), colours, pictures, left, shadings);
+
+        // A stream written deflated: Flate its only filter (SkiaSharp leaves small streams uncompressed).
+        static string Flated(string dict)
+        {
+            dict = Regex.Replace(dict, @"/Filter\s*(/\w+|\[[^\]]*\])|/DecodeParms\s*(<<[^>]*>>|\[[^\]]*\])", "");
+            return dict.EndsWith(">>", StringComparison.Ordinal) ? dict[..^2] + "\n/Filter /FlateDecode>>" : dict;
+        }
 
         static string AddSpaces(string dict, string space)
         {

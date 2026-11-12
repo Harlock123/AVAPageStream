@@ -152,7 +152,8 @@ public sealed class PdfFile
     /// The PDF with an update after it: the objects given (new numbers from <see cref="Size"/> up, or replacing ones
     /// there), each a body and, for a stream, its bytes (its /Length is set).
     /// </summary>
-    public byte[] Update(IReadOnlyDictionary<int, (string Body, byte[]? Stream)> written)
+    /// <param name="trailer">More for the trailer, such as an /ID.</param>
+    public byte[] Update(IReadOnlyDictionary<int, (string Body, byte[]? Stream)> written, string trailer = "")
     {
         if (written.Count == 0) return Bytes;
         using var o = new MemoryStream();
@@ -177,7 +178,7 @@ public sealed class PdfFile
         W("xref\n");
         foreach (var (n, at) in offsets) W(string.Create(CultureInfo.InvariantCulture, $"{n} 1\n{at:D10} 00000 n \n"));
         var size = Math.Max(Size, written.Keys.Max() + 1);
-        W(string.Create(CultureInfo.InvariantCulture, $"trailer\n<</Size {size}\n/Root {Root} 0 R{(Info is { } i ? $"\n/Info {i} 0 R" : "")}\n/Prev {StartXref}>>\nstartxref\n{xref}\n%%EOF\n"));
+        W(string.Create(CultureInfo.InvariantCulture, $"trailer\n<</Size {size}\n/Root {Root} 0 R{(Info is { } i ? $"\n/Info {i} 0 R" : "")}{trailer}\n/Prev {StartXref}>>\nstartxref\n{xref}\n%%EOF\n"));
         return o.ToArray();
     }
 

@@ -335,9 +335,13 @@ them: shapes, colours (CMYK, spot colours, ICC, Lab), gradients and meshes, patt
 soft masks, pictures (JPEG among them) and their masks, and text in the fonts they carry (TrueType, Type 1, CFF and
 OpenType, Type 3, and composite fonts for Asian text) or name (drawn with the Liberation fonts, made to the same
 widths). Stamps, filled-in form fields and other notes that print are drawn too, and layers the PDF has turned off
-are left out. A damaged file is read as far as it can be. Faxed and scanned pages in CCITT fax coding are drawn;
-pictures in JPEG 2000 or JBIG2 (the other kinds scanners make) are left out for now, and the status bar says so
-when the page is placed.
+are left out. A damaged file is read as far as it can be. Scanned and faxed pages are drawn whichever way they were
+squeezed: CCITT fax, JBIG2 (as scanners and Acrobat's "optimise" write it) and JPEG 2000, with a JPEG 2000
+picture's own colours and see-through parts. Asian text in a font the PDF only names (as Japanese, Chinese and
+Korean PDFs often do, with the predefined CMaps of Adobe's character collections) is drawn from a font on your
+computer that has the characters, across or top to bottom as the PDF says; install one, such as Noto CJK, if it
+shows nothing. The only thing left out is a JBIG2 picture coded with Huffman tables, which is rare; the status bar
+says so when the page is placed.
 
 **Protected PDFs.** A PDF protected only against copying or changing it (most are) is placed like any other. One
 that needs a password to open asks for it when you place it; the password is kept in the document with the
@@ -513,7 +517,7 @@ everything using it changes. Add **40%** (or any per cent) after the name for a 
   deleting one leaves its colour where it was used.
 - **Inks used** tells you what the document needs on press: process colour (CMYK) and the name of each spot ink.
 
-CMYK colours are shown on screen by a plain conversion, and PDFs are written in RGB. For exact print colour, tell
+CMYK colours are shown on screen by a plain conversion, and PDFs are written in RGB unless you ask for CMYK or PDF/X when exporting. For exact print colour, tell
 your printer which spot inks and CMYK values you mean.
 
 ## Rulers, guides and the grid
@@ -616,6 +620,15 @@ or post online. Choose all the pages, the one shown, or a range such as `1-3, 7`
 a CMYK swatch's own inks, a spot swatch as its own ink at its tint, and every other colour converted to CMYK so it
 looks the same on screen. Pictures are converted too, except JPEG photographs, which stay in RGB rather than lose
 quality; the status bar says if there are any.
+
+**PDF/X-4, for a printer.** Tick **PDF/X-4** for a file to hand to a print shop. It is the standard their checks
+look for (ISO 15930-7): everything in CMYK or spot inks, JPEG photographs too (converted, and kept without loss);
+an *output intent* saying how the CMYK was made, as an ICC profile of AVAPageStream's own conversion, so the shop's
+software knows exactly what the colours mean; the document's title and the standard named in its metadata; a trim
+box on every page (and the bleed box, with crop marks); fonts embedded; transparency kept, blended in CMYK. Links
+are left out, as PDF/X doesn't allow them on the page. If your printer asks for a particular printing condition
+(such as FOGRA39 or GRACoL), ask whether this file will do, or have them convert it: AVAPageStream's CMYK is a plain
+conversion, not a press's.
 
 Before exporting or printing, if preflight finds problems that will show in print, it asks whether to go on, or
 shows them. To stop it asking, untick **Ask before exporting or printing** in the preflight window.

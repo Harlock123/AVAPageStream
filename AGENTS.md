@@ -191,6 +191,14 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **Protected PDFs**: `PdfSecurity` (Core's PostScript folder) and `PdfReader(bytes, password)`; a placed PDF's
   password is in `Document.Passwords` by image key, carried to a linked file's new version. The tests' `PdfCrypt`
   makes protected files (only with a cross-reference table, not `Build(xrefStream: true)`).
+- **Scanned pictures and Asian text in PDFs**: `Ccitt.cs`, `Jbig2.cs` (on `MqDecoder.cs`, which JPEG 2000 shares) and
+  `Jpx.cs` are filters or picture decoders the reader calls; `PredefinedCMaps.cs` reads `CMaps/cmaps.bin`, made by
+  `tools/make_cmaps.py` from Adobe's cmap-resources. The tests make JBIG2 with their own encoder (`Jbig2Writer.cs`)
+  and check it against Poppler (sampled at 4× its size, as Poppler smooths pictures at 1×); the JPEG 2000 samples
+  come from OpenJPEG with `opj_decompress`'s output beside them.
+- **PDF/X-4** is `PdfX.Make` on the finished CMYK PDF (after `PdfColour.Convert`, given a JPEG decoder, and
+  `PdfExtras.Finish`), with `IccCmyk.Profile` as the output intent. Any stream PdfColour deflates must say
+  `/Filter /FlateDecode` (`Flated`).
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

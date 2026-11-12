@@ -45,7 +45,8 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   glows, and rounded or cut corners, on anything on the page; object styles that keep a look by name and update
   everything in it; rules above and below paragraphs, in their styles; and text turned into outlines.
 - **Linked pictures**, read from their files and updated when the files change, or kept in the document.
-- **Printing to the edge**: a bleed, and PDFs with crop marks and trim and bleed boxes.
+- **Printing to the edge**: a bleed, and PDFs with crop marks and trim and bleed boxes; CMYK PDFs, and PDF/X-4 for
+  print shops, with an output intent of its own CMYK profile.
 - **Preflight and packaging**: a list of what would go wrong in print (overset text, missing or low-resolution
   pictures, artwork short of the bleed, missing fonts), each a click from the problem; and a package folder of the
   document, its linked pictures and fonts, with a report.
@@ -132,7 +133,7 @@ The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EP
 as vector by AVAPageStream's own PostScript interpreter; the few it can't read are shown by
 [Ghostscript](https://ghostscript.com) when it is installed, otherwise by the colour or grey preview they carry.
 Placed PDF pages are read and drawn as vector by its own PDF reader, which shares the interpreter's graphics and
-fonts. Liberation Mono is bundled too, for EPS and PDF files set in Courier.
+fonts, opens protected PDFs, and decodes scanned pictures (CCITT fax, JBIG2, JPEG 2000) with decoders of its own. Liberation Mono is bundled too, for EPS and PDF files set in Courier.
 
 ## The user guide
 
@@ -155,7 +156,10 @@ MIT: see [LICENSE](LICENSE). The bundled Liberation fonts are under the SIL Open
 hyphenation patterns in [src/AVAPageStream.Core/Hyphenation](src/AVAPageStream.Core/Hyphenation) are Gerard D.C.
 Kuiken's, from the hyph-utf8 package, and may be copied freely with their notice (in the files). The spelling word
 lists in [src/AVAPageStream.Core/Spelling](src/AVAPageStream.Core/Spelling) are from Kevin Atkinson's SCOWL, under
-the notice in [SCOWL-Copyright.txt](src/AVAPageStream.Core/Spelling/SCOWL-Copyright.txt). SVG is drawn by
+the notice in [SCOWL-Copyright.txt](src/AVAPageStream.Core/Spelling/SCOWL-Copyright.txt). Adobe's predefined
+CMaps, for Asian text in placed PDFs, are bundled from
+[cmap-resources](https://github.com/adobe-type-tools/cmap-resources) under its BSD licence, in
+[src/AVAPageStream.Core/CMaps/LICENSE.md](src/AVAPageStream.Core/CMaps/LICENSE.md). SVG is drawn by
 [Svg.Skia](https://github.com/wieslawsoltes/Svg.Skia) (MIT).
 
 AVAPageStream is a new program written from scratch in tribute to PageStream. It is not affiliated with Soft-Logik
