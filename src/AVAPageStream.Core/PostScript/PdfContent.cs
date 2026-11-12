@@ -898,6 +898,7 @@ public sealed partial class Interpreter
         var imageMatrix = NewMatrix(new PsMatrix(w, 0, 0, -h, 0, h));
         if (left is { } l)
         {
+            if (l.Filter == "JPXDecode") { JpxImage(d, data, res, start); return; }
             if (l.Filter is not ("DCTDecode" or "DCT")) { Note($"its {PictureFilter(l.Filter)} pictures aren't drawn"); return; }
             if (JpegDecoder?.Invoke(data) is not { } jpeg) { Note("a JPEG picture in it couldn't be read"); return; }
             var rgba = jpeg.Rgba;
@@ -943,6 +944,51 @@ public sealed partial class Interpreter
         if (Ops.Count > start && Ops[^1] is PsImage img)
         {
             if (d.Get("SMask") is PsDict sm) Mask(img, sm, soft: true);
+            else if (d.Get("Mask") is PsDict mk) Mask(img, mk, soft: false);
+        }
+        Transparency(start, PState.FillAlpha);
+    }
+
+    /// <summary>
+    /// A JPEG 2000 picture: its components in the image's colour space if it gives one, else the one the file says
+    /// (or its number of components says); its own opacity channel as its mask, if it has one and SMaskInData asks.
+    /// </summary>
+    private void JpxImage(PsDict d, byte[] data, PsDict res, int start)
+    {
+        Jpx.Picture pic;
+        try { pic = Jpx.Decode(data); }
+        catch (Exception e) when (e is PdfException or IndexOutOfRangeException or ArgumentException or OverflowException or InvalidOperationException)
+        {
+            Note("a JPEG 2000 picture in it couldn't be read");
+            return;
+        }
+        var space = d.Get("ColorSpace") is { } given ? PdfSpace(given, res)
+            : new PsName(pic.Space is "DeviceRGB" or "DeviceGray" or "DeviceCMYK" ? pic.Space : (pic.Components.Length - (pic.AlphaChannel >= 0 ? 1 : 0)) switch { 1 => "DeviceGray", 4 => "DeviceCMYK", _ => "DeviceRGB" });
+        var keep = (G.Space, G.SpaceArray, G.Components, G.Colour);
+        try
+        {
+            SetSpace(space);
+            var n = G.Space switch { "DeviceRGB" or "Lab" or "CIEBasedABC" => 3, "DeviceCMYK" => 4, "ICCBased" => IccComponents((PsArray)G.SpaceArray), "DeviceN" => ((PsArray)((PsArray)G.SpaceArray)[1]).Length, _ => 1 };
+            var colour = Enumerable.Range(0, pic.Components.Length).Where(c => c != pic.AlphaChannel).Take(n).ToList();
+            while (colour.Count < n) colour.Add(colour.Count > 0 ? colour[^1] : 0);
+            var samples = new byte[pic.Width * pic.Height * n];
+            for (var i = 0; i < pic.Width * pic.Height; i++)
+                for (var k = 0; k < n; k++) samples[i * n + k] = pic.Components[Math.Min(colour[k], pic.Components.Length - 1)][i];
+            var image = new PsDict(8);
+            image.Put("ImageType", 1);
+            image.Put("Width", pic.Width);
+            image.Put("Height", pic.Height);
+            image.Put("ImageMatrix", NewMatrix(new PsMatrix(pic.Width, 0, 0, -pic.Height, 0, pic.Height)));
+            image.Put("DataSource", PsString.Of(samples));
+            image.Put("BitsPerComponent", 8);
+            DictImage(image, mask: false);
+        }
+        finally { (G.Space, G.SpaceArray, G.Components, G.Colour) = keep; }
+        if (Ops.Count > start && Ops[^1] is PsImage img && img.Width == pic.Width && img.Height == pic.Height)
+        {
+            if (pic.AlphaChannel >= 0 && pic.AlphaChannel < pic.Components.Length && PdfNum(d.Get("SMaskInData")) > 0)
+                for (var i = 0; i < pic.Width * pic.Height; i++) img.Rgba[i * 4 + 3] = pic.Components[pic.AlphaChannel][i];
+            else if (d.Get("SMask") is PsDict sm) Mask(img, sm, soft: true);
             else if (d.Get("Mask") is PsDict mk) Mask(img, mk, soft: false);
         }
         Transparency(start, PState.FillAlpha);

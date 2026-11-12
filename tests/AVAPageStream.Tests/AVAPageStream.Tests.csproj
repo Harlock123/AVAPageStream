@@ -25,5 +25,7 @@
     <None Include="Core\Samples\pdf\*.pdf" CopyToOutputDirectory="PreserveNewest" />
     <!-- Scanned pictures made by ImageMagick from fax.png: CCITT Group 4 in a PDF, Group 3 in a TIFF. -->
     <None Include="Core\Samples\scans\*.*" CopyToOutputDirectory="PreserveNewest" />
+    <!-- JPEG 2000 made by OpenJPEG (opj_compress) from src.png, each with opj_decompress's decoding of it (.ref.png). -->
+    <None Include="Core\Samples\jpx\*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
