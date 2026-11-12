@@ -754,21 +754,27 @@ are made from the rest of the document and stay right as it changes. In stages, 
 4. **Find and replace with patterns.** Regular expressions in the find bar (with groups and `$1` in the
    replacement), and finding by paragraph or character style.
 
-**Status (12 November 2026):** started. Stage 1 done: an anchored object is kept in its story (`Story.Anchored`) at a
+**Status (12 November 2026):** done. Stage 1: an anchored object is kept in its story (`Story.Anchored`) at a
 marker character (`Fields.Anchor`, whose format names it), measured into its line by the layout (inline) or placed
 against it afterwards (custom; a story is laid out twice when one wraps text), and drawn with its frame's text.
 `Document.AllObjects` includes them, so they are found, saved, styled and preflighted as any; the page view picks
 those set on its sheet. Not done: anchoring in table cells and footnotes, and objects that are anchored and also
 in groups.
 
-Stage 2 done: a named place is a marker (`Fields.Place`, `CharFormat.Mark`); a cross-reference a field
+Stage 2: a named place is a marker (`Fields.Place`, `CharFormat.Mark`); a cross-reference a field
 (`Fields.Reference`, `CharFormat.Ref` = "name|kind"). `References.Resolve` works out what a story's references show
 from the layouts, and `Layouts.Of` lays a story out again until its references to itself stop changing (each story
 being worked out gives its last layout to the others, so there is no endless loop). Referring to a heading names
 its start. PDFs get a named destination for each place and a link for each reference.
 
-Stage 3 done: an entry is a marker (`Fields.IndexEntry`, `CharFormat.Index` = "topic, sub-topic, see" separated by
+Stage 3: an entry is a marker (`Fields.IndexEntry`, `CharFormat.Index` = "topic, sub-topic, see" separated by
 tabs). `Indexes.Entries` finds each one's page from its story's layout (a footnote's from its reference's),
 `Indexes.Paragraphs` makes the index (topics grouped regardless of case and spelt as most of their entries spell
 them), and `Editor.InsertIndex` places it with its styles in one undo step. Not done: an index that updates itself
 (it is made again by hand, like the contents), and sub-sub-topics.
+
+Stage 4: `FindOptions` has `Regex` (.NET's regular expressions, `^` and `$` at paragraph ends, a two-second
+timeout) and `ParaStyle` and `CharStyle`; `Search.Problem` says what is wrong with a search, `Search.Replacement`
+fills a pattern's groups in (with `\n` and `\t`), and with nothing to find, each stretch of text in the style is a
+match. The find bar has a Pattern box and a style list. Not done: replacing with a style (changing the look of what
+is found), and finding across paragraphs.

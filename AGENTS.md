@@ -42,7 +42,7 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     and the update that adds the outline and boxes to a PDF).
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
-    `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
+    `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order: plain text, patterns, styles), `TextImport.cs`
     (plain text and Markdown to placed paragraphs), `Tabs.cs` (tab stops), `Hyphenator.cs` (Liang's algorithm over
     the patterns embedded from `Hyphenation/`), `Contents.cs` (a table of contents), `Imposition.cs` (booklet
     order), `Templates.cs` (the built-in templates and .avpt files), `Speller.cs` (the SCOWL lists in `Spelling/`),

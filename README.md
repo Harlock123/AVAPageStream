@@ -61,7 +61,9 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   suggestions, Ignore all and your own dictionary.
 - **The story editor** (Ctrl+Shift+E) shows a story as plain text in a window of its own for writing and
   correcting, changing the page as you type. Text copied and pasted within the program keeps its formats.
-- **Find and replace** through every story, page by page, with match case and whole word; Replace all is one undo.
+- **Find and replace** through every story, page by page, with match case and whole word, regular expressions
+  (with `$1` groups in the replacement), and finding in or by a paragraph or character style; Replace all is one
+  undo.
 - **Place text.** Pour a plain text or Markdown file into a frame: Markdown headings, paragraphs, lists, quotes,
   bold and italic come in as styled paragraphs and flow on through the chain.
 - **Editing in place.** Type straight into the page: the caret moves through the whole story, across frames, with

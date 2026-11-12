@@ -592,4 +592,42 @@ public partial class WindowTests
         Assert.EndsWith("T\nTides, 1\nspring, 2", text);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void The_find_bar_finds_patterns_and_styles()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var a = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 300, H = 200 });
+        e.ReplaceText(a.StoryId, 0, 0, "Tides\nHigh water 12:40, low water 6:55.");
+        e.ApplyStyle(a.StoryId, 0, 0, "Heading");
+        Press(w, Key.F, RawInputModifiers.Control);
+        // A pattern, and its groups in the replacement, one at a time.
+        w.Pattern.IsChecked = true;
+        w.FindBox.Text = @"(\d+):(\d\d)";
+        Press(w, Key.Enter);
+        Assert.Equal("1 of 2", w.FindStatus.Text);
+        w.ReplaceBox.Text = "$1.$2";
+        w.ReplaceNext();
+        Assert.Equal("Tides\nHigh water 12.40, low water 6:55.", e.Doc.Stories[a.StoryId].Text);
+        Assert.Equal("1 of 1", w.FindStatus.Text); // on to the next
+        w.ReplaceAll();
+        Assert.Equal("Tides\nHigh water 12.40, low water 6.55.", e.Doc.Stories[a.StoryId].Text);
+        // A pattern that doesn't read says so.
+        w.FindBox.Text = "(";
+        Assert.False(w.FindNext());
+        Assert.Contains("regular expression", w.FindStatus.Text);
+        // By style alone: the heading.
+        w.Pattern.IsChecked = false;
+        w.FindBox.Text = "";
+        Assert.Contains("¶ Heading", (IEnumerable<string>)w.FindStyle.ItemsSource!);
+        Assert.Contains("a Emphasis", (IEnumerable<string>)w.FindStyle.ItemsSource!);
+        w.FindStyle.SelectedItem = "¶ Heading";
+        Assert.True(w.FindNext());
+        Assert.Equal((0, 5), (w.View.Editing!.Start, w.View.Editing.Length));
+        // "water", but only in the heading's style: none.
+        w.FindBox.Text = "water";
+        Assert.False(w.FindNext());
+        Done(w);
+    }
 }

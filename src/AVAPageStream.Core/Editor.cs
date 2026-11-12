@@ -702,10 +702,12 @@ public sealed class Editor
         if (matches.Count == 0) return 0;
         Change($"Replace {matches.Count}", d =>
         {
+            // Each one's replacement worked out before any changes (a pattern's groups come from the text as found).
+            var withs = matches.ToDictionary(m => m, m => Search.Replacement(d, m, query, replacement, options));
             foreach (var group in matches.GroupBy(m => m.StoryId))
             {
                 var story = d.Stories[group.Key];
-                foreach (var m in group.OrderByDescending(m => m.Start)) Swap(story, m.Start, m.Length, replacement);
+                foreach (var m in group.OrderByDescending(m => m.Start)) Swap(story, m.Start, m.Length, withs[m]);
             }
         });
         return matches.Count;

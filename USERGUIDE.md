@@ -562,7 +562,7 @@ following the mouse.
 
 ## Find and replace
 
-![The find bar, with a word found and shown selected](docs/images/guide/find.png)
+![The find bar finding times with a pattern, the first of two found and shown selected](docs/images/guide/find.png)
 
 Ctrl+F opens the find bar under the page. Type what to find and press Enter (or F3) for the next, Shift+Enter for
 the one before. It looks through every story in reading order, page by page and then the master pages (each
@@ -571,6 +571,16 @@ there are. **Match case** and **Whole word** narrow it down.
 
 **Replace** changes the one found and finds the next; **Replace all** changes every one at once, as a single step to
 undo. Each replacement takes the look of the text it replaces. Escape closes the bar.
+
+Tick **Pattern** to find a regular expression rather than the words as typed: `.` is any character, `\d` a digit,
+`\s` a space, `[a-z]` one of a range, `+` one or more of what's before it, `^` and `$` the start and end of a
+paragraph, and brackets make a group. In the replacement, `$1` is what the first group found, `$0` all of it, `\n`
+starts a new paragraph and `\t` is a tab. So `(\d+):(\d\d)` replaced with `$1.$2` turns 18:30 into 18.30. A pattern
+with a mistake in it says so beside the boxes.
+
+The style list (**In any style**, to begin with) finds only in text of one paragraph style (¶) or character style
+(a). With nothing typed to find, it finds each stretch of text in that style: every heading, say, or every word in
+Emphasis, one after another.
 
 ## Spelling
 

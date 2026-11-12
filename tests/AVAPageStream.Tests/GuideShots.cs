@@ -221,12 +221,17 @@ public partial class WindowTests
     {
         var w = GuideWindow();
         var f = w.Editor.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 400, H = 200 });
-        w.Editor.ReplaceText(f.StoryId, 0, 0, "The harbour lamps are lit from dusk. The harbour master keeps the keys to the lamp room.");
+        w.Editor.ReplaceText(f.StoryId, 0, 0, "The harbour lamps are lit from 18:30 in winter and 21:15 in summer. The harbour master keeps the keys to the lamp room.");
         w.ShowFind();
-        w.FindBox.Text = "harbour";
+        w.Pattern.IsChecked = true;
+        w.FindBox.Text = @"(\d+):(\d\d)";
+        w.ReplaceBox.Text = "$1.$2";
+        Pump();
         w.FindNext();
         Guide(w, "find");
+        Assert.Equal("1 of 2", w.FindStatus.Text);
         w.HideFind();
+        w.Pattern.IsChecked = false;
 
         w.Editor.ReplaceText(f.StoryId, 0, 0, "Teh ");
         w.View.StopEditing();
