@@ -9,6 +9,8 @@
     <EmbeddedResource Include="Hyphenation\*.txt" LogicalName="Hyphenation.%(Filename)%(Extension)" />
     <!-- SCOWL word lists (size 60) for the spelling checker, read by Speller. -->
     <EmbeddedResource Include="Spelling\*.words.gz" LogicalName="Spelling.%(Filename)%(Extension)" />
+    <!-- Adobe's predefined CMaps (BSD-3-Clause, CMaps/LICENSE.md), bundled by tools/make_cmaps.py. -->
+    <EmbeddedResource Include="CMaps\cmaps.bin" LogicalName="CMaps.cmaps.bin" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="AVAPageStream.Tests" />

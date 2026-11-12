@@ -12,6 +12,9 @@ internal sealed class PdfFont
     /// <summary>A Type 3 font: its dictionary, whose glyphs are content streams.</summary>
     public PsDict? Type3;
     public string?[]? Names;  // a Type 3 font's code to glyph name
+    /// <summary>Written top to bottom (a -V CMap): each CID's advance down and its origin's place, in thousandths.</summary>
+    public bool Vertical;
+    public Func<int, (double W1, double Vx, double Vy)> VerticalMetrics = _ => (-1000, 500, 880);
     public PsMatrix FontMatrix = new(0.001, 0, 0, 0.001, 0, 0);
     public Func<int, PsPath> Outline = _ => new PsPath();
     public Func<int, double> Width = _ => 0;
@@ -54,6 +57,7 @@ internal sealed class PdfFont
 public sealed partial class Interpreter
 {
     private readonly Dictionary<object, PdfFont> _pdfFonts = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<object, Dictionary<int, int>> _byCid = new(ReferenceEqualityComparer.Instance);
 
     private static double PdfNum(object? o, double otherwise = 0) => o is int or double ? ToNum(o) : otherwise;
 
@@ -318,8 +322,14 @@ public sealed partial class Interpreter
         {
             PsName { Value: "Identity-H" or "Identity-V" } => CMapData.Identity(),
             PsDict s when _pdf?.Decode(s) is { } data => ReadCMap(data, cid: true),
-            PsName n => throw new PdfException($"its font {Base(d)} uses the CMap {n.Value}, which AVAPageStream doesn't have"),
+            PsName n => PredefinedCMaps.Get(n.Value) ?? throw new PdfException($"its font {Base(d)} uses the CMap {n.Value}, which AVAPageStream doesn't have"),
             _ => CMapData.Identity(),
+        };
+        var vertical = d.Get("Encoding") switch
+        {
+            PsName n => PredefinedCMaps.Vertical(n.Value),
+            PsDict s => PdfNum(s.Get("WMode")) == 1,
+            _ => false,
         };
         var cidFont = (d.Get("DescendantFonts") as PsArray)?.All().OfType<PsDict>().FirstOrDefault() ?? throw new PdfException("a Type 0 font without its CIDFont");
         var desc = cidFont.Get("FontDescriptor") as PsDict;
@@ -336,8 +346,37 @@ public sealed partial class Interpreter
                 else break;
             }
         }
-        var font = new PdfFont { Name = Base(d), CMap = cmap };
+        var font = new PdfFont { Name = Base(d), CMap = cmap, Vertical = vertical };
         double Width(int cid) => w.TryGetValue(cid, out var v) ? v : dw;
+        if (vertical)
+        {
+            // DW2 (the origin's height and the advance down) and W2 (each CID's advance and origin).
+            var dw2 = (cidFont.Get("DW2") as PsArray)?.All().Select(o => PdfNum(o)).ToArray() is { Length: 2 } given ? given : [880, -1000];
+            var w2 = new Dictionary<int, (double, double, double)>();
+            if (cidFont.Get("W2") is PsArray wa2)
+            {
+                var items = wa2.All().ToList();
+                for (var k = 0; k + 1 < items.Count;)
+                {
+                    var c0 = (int)PdfNum(items[k]);
+                    if (items[k + 1] is PsArray each)
+                    {
+                        var e = each.All().Select(o => PdfNum(o)).ToArray();
+                        for (var i = 0; i + 2 < e.Length; i += 3) w2[c0 + i / 3] = (e[i], e[i + 1], e[i + 2]);
+                        k += 2;
+                    }
+                    else if (k + 4 < items.Count)
+                    {
+                        var c1 = (int)PdfNum(items[k + 1]);
+                        var m = (PdfNum(items[k + 2]), PdfNum(items[k + 3]), PdfNum(items[k + 4]));
+                        for (var c = c0; c <= c1 && c - c0 < 65536; c++) w2[c] = m;
+                        k += 5;
+                    }
+                    else break;
+                }
+            }
+            font.VerticalMetrics = cid => w2.TryGetValue(cid, out var m) ? m : (dw2[1], Width(cid) / 2, dw2[0]);
+        }
         if (desc?.Get("FontFile2") is PsDict ff2 && Program(ff2) is { } ttf)
         {
             var tt = new TrueType(ttf);
@@ -367,14 +406,33 @@ public sealed partial class Interpreter
             return font;
         }
         if (desc?.Get("FontFile") is PsDict) throw new PdfException("a CIDFont from a Type 1 program");
-        // Not embedded: its characters, by its ToUnicode map, in the nearest printer font.
+        // Not embedded: its characters (by its ToUnicode map, or by its character collection's), in the nearest
+        // printer font, or a font on the computer that has them (a Japanese, Chinese or Korean one for those).
         var unicode = d.Get("ToUnicode") is PsDict tu && _pdf?.Decode(tu) is { } tud ? ReadToUnicode(tud) : null;
+        var ordering = ((cidFont.Get("CIDSystemInfo") as PsDict)?.Get("Ordering") as PsString)?.Text;
+        // A ToUnicode map is by code; the collection's by CID.
+        var byCode = unicode;
         var ps = FindFont(new PsName(Base(d)));
         var fm = FontMatrix(ps);
-        font.Outline = cid => unicode is not null && unicode.TryGetValue(cid, out var u) && Glyphs?.Invoke(SystemFamily(ps), Bold(ps), Italic(ps), u) is { } g ? g.Path.Transformed(fm) : new PsPath();
+        int? Char(int cid) => byCode is not null && Reverse(byCode).TryGetValue(cid, out var u) ? u : ordering is not null ? PredefinedCMaps.Unicode(ordering, cid) : null;
+        font.Outline = cid => Char(cid) is { } u && Glyphs?.Invoke(SystemFamily(ps), Bold(ps), Italic(ps), u) is { } g ? g.Path.Transformed(fm) : new PsPath();
         font.Width = Width;
-        font.Note = unicode is null ? $"its font {Base(d)} isn't in it, and has no list of its characters" : null;
+        font.Note = unicode is null && ordering is not ("Japan1" or "GB1" or "CNS1" or "Korea1" or "KR") ? $"its font {Base(d)} isn't in it, and has no list of its characters" : null;
         return font;
+
+        // The ToUnicode map gives characters by code; the glyphs are asked for by CID, so codes are turned to CIDs.
+        Dictionary<int, int> Reverse(Dictionary<int, int> byCodeMap)
+        {
+            if (_byCid.TryGetValue(byCodeMap, out var made)) return made;
+            made = [];
+            foreach (var (code, u) in byCodeMap)
+            {
+                var bytes = code > 0xFFFF ? new[] { (byte)(code >> 24), (byte)(code >> 16), (byte)(code >> 8), (byte)code } : code > 0xFF || cmap.CodeSpaces.All(s => s.Lo.Length == 2) ? new[] { (byte)(code >> 8), (byte)code } : new[] { (byte)code };
+                var (cid, _) = cmap.Lookup(PsString.Of(bytes), 0);
+                made.TryAdd(cid, u);
+            }
+            return _byCid[byCodeMap] = made;
+        }
     }
 
     private static string SystemFamily(PsDict ps) => (ps.Get(SystemKey) as PsString)?.Text.Split('|')[0] ?? "Liberation Sans";

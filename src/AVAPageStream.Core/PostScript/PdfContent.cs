@@ -318,8 +318,9 @@ public sealed partial class Interpreter
                         else if (p is int or double)
                         {
                             var st = PState;
-                            var tx = -ToNum(p) / 1000 * st.FontSize * st.Scale;
-                            _tm = new PsMatrix(1, 0, 0, 1, tx, 0).Then(_tm);
+                            // Thousandths of the size: across, or down for vertical writing.
+                            if (st.Font?.Vertical == true) _tm = new PsMatrix(1, 0, 0, 1, 0, -ToNum(p) / 1000 * st.FontSize).Then(_tm);
+                            else _tm = new PsMatrix(1, 0, 0, 1, -ToNum(p) / 1000 * st.FontSize * st.Scale, 0).Then(_tm);
                         }
                     }
                 break;
@@ -1069,6 +1070,17 @@ public sealed partial class Interpreter
             {
                 if (st.Render != 3 && st.Render != 7) Type3Glyph(t3, font, code, trm, res);
                 advance = font.FontMatrix.Delta(font.Width(code), 0).X;
+            }
+            else if (font.Vertical)
+            {
+                // Top to bottom: the glyph's origin moved to its vertical origin, the text moved down by its advance.
+                var (w1, vx, vy) = font.VerticalMetrics(code);
+                var glyph = font.Glyph(code);
+                var at = new PsMatrix(1, 0, 0, 1, -vx / 1000, -vy / 1000).Then(trm);
+                if (!glyph.IsEmpty) outline.Segs.AddRange(glyph.Transformed(at).Segs);
+                var ty = w1 / 1000 * size + st.CharSpace + (bytes == 1 && code == 32 ? st.WordSpace : 0);
+                _tm = new PsMatrix(1, 0, 0, 1, 0, ty).Then(_tm);
+                continue;
             }
             else
             {

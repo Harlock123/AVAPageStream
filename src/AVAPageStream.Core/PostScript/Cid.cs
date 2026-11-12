@@ -48,6 +48,7 @@ public sealed partial class Interpreter
         var name = cmap is PsDict nd && nd.Get("CMapName") is { } n ? Show(n) : Show(cmap);
         if (name is "Identity-H" or "Identity-V") return CMapData.Identity();
         if (Resources("CMap").Get(name) is PsDict defined && defined.Get(CMapKey) is CMapData dd) return dd;
+        if (PredefinedCMaps.Get(name) is { } predefined) return predefined;
         throw new PsError("unsupported", "the CMap " + name);
     }
 
