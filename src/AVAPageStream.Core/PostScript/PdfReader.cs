@@ -633,7 +633,13 @@ public sealed class PdfReader
                     data = Ccitt.Decode(data, I("K", 0), I("Columns", 1728), rows, B("EncodedByteAlign", false), B("BlackIs1", false), B("EndOfBlock", true));
                     break;
                 }
-                case "DCTDecode" or "DCT" or "JPXDecode" or "JBIG2Decode":
+                case "JBIG2Decode":
+                {
+                    var globals = Fetch(p?.Get("JBIG2Globals")) is PsDict g ? Decode(g) : null;
+                    data = Jbig2.Decode(data, globals, d.Get("Width") is int jw ? jw : 0, d.Get("Height") is int jh ? jh : 0);
+                    break;
+                }
+                case "DCTDecode" or "DCT" or "JPXDecode":
                     left = (filters[k], p);
                     return data;
                 default:
