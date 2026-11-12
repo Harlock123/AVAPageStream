@@ -95,5 +95,13 @@ public sealed record PsStroke(PsPath Path, PsMatrix Matrix, PsPen Pen, PsColour 
 /// <summary>A picture's pixels, drawn into the unit square through <see cref="Matrix"/> (image space to device space).</summary>
 public sealed record PsImage(int Width, int Height, byte[] Rgba, PsMatrix Matrix, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
 
+/// <summary>
+/// A smooth shading: axial (along a line from Coords[0..1] to Coords[2..3]) or radial (between the circles Coords[0..2]
+/// and Coords[3..5]), its colours at positions from 0 to 1, drawn through <see cref="Matrix"/> (shading space to
+/// device space), inside its clips and, for a pattern, inside <see cref="Area"/>.
+/// </summary>
+public sealed record PsShading(bool Radial, double[] Coords, PsColour[] Colours, double[] Positions, bool ExtendStart, bool ExtendEnd,
+    PsMatrix Matrix, PsPath? Area, bool EvenOdd, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
+
 /// <summary>What an EPS draws: its bounding box (in its own points) and the drawing, in order.</summary>
 public sealed record PsDrawing(Box BoundingBox, IReadOnlyList<PsOp> Ops);

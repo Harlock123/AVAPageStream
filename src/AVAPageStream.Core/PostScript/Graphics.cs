@@ -18,6 +18,7 @@ public sealed class GState
     public double DashOffset;
     public List<PsClip> Clips = [];
     public object? Font;
+    public PsDict? Pattern;  // a shading pattern being painted with
     public bool StrokeAdjust;
     public double Flat = 1;
 
@@ -194,7 +195,11 @@ public sealed partial class Interpreter
 
     private void FillPath(bool evenOdd)
     {
-        if (!G.Path.IsEmpty) Ops.Add(new PsFill(G.Path.Clone(), Painted(), evenOdd, [.. G.Clips]));
+        if (!G.Path.IsEmpty)
+        {
+            if (G.Space == "Pattern") FillWithPattern(G.Path.Clone(), evenOdd);
+            else Ops.Add(new PsFill(G.Path.Clone(), G.Colour, evenOdd, [.. G.Clips]));
+        }
         NewPath();
     }
 
@@ -233,6 +238,7 @@ public sealed partial class Interpreter
             "DeviceN" => "DeviceN",
             "ICCBased" => "ICCBased",
             "Pattern" => "Pattern",
+            "CIEBasedABC" or "CIEBasedA" or "CIEBasedDEF" or "CIEBasedDEFG" or "Lab" => throw new PsError("unsupported", "CIE colour spaces"),
             _ => throw new PsError("unsupported", "colour space " + name),
         };
         SetComponents(G.Space switch
@@ -552,16 +558,14 @@ public sealed partial class Interpreter
         Op("currentcolorspace", i => i.Push(i.G.SpaceArray is PsArray a ? a : new PsArray([i.G.SpaceArray])));
         Op("setcolor", i =>
         {
-            if (i.G.Space == "Pattern") throw new PsError("unsupported", "patterns");
+            if (i.G.Space == "Pattern") { i.G.Pattern = i.Pop<PsDict>("setcolor"); return; }
             var n = i.G.Space switch { "DeviceRGB" => 3, "DeviceCMYK" => 4, "DeviceN" => ((PsArray)((PsArray)i.G.SpaceArray)[1]).Length, "ICCBased" => IccComponents((PsArray)i.G.SpaceArray), _ => 1 };
             var c = new double[n];
             for (var k = n - 1; k >= 0; k--) c[k] = i.Num();
             i.SetComponents(c);
         });
         Op("currentcolor", i => { foreach (var v in i.G.Components) i.Push(v); });
-        Op("setpattern", _ => throw new PsError("unsupported", "patterns"));
-        Op("makepattern", _ => throw new PsError("unsupported", "patterns"));
-        Op("shfill", _ => throw new PsError("unsupported", "shading"));
+        RegisterShading();
 
         // ---- The device: an EPS draws into a picture, so these do nothing
         Op("showpage", _ => { });
@@ -630,9 +634,7 @@ public sealed partial class Interpreter
         foreach (var name in new[] { "findfont", "definefont", "selectfont", "show", "ashow", "widthshow", "awidthshow", "kshow", "xshow", "yshow", "xyshow", "glyphshow", "charpath", "stringwidth", "makefont", "scalefont", "setfont", "currentfont", "composefont" })
             Op(name, _ => throw new PsError("unsupported", "text"));
 
-        // ---- Pictures: not yet (milestone 6, stage 2)
-        foreach (var name in new[] { "image", "colorimage", "imagemask", "filter" })
-            Op(name, _ => throw new PsError("unsupported", "images"));
+        RegisterImages();
     }
 
     private readonly Dictionary<string, PsDict> _resources = [];

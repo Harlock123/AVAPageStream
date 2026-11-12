@@ -58,6 +58,7 @@ internal static class Pictures
         var box = Eps.BoundingBox(bytes) ?? new Box(0, 0, 144, 144);
         var size = new Size(Math.Max(1, box.W), Math.Max(1, box.H));
         // Drawn by AVAPageStream itself when it can, so it stays vector; otherwise by Ghostscript or a preview.
+        EpsRender.Ready();
         if (Eps.Draw(bytes, out _) is { } drawing)
             return new VectorPicture(EpsRender.Record(drawing), new SKRect(0, 0, (float)box.W, (float)box.H), size, "an EPS drawing");
         if (Ghostscript(bytes) is { } png)

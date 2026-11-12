@@ -629,4 +629,8 @@ Tests: a folder of EPS files from each producer, each drawn and compared with Gh
 on a computer that has Ghostscript, and kept with the tests), the drawings matching to within a few per cent of the
 pixels; and the language tested operator by operator.
 
-**Status (12 November 2026):** planned.
+**Status (12 November 2026):** stages 1 and 2 done: the language, paths, colour, images (with every filter EPS
+text uses, and JPEG through SkiaSharp) and axial and radial shading, both through shfill and shading patterns. Tested
+operator by operator, and on EPS files from Cairo (rsvg-convert), pdftocairo, Poppler's pdftops and ImageMagick,
+each compared with the picture rsvg-convert or ImageMagick draws of the same thing. Binary data straight in the
+program (an 8-bit Flate or JPEG stream not wrapped in ASCII85 or hex) is not read yet. Next: stage 3, text.

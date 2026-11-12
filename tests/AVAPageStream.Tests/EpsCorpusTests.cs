@@ -15,6 +15,7 @@ public partial class WindowTests
     /// <summary>An EPS drawn at the size of a reference PNG, white behind it.</summary>
     internal static SKBitmap DrawEps(byte[] eps, int width, int height)
     {
+        EpsRender.Ready();
         var d = Eps.Draw(eps, out var why) ?? throw new Xunit.Sdk.XunitException("Not drawn: " + why);
         using var picture = EpsRender.Record(d);
         var bitmap = new SKBitmap(width, height, SKColorType.Rgba8888, SKAlphaType.Premul);
@@ -45,6 +46,14 @@ public partial class WindowTests
     [InlineData("chart-cairo.eps", "chart.png")]
     [InlineData("chart-poppler.eps", "chart.png")]
     [InlineData("gradient-poppler.eps", "gradient.png")] // Poppler writes a gradient as many thin fills
+    [InlineData("gradient-cairo.eps", "gradient.png")]   // Cairo, as axial shading
+    [InlineData("radial-cairo.eps", "radial.png")]       // and radial
+    [InlineData("radial-poppler.eps", "radial.png")]
+    [InlineData("image-cairo.eps", "image.png")]         // a picture, through ASCII85 and Flate
+    [InlineData("image-poppler.eps", "image.png")]       // through ASCII85 and LZW
+    [InlineData("jpeg-cairo.eps", "jpeg.png")]
+    [InlineData("jpeg-poppler.eps", "jpeg.png")]
+    [InlineData("photo-magick.eps", "photo.png")]        // ImageMagick: hex data read by procedures
     public void Eps_files_are_drawn_like_their_producers_draw_them(string eps, string reference)
     {
         using var expected = SKBitmap.Decode(EpsSample(reference));
@@ -59,15 +68,6 @@ public partial class WindowTests
         // 112.5 high) moves the drawing up to half a pixel. Anything wrong shows as far more.
         var difference = Difference(drawn, expected);
         Assert.True(difference < 0.05, $"{difference:P1} of the pixels differ from {reference}.");
-    }
-
-    [Theory]
-    [InlineData("gradient-cairo.eps", "shading")]   // Cairo's gradients are smooth shading
-    [InlineData("photo-magick.eps", "images")]      // ImageMagick's EPS is a picture
-    public void Eps_files_using_what_isnt_drawn_yet_say_so(string eps, string what)
-    {
-        Assert.Null(Eps.Draw(File.ReadAllBytes(EpsSample(eps)), out var why));
-        Assert.Contains(what, why);
     }
 
     [AvaloniaFact]

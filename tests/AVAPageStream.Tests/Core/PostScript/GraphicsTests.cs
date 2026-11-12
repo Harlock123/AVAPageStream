@@ -106,8 +106,9 @@ public class GraphicsTests
     public void What_isnt_drawn_yet_is_an_error_to_fall_back_on()
     {
         Assert.Equal("unsupported", new Interpreter().Run("/Helvetica findfont")!.Name);
-        Assert.Equal("unsupported", new Interpreter().Run("1 1 8 [1 0 0 1 0 0] {<00>} image")!.Name);
-        Assert.Equal("unsupported", new Interpreter().Run("[/Pattern] setcolorspace 0 0 1 1 rectfill")!.Name);
+        Assert.Equal("unsupported", new Interpreter().Run("<< /PatternType 1 /PaintType 1 >> matrix makepattern")!.Name);
+        Assert.Equal("unsupported", new Interpreter().Run("<< /ShadingType 4 >> shfill")!.Name);
+        Assert.Equal("unsupported", new Interpreter().Run("currentfile /FlateDecode filter")!.Name); // binary data in an EPS's text
     }
 
     [Fact]

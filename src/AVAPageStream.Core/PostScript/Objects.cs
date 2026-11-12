@@ -123,10 +123,40 @@ public sealed class PsNull
 }
 
 /// <summary>A file: the program being read (currentfile), or a string read as one.</summary>
-public sealed class PsFile(Scanner scanner)
+public sealed class PsFile
 {
-    public Scanner Scanner { get; } = scanner;
+    private Scanner? _scanner;
+    private readonly Func<(Scanner, ColourImage?)>? _open;
+    private ColourImage? _picture;
+
+    public PsFile(Scanner scanner) => _scanner = scanner;
+
+    /// <summary>A filter: its data decoded from its source when it is first read, not before (the data may come later in the program).</summary>
+    public PsFile(Func<(Scanner, ColourImage?)> open) => _open = open;
+
+    public Scanner Scanner
+    {
+        get
+        {
+            if (_scanner is null) (_scanner, _picture) = _open!();
+            return _scanner;
+        }
+    }
+
     public bool Exec { get; init; }
+
+    /// <summary>A filter not yet read from.</summary>
+    public bool IsFilter => _open is not null;
+
+    /// <summary>For a DCTDecode filter: the JPEG it decoded, which an image takes whole.</summary>
+    public ColourImage? Picture
+    {
+        get
+        {
+            _ = Scanner;
+            return _picture;
+        }
+    }
 }
 
 /// <summary>What save hands back: the graphics state's depth then, for restore.</summary>

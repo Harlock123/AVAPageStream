@@ -10,6 +10,22 @@ namespace AVAPageStream;
 internal static class EpsRender
 {
     /// <summary>The drawing as a picture of its bounding box's size, y down from its top-left, kept inside the box.</summary>
+    /// <summary>Gives the interpreter a JPEG decoder (for DCTDecode): SkiaSharp's.</summary>
+    static EpsRender() => Interpreter.Jpeg = DecodeJpeg;
+
+    public static AVAPageStream.Core.ColourImage? DecodeJpeg(byte[] jpeg)
+    {
+        using var bitmap = SKBitmap.Decode(jpeg);
+        if (bitmap is null) return null;
+        using var rgba = bitmap.Copy(SKColorType.Rgba8888);
+        var bytes = new byte[rgba.Width * rgba.Height * 4];
+        System.Runtime.InteropServices.Marshal.Copy(rgba.GetPixels(), bytes, 0, bytes.Length);
+        return new AVAPageStream.Core.ColourImage(rgba.Width, rgba.Height, bytes);
+    }
+
+    /// <summary>Makes sure the decoder is set before an EPS is run.</summary>
+    public static void Ready() { }
+
     public static SKPicture Record(PsDrawing d)
     {
         var b = d.BoundingBox;
@@ -20,8 +36,10 @@ internal static class EpsRender
         canvas.Scale(1, -1);
         canvas.ClipRect(new SKRect((float)b.X, (float)b.Y, (float)b.Right, (float)b.Bottom));
         using var paint = new SKPaint { IsAntialias = true };
-        foreach (var op in d.Ops)
+        var seamless = ShadingRuns(d.Ops);
+        for (var index = 0; index < d.Ops.Count; index++)
         {
+            var op = d.Ops[index];
             canvas.Save();
             foreach (var clip in op.Clips)
             {
@@ -36,7 +54,9 @@ internal static class EpsRender
                     paint.Style = SKPaintStyle.Fill;
                     paint.PathEffect = null;
                     paint.Color = Colour(f.Colour);
+                    paint.IsAntialias = !seamless[index];
                     canvas.DrawPath(path, paint);
+                    paint.IsAntialias = true;
                     break;
                 }
                 case PsStroke s:
@@ -55,6 +75,29 @@ internal static class EpsRender
                     paint.PathEffect = null;
                     break;
                 }
+                case PsShading sh:
+                {
+                    if (sh.Area is { } area)
+                    {
+                        using var ap = ToSkia(area, sh.EvenOdd);
+                        canvas.ClipPath(ap, antialias: true);
+                    }
+                    canvas.Concat(Matrix(sh.Matrix));
+                    var colours = sh.Colours.Select(Colour).ToArray();
+                    var stops = sh.Positions.Select(p => (float)p).ToArray();
+                    // Extended at neither end: nothing past them; at one end or both: its colour carries on.
+                    var mode = sh.ExtendStart || sh.ExtendEnd ? SKShaderTileMode.Clamp : SKShaderTileMode.Decal;
+                    var c = sh.Coords.Select(v => (float)v).ToArray();
+                    using var shader = sh.Radial
+                        ? SKShader.CreateTwoPointConicalGradient(new SKPoint(c[0], c[1]), c[2], new SKPoint(c[3], c[4]), c[5], colours, stops, mode)
+                        : SKShader.CreateLinearGradient(new SKPoint(c[0], c[1]), new SKPoint(c[2], c[3]), colours, stops, mode);
+                    paint.Style = SKPaintStyle.Fill;
+                    paint.PathEffect = null;
+                    paint.Shader = shader;
+                    canvas.DrawPaint(paint);
+                    paint.Shader = null;
+                    break;
+                }
                 case PsImage img:
                 {
                     // The image's unit square, its first row at the top as PostScript's image space has it.
@@ -70,6 +113,25 @@ internal static class EpsRender
             canvas.Restore();
         }
         return recorder.EndRecording();
+    }
+
+    /// <summary>
+    /// The fills that make up a gradient drawn as many bands or rings, as some programs (Poppler's pdftops) write
+    /// smooth shading: a long run of fills under the same clip. Each is drawn without smoothing its edges, or the
+    /// white behind shows through the seams between bands thinner than a pixel; the clip still smooths the outside.
+    /// </summary>
+    private static bool[] ShadingRuns(IReadOnlyList<PsOp> ops)
+    {
+        var seamless = new bool[ops.Count];
+        for (var start = 0; start < ops.Count;)
+        {
+            var end = start;
+            while (end < ops.Count && ops[end] is PsFill && ReferenceEquals(ops[end].Clips.LastOrDefault(), ops[start].Clips.LastOrDefault()) && ops[start].Clips.Count > 0) end++;
+            if (end - start >= 32)
+                for (var k = start; k < end; k++) seamless[k] = true;
+            start = Math.Max(end, start + 1);
+        }
+        return seamless;
     }
 
     private static SKPath ToSkia(PsPath p, bool evenOdd)
