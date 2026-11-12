@@ -715,4 +715,7 @@ stages, each usable on its own:
 password, the user's or the owner's (AES-256 by revision 6's hash), and `PdfReader` decrypts objects as it loads
 them (not the protection's dictionary, cross-reference streams, objects inside object streams, or metadata left
 plain). Passwords are kept in `Document.Passwords`, by image. The tests protect PDFs with an encryptor of their
-own (`PdfCrypt`) and check each file against Poppler as well, when it is installed.
+own (`PdfCrypt`) and check each file against Poppler as well, when it is installed. Stage 2 started: CCITT fax
+(`Ccitt.cs`, Group 3 and 4, checked bit for bit against ImageMagick's coding of a known picture). Next: JBIG2 (its
+MQ arithmetic decoder, generic and refinement regions, then symbol dictionaries, text and halftone regions), then
+JPEG 2000.

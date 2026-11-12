@@ -335,8 +335,9 @@ them: shapes, colours (CMYK, spot colours, ICC, Lab), gradients and meshes, patt
 soft masks, pictures (JPEG among them) and their masks, and text in the fonts they carry (TrueType, Type 1, CFF and
 OpenType, Type 3, and composite fonts for Asian text) or name (drawn with the Liberation fonts, made to the same
 widths). Stamps, filled-in form fields and other notes that print are drawn too, and layers the PDF has turned off
-are left out. A damaged file is read as far as it can be. Pictures in JPEG 2000, JBIG2 or CCITT fax (the kinds
-scanners make) are left out for now; the status bar says so when the page is placed.
+are left out. A damaged file is read as far as it can be. Faxed and scanned pages in CCITT fax coding are drawn;
+pictures in JPEG 2000 or JBIG2 (the other kinds scanners make) are left out for now, and the status bar says so
+when the page is placed.
 
 **Protected PDFs.** A PDF protected only against copying or changing it (most are) is placed like any other. One
 that needs a password to open asks for it when you place it; the password is kept in the document with the
