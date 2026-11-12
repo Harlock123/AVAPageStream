@@ -80,6 +80,7 @@ internal sealed class PageRenderer
     /// <summary>Draws one object; <paramref name="page"/> is the page a master's object is drawn under.</summary>
     public void DrawObject(DrawingContext dc, Document doc, PageObject o, int? page = null)
     {
+        using var turned = o.Rotation != 0 ? dc.PushTransform(Turn(o, 1, new Vector(0, 0))) : (DrawingContext.PushedState?)null;
         var rect = new Rect(o.X, o.Y, Math.Max(0, o.W), Math.Max(0, o.H));
         var fill = BrushOf(o.Fill);
         var pen = o.Stroke is not null && o.StrokeWidth > 0 && BrushOf(o.Stroke) is { } sb ? new Pen(sb, o.StrokeWidth) : null;
@@ -101,6 +102,12 @@ internal sealed class PageRenderer
             case TextFrame frame:
                 if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
                 DrawText(dc, doc, frame, page);
+                break;
+            case GroupObject group:
+                foreach (var child in group.Children) DrawObject(dc, doc, child, page);
+                break;
+            case PathObject path:
+                if (path.Nodes.Count > 1) dc.DrawGeometry(path.Closed ? fill : null, pen is null ? null : new Pen(pen.Brush, pen.Thickness, lineJoin: PenLineJoin.Round, lineCap: PenLineCap.Round), PathGeometry(path));
                 break;
             case PictureObject picture:
                 if (fill is not null) dc.FillRectangle(fill, rect);
@@ -164,6 +171,42 @@ internal sealed class PageRenderer
         var dest = Placement(picture.Fit, size, frame).Translate(new Vector(picture.OffsetX, picture.OffsetY));
         using (dc.PushClip(frame))
             dc.DrawImage(bitmap, new Rect(0, 0, bitmap.Size.Width, bitmap.Size.Height), dest);
+    }
+
+    /// <summary>
+    /// The transform that turns an object about its centre, for drawing at <paramref name="scale"/> view units a point
+    /// with the page's corner at <paramref name="origin"/> (1 and nothing for drawing in page points).
+    /// </summary>
+    public static Matrix Turn(PageObject o, double scale, Vector origin)
+    {
+        var c = Shapes.Centre(o);
+        var (cx, cy) = (origin.X + c.X * scale, origin.Y + c.Y * scale);
+        return Matrix.CreateTranslation(-cx, -cy) * Matrix.CreateRotation(o.Rotation * Math.PI / 180) * Matrix.CreateTranslation(cx, cy);
+    }
+
+    /// <summary>A path's outline: straight segments between corners, and cubic Béziers where a point has handles.</summary>
+    public static StreamGeometry PathGeometry(PathObject path, IReadOnlyList<PathNode>? nodes = null, bool? closed = null)
+    {
+        nodes ??= path.Nodes;
+        var close = closed ?? path.Closed;
+        var g = new StreamGeometry();
+        using var c = g.Open();
+        if (nodes.Count == 0) return g;
+        c.BeginFigure(new Point(nodes[0].X, nodes[0].Y), close);
+        void Segment(PathNode a, PathNode b)
+        {
+            if (a.Out is null && b.In is null) c.LineTo(new Point(b.X, b.Y));
+            else
+            {
+                var p1 = a.Out ?? a.At;
+                var p2 = b.In ?? b.At;
+                c.CubicBezierTo(new Point(p1.X, p1.Y), new Point(p2.X, p2.Y), new Point(b.X, b.Y));
+            }
+        }
+        for (var i = 1; i < nodes.Count; i++) Segment(nodes[i - 1], nodes[i]);
+        if (close && nodes.Count > 2) Segment(nodes[^1], nodes[0]);
+        c.EndFigure(close);
+        return g;
     }
 
     /// <summary>Where an image of <paramref name="size"/> goes in its frame for a fit.</summary>

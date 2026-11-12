@@ -229,6 +229,9 @@ public sealed class MainWindow : Window
                         Item("Send _backward", () => Arrange(Editor.Order.Backward), "Ctrl+OemOpenBrackets"),
                         Item("Send to bac_k", () => Arrange(Editor.Order.Back), "Ctrl+Shift+OemOpenBrackets"),
                         new Separator(),
+                        Item("_Group", GroupSelected, "Ctrl+G"),
+                        Item("U_ngroup", UngroupSelected, "Ctrl+Shift+G"),
+                        new Separator(),
                         Item("_Lock", () => Lock(true)),
                         Item("_Unlock", () => Lock(false)),
                         new Separator(),
@@ -331,6 +334,7 @@ public sealed class MainWindow : Window
         (Tool.Ellipse, "Ellipse", "E", "F0 M10,4 A7.5,6 0 1 1 9.99,4 Z M10,5.8 A5.7,4.2 0 1 0 10.01,5.8 Z"),
         (Tool.Line, "Line", "L", "M3,15.8 L15.8,3 L17,4.2 L4.2,17 Z"),
         (Tool.Picture, "Picture", "P", "F0 M2,4 H18 V16 H2 Z M3.8,5.8 V14.2 H16.2 V5.8 Z M5,13 L8.2,8.8 L10.4,11.2 L12.4,8.4 L15,13 Z"),
+        (Tool.Pen, "Pen: polygons and curves", "B", "M3,17 L4.5,12.5 L13,4 L16,7 L7.5,15.5 Z M14,3 L15.5,1.5 L18.5,4.5 L17,6 Z M3,17 L5.5,16.3 L3.7,14.5 Z"),
         (Tool.Link, "Link frames", "K", "F0 M1.5,10 A4,4 0 0 1 5.5,6 H9 V8 H5.5 A2,2 0 0 0 5.5,12 H9 V14 H5.5 A4,4 0 0 1 1.5,10 Z M11,6 H14.5 A4,4 0 0 1 14.5,14 H11 V12 H14.5 A2,2 0 0 0 14.5,8 H11 Z M6.5,9 H13.5 V11 H6.5 Z"),
         (Tool.Hand, "Hand", "H", "M6,18.5 L2.8,11.6 L4.6,10.6 L7,13.2 V4.2 H9 V10 H10 V3 H12 V10 H13 V4.2 H15 V10.6 H15.6 V7 H17.6 V13 L15,18.5 Z"),
     ];
@@ -604,6 +608,20 @@ public sealed class MainWindow : Window
         var ids = View.SelectedIds.ToList();
         if (ids.Count == 0) return;
         Editor.Change(locked ? "Lock" : "Unlock", d => { foreach (var id in ids) if (d.Find(id) is { } o) o.Locked = locked; });
+    }
+
+    public void GroupSelected()
+    {
+        if (View.Editing is not null) return;
+        if (Editor.Group(View.SelectedIds.ToList()) is { } id) { View.Select([id]); Say("Grouped: they move, resize and arrange as one now."); }
+        else Say("Select two or more objects (not in a group already) to group them.");
+    }
+
+    public void UngroupSelected()
+    {
+        var freed = Editor.Ungroup(View.SelectedIds.ToList());
+        if (freed.Count == 0) { Say("Select a group to take apart."); return; }
+        View.Select(freed);
     }
 
     public void Duplicate()
@@ -920,6 +938,8 @@ public sealed class MainWindow : Window
             case Key.D3 when shift: View.InsertField(Fields.PageNumber); break;
             case Key.F or Key.H: ShowFind(); break;
             case Key.D: Duplicate(); break;
+            case Key.G when shift: UngroupSelected(); break;
+            case Key.G: GroupSelected(); break;
             case Key.D0 or Key.NumPad0: View.FitPage(); break;
             case Key.D1 or Key.NumPad1: View.ActualSize(); break;
             case Key.OemPlus or Key.Add: View.SetZoom(View.Zoom * 1.25); break;

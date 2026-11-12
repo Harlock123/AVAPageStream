@@ -133,7 +133,10 @@ public sealed class Editor
         return obj;
     });
 
-    /// <summary>Deletes objects (locked ones stay); text frames leave their chains.</summary>
+    /// <summary>
+    /// Deletes objects (locked ones stay), from groups too: text frames leave their chains, a group left empty goes,
+    /// and the others shrink to what is left in them.
+    /// </summary>
     public int Delete(IReadOnlyCollection<string> ids)
     {
         var doomed = ids.Select(Doc.Find).OfType<PageObject>().Where(o => !o.Locked).Select(o => o.Id).ToHashSet();
@@ -142,11 +145,27 @@ public sealed class Editor
         {
             foreach (var sheet in d.Sheets)
             {
-                foreach (var frame in sheet.Objects.OfType<TextFrame>().Where(f => doomed.Contains(f.Id)).ToList()) Chains.Forget(d, frame);
-                sheet.Objects.RemoveAll(o => doomed.Contains(o.Id));
+                var going = sheet.All.Where(o => doomed.Contains(o.Id)).ToList();
+                foreach (var frame in Shapes.Flatten(going).OfType<TextFrame>()) Chains.Forget(d, frame);
+                foreach (var o in going)
+                {
+                    var around = Shapes.GroupsAround(sheet.Objects, o.Id);
+                    Shapes.ContainerOf(sheet.Objects, o.Id)?.Remove(o);
+                    foreach (var g in around) g.Fit();
+                }
+                RemoveEmptyGroups(sheet.Objects);
             }
         });
         return doomed.Count;
+    }
+
+    private static void RemoveEmptyGroups(List<PageObject> list)
+    {
+        foreach (var g in list.OfType<GroupObject>().ToList())
+        {
+            RemoveEmptyGroups(g.Children);
+            if (g.Children.Count == 0) list.Remove(g);
+        }
     }
 
     /// <summary>Copies objects onto the same sheet, offset; a copied text frame gets a copy of its whole story. Returns the new ids.</summary>
@@ -157,8 +176,7 @@ public sealed class Editor
         {
             if (d.Find(id) is not { } obj || d.SheetOf(id) is not { } sheet) continue;
             var copy = Copy(d, obj);
-            copy.X += offset;
-            copy.Y += offset;
+            copy.MoveBy(offset, offset);
             sheet.Objects.Add(copy);
             made.Add(copy.Id);
         }
@@ -166,22 +184,26 @@ public sealed class Editor
     });
 
     /// <summary>
-    /// A copy of an object for document <paramref name="d"/>, with a new id; a text frame's story is copied with it,
-    /// from <paramref name="from"/> (the document the object came from, when not <paramref name="d"/>).
+    /// A copy of an object for document <paramref name="d"/>, with new ids (for everything in a group too); each text
+    /// frame's story is copied with it, from <paramref name="from"/> (the document the object came from, when not
+    /// <paramref name="d"/>).
     /// </summary>
     public static PageObject Copy(Document d, PageObject obj, Document? from = null)
     {
         var json = System.Text.Json.JsonSerializer.Serialize(obj, Document.Json);
         var copy = System.Text.Json.JsonSerializer.Deserialize<PageObject>(json, Document.Json)!;
-        copy.Id = d.NewId(copy is TextFrame ? "frame" : "object");
         copy.Locked = false;
-        if (copy is TextFrame frame && obj is TextFrame original && (from ?? d).StoryOf(original) is { } story)
+        foreach (var (o, original) in Shapes.Flatten([copy]).Zip(Shapes.Flatten([obj])))
         {
-            var copied = System.Text.Json.JsonSerializer.Deserialize<Story>(System.Text.Json.JsonSerializer.Serialize(story, Document.Json), Document.Json)!;
-            copied.Id = d.NewId("story");
-            copied.Frames = [frame.Id];
-            d.Stories[copied.Id] = copied;
-            frame.StoryId = copied.Id;
+            o.Id = d.NewId(o is TextFrame ? "frame" : "object");
+            if (o is TextFrame frame && original is TextFrame f && (from ?? d).StoryOf(f) is { } story)
+            {
+                var copied = System.Text.Json.JsonSerializer.Deserialize<Story>(System.Text.Json.JsonSerializer.Serialize(story, Document.Json), Document.Json)!;
+                copied.Id = d.NewId("story");
+                copied.Frames = [frame.Id];
+                d.Stories[copied.Id] = copied;
+                frame.StoryId = copied.Id;
+            }
         }
         return copy;
     }
@@ -194,17 +216,58 @@ public sealed class Editor
         {
             if (from.Find(id) is not { } obj) continue;
             var copy = Copy(d, obj, from);
-            copy.X += offset;
-            copy.Y += offset;
+            copy.MoveBy(offset, offset);
             sheet.Resolve(d).Objects.Add(copy);
             made.Add(copy.Id);
         }
         return made;
     });
 
+    /// <summary>
+    /// Groups objects on one sheet (two or more, none in a group already) into a group drawn where the top-most of them
+    /// was. Returns its id, or null with nothing done.
+    /// </summary>
+    public string? Group(IReadOnlyCollection<string> ids)
+    {
+        if (ids.Count < 2 || Doc.SheetOf(ids.First()) is not { } first) return null;
+        if (ids.Any(id => !first.Objects.Any(o => o.Id == id))) return null;
+        return Change("Group", d =>
+        {
+            var sheet = d.SheetOf(ids.First())!;
+            var chosen = sheet.Objects.Where(o => ids.Contains(o.Id)).ToList();
+            var at = sheet.Objects.IndexOf(chosen[^1]) - (chosen.Count - 1);
+            sheet.Objects.RemoveAll(chosen.Contains);
+            var group = new GroupObject { Id = d.NewId("object"), Children = chosen };
+            group.Fit();
+            sheet.Objects.Insert(Math.Clamp(at, 0, sheet.Objects.Count), group);
+            return group.Id;
+        });
+    }
+
+    /// <summary>Takes groups apart, leaving what they held in their place. Returns the ids of what was in them.</summary>
+    public List<string> Ungroup(IReadOnlyCollection<string> ids)
+    {
+        var groups = ids.Select(Doc.Find).OfType<GroupObject>().ToList();
+        if (groups.Count == 0) return [];
+        return Change("Ungroup", d =>
+        {
+            var freed = new List<string>();
+            foreach (var g in groups.Select(g => (GroupObject)d.Find(g.Id)!))
+            {
+                var sheet = d.SheetOf(g.Id)!;
+                var list = Shapes.ContainerOf(sheet.Objects, g.Id)!;
+                var at = list.IndexOf(g);
+                list.RemoveAt(at);
+                list.InsertRange(at, g.Children);
+                freed.AddRange(g.Children.Select(c => c.Id));
+            }
+            return freed;
+        });
+    }
+
     public enum Order { Front, Forward, Backward, Back }
 
-    /// <summary>Moves objects up or down the order they are drawn in on their sheet.</summary>
+    /// <summary>Moves objects up or down the order they are drawn in, within their sheet or group.</summary>
     public void Arrange(IReadOnlyCollection<string> ids, Order order) => Change(order switch
     {
         Order.Front => "Bring to front",
@@ -213,11 +276,10 @@ public sealed class Editor
         _ => "Send to back",
     }, d =>
     {
-        foreach (var sheet in d.Sheets)
+        var lists = ids.Select(id => d.SheetOf(id) is { } sh ? Shapes.ContainerOf(sh.Objects, id) : null).OfType<List<PageObject>>().Distinct();
+        foreach (var list in lists)
         {
-            var list = sheet.Objects;
             var chosen = list.Where(o => ids.Contains(o.Id)).ToList();
-            if (chosen.Count == 0) continue;
             switch (order)
             {
                 case Order.Front:
@@ -242,25 +304,31 @@ public sealed class Editor
 
     public enum Alignment { Left, Centre, Right, Top, Middle, Bottom }
 
-    /// <summary>Lines objects up with the edge or centre of all of them together (or of the page, for one object).</summary>
+    /// <summary>
+    /// Lines objects up with the edge or centre of all of them together (or of the page, for one object), by the
+    /// box each covers (a rotated object's turned box).
+    /// </summary>
     public void AlignObjects(IReadOnlyCollection<string> ids, Alignment how)
     {
         var objects = ids.Select(Doc.Find).OfType<PageObject>().Where(o => !o.Locked).ToList();
         if (objects.Count == 0) return;
-        var target = objects.Count == 1 ? Doc.Setup.Page : Box.Union(objects.Select(o => o.Bounds));
+        var target = objects.Count == 1 ? Doc.Setup.Page : Box.Union(objects.Select(Shapes.Extent));
         Change("Align", d =>
         {
             foreach (var o in objects.Select(o => d.Find(o.Id)!))
             {
-                switch (how)
+                var e = Shapes.Extent(o);
+                var (dx, dy) = how switch
                 {
-                    case Alignment.Left: o.X = target.X; break;
-                    case Alignment.Centre: o.X = target.CentreX - o.W / 2; break;
-                    case Alignment.Right: o.X = target.Right - o.W; break;
-                    case Alignment.Top: o.Y = target.Y; break;
-                    case Alignment.Middle: o.Y = target.CentreY - o.H / 2; break;
-                    case Alignment.Bottom: o.Y = target.Bottom - o.H; break;
-                }
+                    Alignment.Left => (target.X - e.X, 0.0),
+                    Alignment.Centre => (target.CentreX - e.CentreX, 0.0),
+                    Alignment.Right => (target.Right - e.Right, 0.0),
+                    Alignment.Top => (0.0, target.Y - e.Y),
+                    Alignment.Middle => (0.0, target.CentreY - e.CentreY),
+                    _ => (0.0, target.Bottom - e.Bottom),
+                };
+                o.MoveBy(dx, dy);
+                d.Refit(o.Id);
             }
         });
     }
@@ -273,16 +341,19 @@ public sealed class Editor
     {
         var objects = ids.Select(Doc.Find).OfType<PageObject>().Where(o => !o.Locked).ToList();
         if (objects.Count < 3) return "Select three or more objects (not locked) to space evenly.";
-        var sorted = across ? objects.OrderBy(o => o.X).ToList() : objects.OrderBy(o => o.Y).ToList();
-        var span = across ? sorted.Max(o => o.X + o.W) - sorted[0].X : sorted.Max(o => o.Y + o.H) - sorted[0].Y;
-        var gap = (span - sorted.Sum(o => across ? o.W : o.H)) / (sorted.Count - 1);
+        var boxes = objects.ToDictionary(o => o.Id, Shapes.Extent);
+        var sorted = across ? objects.OrderBy(o => boxes[o.Id].X).ToList() : objects.OrderBy(o => boxes[o.Id].Y).ToList();
+        var span = across ? sorted.Max(o => boxes[o.Id].Right) - boxes[sorted[0].Id].X : sorted.Max(o => boxes[o.Id].Bottom) - boxes[sorted[0].Id].Y;
+        var gap = (span - sorted.Sum(o => across ? boxes[o.Id].W : boxes[o.Id].H)) / (sorted.Count - 1);
         Change(across ? "Space across" : "Space down", d =>
         {
-            var at = across ? sorted[0].X : sorted[0].Y;
+            var at = across ? boxes[sorted[0].Id].X : boxes[sorted[0].Id].Y;
             foreach (var o in sorted.Select(o => d.Find(o.Id)!))
             {
-                if (across) { o.X = Math.Round(at, 2); at += o.W + gap; }
-                else { o.Y = Math.Round(at, 2); at += o.H + gap; }
+                var b = boxes[o.Id];
+                if (across) { o.MoveBy(Math.Round(at - b.X, 2), 0); at += b.W + gap; }
+                else { o.MoveBy(0, Math.Round(at - b.Y, 2)); at += b.H + gap; }
+                d.Refit(o.Id);
             }
         });
         return null;
@@ -307,7 +378,7 @@ public sealed class Editor
         Change("Delete page", d =>
         {
             var page = d.Pages[index];
-            foreach (var frame in page.Objects.OfType<TextFrame>()) Chains.Forget(d, frame);
+            foreach (var frame in page.All.OfType<TextFrame>().ToList()) Chains.Forget(d, frame);
             d.Pages.RemoveAt(index);
         });
         return null;

@@ -86,14 +86,25 @@ public sealed class Document
 
     public MasterPage? Master(string? name) => name is null ? null : Masters.FirstOrDefault(m => m.Name == name);
 
+    /// <summary>The master sheet drawn under a page (in a facing document, a left page's master's left side).</summary>
+    public Sheet? MasterFor(Page page) => Master(page.Master);
+
     public IEnumerable<Sheet> Sheets => Masters.Cast<Sheet>().Concat(Pages);
 
-    public IEnumerable<PageObject> AllObjects => Sheets.SelectMany(s => s.Objects);
+    /// <summary>Every object, those inside groups too.</summary>
+    public IEnumerable<PageObject> AllObjects => Sheets.SelectMany(s => s.All);
 
     public PageObject? Find(string id) => AllObjects.FirstOrDefault(o => o.Id == id);
 
     /// <summary>The page or master an object is on.</summary>
-    public Sheet? SheetOf(string id) => Sheets.FirstOrDefault(s => s.Objects.Any(o => o.Id == id));
+    public Sheet? SheetOf(string id) => Sheets.FirstOrDefault(s => s.All.Any(o => o.Id == id));
+
+    /// <summary>The groups an object is inside, innermost first, and refits each to what it now holds.</summary>
+    public void Refit(string id)
+    {
+        if (SheetOf(id) is not { } sheet) return;
+        foreach (var g in Shapes.GroupsAround(sheet.Objects, id)) g.Fit();
+    }
 
     public Story? StoryOf(TextFrame frame) => Stories.GetValueOrDefault(frame.StoryId);
 

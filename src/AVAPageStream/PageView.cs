@@ -9,7 +9,7 @@ using Page = AVAPageStream.Core.Page;
 
 namespace AVAPageStream;
 
-public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand }
+public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand, Pen }
 
 /// <summary>The caret and selection in a story being edited, and a format waiting to be typed.</summary>
 public sealed class TextEdit
@@ -46,7 +46,7 @@ public sealed class PageView : Control
     private Tool _tool;
 
     // The drag under way.
-    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text, Crop }
+    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text, Crop, Rotate, Pen, Node }
     private Drag _drag;
     private Point _dragStartScreen;
     private Pt _dragStart;
@@ -58,6 +58,12 @@ public sealed class PageView : Control
     private bool _guideVertical;
     private double _guidePosition;
     private bool _shift;
+    private Dictionary<string, Box> _extents = [];
+    private List<PathNode>? _pen;        // the path being drawn with the Pen tool
+    private Pt? _penPreview;
+    private Pt _penFrom;
+    private (int Node, int Part)? _nodeHit; // in point editing: the point (0) or handle in (1) or out (2) being dragged
+    private const int RotateHandle = 8;
     private (double X, double Y) _cropFrom;
 
     public PageView(Editor editor)
@@ -135,6 +141,8 @@ public sealed class PageView : Control
             if (_sheet == value) return;
             if (_editor.Busy) _editor.Cancel();
             _drag = Drag.None;
+            CancelPen();
+            EditingPoints = null;
             _sheet = value;
             _selection.Clear();
             if (Editing is { } t && !FramesOnSheet(t.StoryId).Any()) StopEditing();
@@ -150,6 +158,9 @@ public sealed class PageView : Control
         get => _tool;
         set
         {
+            if (value != Tool.Pen && _pen is { Count: >= 2 }) FinishPen(closed: false);
+            else if (value != Tool.Pen) CancelPen();
+            EditingPoints = null;
             _tool = value;
             if (value != Tool.Link) LinkFrom = null;
             if (value is not (Tool.Text or Tool.Select)) StopEditing();
@@ -171,7 +182,10 @@ public sealed class PageView : Control
     public TextEdit? Editing { get; private set; }
 
     /// <summary>The selected objects on the sheet shown, top-most last.</summary>
-    public IReadOnlyList<PageObject> Selected => CurrentSheet.Objects.Where(o => _selection.Contains(o.Id)).ToList();
+    public IReadOnlyList<PageObject> Selected => CurrentSheet.All.Where(o => _selection.Contains(o.Id)).ToList();
+
+    /// <summary>The path whose points are being edited (double-click a path with Select), or null.</summary>
+    public string? EditingPoints { get; private set; }
 
     public IReadOnlyList<string> SelectedIds => _selection;
 
@@ -273,7 +287,8 @@ public sealed class PageView : Control
     public void Select(IEnumerable<string> ids)
     {
         _selection.Clear();
-        _selection.AddRange(ids.Where(id => CurrentSheet.Objects.Any(o => o.Id == id)).Distinct());
+        _selection.AddRange(ids.Where(id => CurrentSheet.All.Any(o => o.Id == id)).Distinct());
+        if (EditingPoints is not null && !_selection.Contains(EditingPoints)) EditingPoints = null;
         Notify();
         InvalidateVisual();
     }
@@ -291,14 +306,14 @@ public sealed class PageView : Control
     }
 
     private IEnumerable<TextFrame> FramesOnSheet(string storyId) =>
-        CurrentSheet.Objects.OfType<TextFrame>().Where(f => f.StoryId == storyId);
+        CurrentSheet.All.OfType<TextFrame>().Where(f => f.StoryId == storyId);
 
     /// <summary>Puts the caret in a text frame's story, at a point in it (or at its start).</summary>
     public void StartEditing(TextFrame frame, Pt? at = null)
     {
         var index = 0;
         if (at is { } p && LayoutOf(frame.StoryId) is { } layout)
-            index = layout.IndexAt(frame.Id, p) ?? FirstIndexIn(layout, frame.Id);
+            index = layout.IndexAt(frame.Id, Shapes.ToLocal(frame, p)) ?? FirstIndexIn(layout, frame.Id);
         else if (LayoutOf(frame.StoryId) is { } l) index = FirstIndexIn(l, frame.Id);
         Editing = new TextEdit { StoryId = frame.StoryId, Caret = index, Anchor = index };
         _selection.Clear();
@@ -343,7 +358,7 @@ public sealed class PageView : Control
         Editing = null;
         _blink.Stop();
         _selection.Clear();
-        if (frame is not null && CurrentSheet.Objects.Any(o => o.Id == frame)) _selection.Add(frame);
+        if (frame is not null && CurrentSheet.All.Any(o => o.Id == frame)) _selection.Add(frame);
         _editor.Break();
         Notify();
         InvalidateVisual();
@@ -364,7 +379,7 @@ public sealed class PageView : Control
         _blink.Stop();
         _blink.Start();
         // When the caret flows into a frame on another page, show that page.
-        if (CaretFrame() is { } frame && !CurrentSheet.Objects.Any(o => o.Id == frame) && SheetWith(frame) is { } sheet)
+        if (CaretFrame() is { } frame && !CurrentSheet.All.Any(o => o.Id == frame) && SheetWith(frame) is { } sheet)
         {
             var t = Editing;
             ShowSheet?.Invoke(sheet);
@@ -379,9 +394,9 @@ public sealed class PageView : Control
     private SheetRef? SheetWith(string objectId)
     {
         for (var i = 0; i < Doc.Pages.Count; i++)
-            if (Doc.Pages[i].Objects.Any(o => o.Id == objectId)) return SheetRef.PageAt(i);
+            if (Doc.Pages[i].All.Any(o => o.Id == objectId)) return SheetRef.PageAt(i);
         for (var i = 0; i < Doc.Masters.Count; i++)
-            if (Doc.Masters[i].Objects.Any(o => o.Id == objectId)) return SheetRef.MasterAt(i);
+            if (Doc.Masters[i].All.Any(o => o.Id == objectId)) return SheetRef.MasterAt(i);
         return null;
     }
 
@@ -611,6 +626,20 @@ public sealed class PageView : Control
             return;
         }
 
+        if (_pen is not null && e.Key is Key.Enter or Key.Escape)
+        {
+            if (e.Key == Key.Enter) FinishPen(closed: false);
+            else CancelPen();
+            e.Handled = true;
+            return;
+        }
+        if (EditingPoints is not null && e.Key is Key.Escape or Key.Delete or Key.Back)
+        {
+            if (e.Key == Key.Escape) { EditingPoints = null; InvalidateVisual(); }
+            else DeleteNode();
+            e.Handled = true;
+            return;
+        }
         if (command) return;
         var step = shift ? 10 : 1;
         switch (e.Key)
@@ -635,6 +664,7 @@ public sealed class PageView : Control
             case Key.P: Tool = Tool.Picture; break;
             case Key.K: Tool = Tool.Link; break;
             case Key.H: Tool = Tool.Hand; break;
+            case Key.B: Tool = Tool.Pen; break;
             default: return;
         }
         e.Handled = true;
@@ -703,22 +733,45 @@ public sealed class PageView : Control
     private SnapTargets Targets() =>
         SnapTargets.For(Doc.Setup, CurrentSheet, CurrentSheet is Page pg ? Doc.Master(pg.Master) : null, guides: Snap, grid: SnapGrid);
 
-    /// <summary>The top-most object of the sheet under a point.</summary>
-    private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null)
+    /// <summary>
+    /// The top-most object of the sheet under a point. A group is hit where anything in it is; looking for a kind
+    /// (<paramref name="which"/>) finds it inside groups.
+    /// </summary>
+    private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null) => Hit(CurrentSheet.Objects, p, which);
+
+    private PageObject? Hit(List<PageObject> list, Pt p, Func<PageObject, bool>? which)
     {
-        var slack = 3 / Scale;
-        for (var i = CurrentSheet.Objects.Count - 1; i >= 0; i--)
+        for (var i = list.Count - 1; i >= 0; i--)
         {
-            var o = CurrentSheet.Objects[i];
-            if (which is not null && !which(o)) continue;
-            if (o is LineObject line)
+            var o = list[i];
+            if (o is GroupObject g)
             {
-                var (a, b) = line.Ends;
-                if (DistanceToSegment(p, a, b) <= Math.Max(4 / Scale, line.StrokeWidth / 2)) return o;
+                if (Hit(g.Children, p, which) is { } inner) return which is null ? g : inner;
+                continue;
             }
-            else if (o.Bounds.Contains(p, slack)) return o;
+            if (which is not null && !which(o)) continue;
+            if (Touches(o, p)) return o;
         }
         return null;
+    }
+
+    /// <summary>Whether a point is on an object: in its turned frame, near a line, or in or on a path.</summary>
+    private bool Touches(PageObject o, Pt p)
+    {
+        var q = Shapes.ToLocal(o, p);
+        switch (o)
+        {
+            case LineObject line:
+                var (a, b) = line.Ends;
+                return DistanceToSegment(q, a, b) <= Math.Max(4 / Scale, line.StrokeWidth / 2);
+            case PathObject path:
+                var g = PageRenderer.PathGeometry(path);
+                var at = new Point(q.X, q.Y);
+                return (path.Closed && path.Fill is not null && g.FillContains(at)) ||
+                       g.StrokeContains(new Pen(Brushes.Black, Math.Max(8 / Scale, path.StrokeWidth)), at);
+            default:
+                return o.Bounds.Contains(q, 3 / Scale);
+        }
     }
 
     private static double DistanceToSegment(Pt p, Pt a, Pt b)
@@ -732,7 +785,7 @@ public sealed class PageView : Control
         return Math.Sqrt(cx * cx + cy * cy);
     }
 
-    /// <summary>The handle positions of an object: eight round a box, or the two ends of a line.</summary>
+    /// <summary>The handle positions of an object: eight round its turned frame, or the two ends of a line.</summary>
     private static Pt[] Handles(PageObject o)
     {
         if (o is LineObject line)
@@ -741,12 +794,19 @@ public sealed class PageView : Control
             return [a, b];
         }
         var r = o.Bounds;
-        return
+        Pt[] local =
         [
             new(r.X, r.Y), new(r.CentreX, r.Y), new(r.Right, r.Y), new(r.Right, r.CentreY),
             new(r.Right, r.Bottom), new(r.CentreX, r.Bottom), new(r.X, r.Bottom), new(r.X, r.CentreY),
         ];
+        return local.Select(h => Shapes.ToPage(o, h)).ToArray();
     }
+
+    /// <summary>Lines and groups turn no other way than they are drawn: everything else has a rotate handle.</summary>
+    private static bool CanRotate(PageObject o) => o is not (LineObject or GroupObject);
+
+    /// <summary>The rotate handle, a little above the middle of the frame's top edge.</summary>
+    private Pt RotateHandleAt(PageObject o) => Shapes.ToPage(o, new Pt(o.X + o.W / 2, o.Y - 24 / Scale));
 
     private int HitHandle(PageObject o, Point screen)
     {
@@ -756,13 +816,18 @@ public sealed class PageView : Control
             var h = ToView(handles[i]);
             if (Math.Abs(h.X - screen.X) <= HandleSize && Math.Abs(h.Y - screen.Y) <= HandleSize) return i;
         }
+        if (CanRotate(o))
+        {
+            var r = ToView(RotateHandleAt(o));
+            if (Math.Abs(r.X - screen.X) <= HandleSize && Math.Abs(r.Y - screen.Y) <= HandleSize) return RotateHandle;
+        }
         return -1;
     }
 
     /// <summary>Whether a screen point is on the overset mark of a text frame whose story doesn't fit.</summary>
     private TextFrame? HitOverset(Point screen)
     {
-        foreach (var frame in CurrentSheet.Objects.OfType<TextFrame>())
+        foreach (var frame in CurrentSheet.All.OfType<TextFrame>())
             if (OversetMark(frame) is { } mark && mark.Inflate(2).Contains(screen)) return frame;
         return null;
     }
@@ -770,7 +835,7 @@ public sealed class PageView : Control
     private Rect? OversetMark(TextFrame frame)
     {
         if (LayoutOf(frame.StoryId) is not { Overset: true } || Doc.StoryOf(frame)?.Frames.LastOrDefault() != frame.Id) return null;
-        var corner = ToView(new Pt(frame.X + frame.W, frame.Y + frame.H));
+        var corner = ToView(Shapes.ToPage(frame, new Pt(frame.X + frame.W, frame.Y + frame.H)));
         return new Rect(corner.X - 6, corner.Y - 6, 12, 12);
     }
 
@@ -821,8 +886,25 @@ public sealed class PageView : Control
             StopEditing();
         }
 
+        if (EditingPoints is { } pathId && Doc.Find(pathId) is PathObject editing)
+        {
+            if (HitNode(editing, screen) is { } node)
+            {
+                _nodeHit = node;
+                _editor.Begin();
+                Begin(Drag.Node, e);
+                return;
+            }
+            EditingPoints = null; // a click anywhere else leaves the points
+            InvalidateVisual();
+        }
+
         switch (_tool)
         {
+            case Tool.Pen:
+                PenPress(p, e);
+                return;
+
             case Tool.Select:
                 if (HitOverset(screen) is { } overset)
                 {
@@ -836,7 +918,7 @@ public sealed class PageView : Control
                 if (Selected is [{ Locked: false } only] && HitHandle(only, screen) is var h and >= 0)
                 {
                     _handle = h;
-                    StartObjects(Drag.Resize, [only], e);
+                    StartObjects(h == RotateHandle ? Drag.Rotate : Drag.Resize, [only], e);
                     return;
                 }
                 if (alt && HitObject(p) is PictureObject { Locked: false } cropped)
@@ -851,10 +933,20 @@ public sealed class PageView : Control
                 }
                 if (HitObject(p) is { } hit)
                 {
-                    if (e.ClickCount >= 2 && hit is TextFrame frame)
+                    if (e.ClickCount >= 2 && HitObject(p, o => o is TextFrame) is TextFrame frame)
                     {
-                        StartEditing(frame, p);
+                        StartEditing(frame, p); // into a frame inside a group, too
                         Begin(Drag.Text, e);
+                        return;
+                    }
+                    if (e.ClickCount >= 2 && hit is PathObject points)
+                    {
+                        if (points.Rotation != 0) { Status?.Invoke("Set the path's rotation to 0 to edit its points."); return; }
+                        Select([points.Id]);
+                        EditingPoints = points.Id;
+                        Status?.Invoke("Drag a point or a handle. Delete takes out the last point dragged; Escape or a click elsewhere finishes.");
+                        Notify();
+                        InvalidateVisual();
                         return;
                     }
                     if (_shift)
@@ -932,7 +1024,7 @@ public sealed class PageView : Control
     private void ClickInText(TextLayout layout, TextFrame frame, Pt p, int clicks, bool extend)
     {
         if (Editing is not { } t) return;
-        var index = layout.IndexAt(frame.Id, p) ?? t.Caret;
+        var index = layout.IndexAt(frame.Id, Shapes.ToLocal(frame, p)) ?? t.Caret;
         var text = layout.Story.Text;
         if (clicks == 2)
         {
@@ -957,6 +1049,102 @@ public sealed class PageView : Control
         CaretMoved();
     }
 
+    // ---- The Pen tool and editing points ------------------------------------------------------------------------
+
+    /// <summary>
+    /// A click adds a corner point, a drag a smooth one (its handle where the mouse lets go). Clicking the first point
+    /// again closes the path; a double-click or Enter ends it open.
+    /// </summary>
+    private void PenPress(Pt p, PointerPressedEventArgs e)
+    {
+        var at = _pen is { Count: > 0 } && _shift ? Constrain(_pen[^1].At, p, true) : Snapped(p);
+        if (_pen is { Count: >= 3 } && Close(at, _pen[0].At)) { FinishPen(closed: true); return; }
+        if (e.ClickCount >= 2 && _pen is { Count: >= 2 })
+        {
+            // The double-click's first click added a point here already.
+            if (Close(_pen[^1].At, at)) FinishPen(closed: false);
+            else { _pen.Add(PathNode.Corner(at)); FinishPen(closed: false); }
+            return;
+        }
+        _pen ??= [];
+        _pen.Add(PathNode.Corner(at));
+        _penFrom = at;
+        Begin(Drag.Pen, e);
+        Status?.Invoke(_pen.Count == 1 ? "Click for corners, drag for curves. Click the first point to close the shape; double-click or Enter to finish." : "");
+        InvalidateVisual();
+    }
+
+    private bool Close(Pt a, Pt b) => Math.Abs(a.X - b.X) * Scale <= 6 && Math.Abs(a.Y - b.Y) * Scale <= 6;
+
+    /// <summary>Makes the path drawn so far an object (two points or more), and leaves the Pen ready for another.</summary>
+    public void FinishPen(bool closed)
+    {
+        var nodes = _pen;
+        _pen = null;
+        _penPreview = null;
+        InvalidateVisual();
+        if (nodes is not { Count: >= 2 }) return;
+        var path = new PathObject { Nodes = nodes, Closed = closed && nodes.Count >= 3 };
+        if (NewStyles.TryGetValue(typeof(PathObject), out var style)) (path.Fill, path.Stroke, path.StrokeWidth) = style;
+        path.Fit();
+        var made = _editor.Add(_sheet, path, closed ? "New shape" : "New path");
+        Select([made.Id]);
+        Status?.Invoke($"Made a {made.Kind.ToLowerInvariant()} of {nodes.Count} points. Double-click it with Select to edit its points.");
+    }
+
+    public void CancelPen()
+    {
+        _pen = null;
+        _penPreview = null;
+        InvalidateVisual();
+    }
+
+    /// <summary>The point or handle of a path under a screen point: handles first, as they sit over points.</summary>
+    private (int Node, int Part)? HitNode(PathObject path, Point screen)
+    {
+        bool Near(Pt q) => Math.Abs(ToView(q).X - screen.X) <= HandleSize && Math.Abs(ToView(q).Y - screen.Y) <= HandleSize;
+        for (var i = 0; i < path.Nodes.Count; i++)
+        {
+            if (path.Nodes[i].In is { } a && Near(a)) return (i, 1);
+            if (path.Nodes[i].Out is { } b && Near(b)) return (i, 2);
+        }
+        for (var i = 0; i < path.Nodes.Count; i++)
+            if (Near(path.Nodes[i].At)) return (i, 0);
+        return null;
+    }
+
+    private int? _lastNode;
+
+    private void DragNode(Pt p)
+    {
+        if (EditingPoints is not { } id || Doc.Find(id) is not PathObject path || _nodeHit is not { } hit) return;
+        var n = path.Nodes[hit.Node];
+        var at = hit.Part == 0 ? Snapped(p) : p;
+        path.Nodes[hit.Node] = hit.Part switch
+        {
+            0 => n.Moved(q => new Pt(q.X + at.X - n.X, q.Y + at.Y - n.Y)),
+            1 => n with { InX = at.X, InY = at.Y },
+            _ => n with { OutX = at.X, OutY = at.Y },
+        };
+        path.Fit();
+        _lastNode = hit.Node;
+        _editor.Preview();
+    }
+
+    /// <summary>Takes out the last point dragged, leaving at least two (three in a closed shape).</summary>
+    private void DeleteNode()
+    {
+        if (EditingPoints is not { } id || Doc.Find(id) is not PathObject path || _lastNode is not { } i) return;
+        if (path.Nodes.Count <= (path.Closed ? 3 : 2)) { Status?.Invoke("A path needs at least two points (a closed shape three)."); return; }
+        _editor.Change("Delete point", d =>
+        {
+            var pth = (PathObject)d.Find(id)!;
+            pth.Nodes.RemoveAt(Math.Min(i, pth.Nodes.Count - 1));
+            pth.Fit();
+        });
+        _lastNode = null;
+    }
+
     private void Begin(Drag drag, PointerPressedEventArgs e)
     {
         _drag = drag;
@@ -966,7 +1154,9 @@ public sealed class PageView : Control
 
     private void StartObjects(Drag drag, IEnumerable<PageObject> objects, PointerPressedEventArgs e)
     {
-        _originals = objects.ToDictionary(o => o.Id, o => o.Bounds);
+        var list = objects.ToList();
+        _originals = list.ToDictionary(o => o.Id, o => o.Bounds);
+        _extents = list.ToDictionary(o => o.Id, Shapes.Extent);
         _editor.Begin();
         Begin(drag, e);
     }
@@ -989,6 +1179,11 @@ public sealed class PageView : Control
         _shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
         if (_drag == Drag.None)
         {
+            if (_tool == Tool.Pen && _pen is { Count: > 0 })
+            {
+                _penPreview = _shift ? Constrain(_pen[^1].At, p, true) : p;
+                InvalidateVisual();
+            }
             if (_tool == Tool.Select && !_space)
                 Cursor = new Cursor(Selected is [{ Locked: false } only] && HitHandle(only, screen) >= 0 ? StandardCursorType.SizeAll
                     : HitOverset(screen) is not null ? StandardCursorType.Hand : StandardCursorType.Arrow);
@@ -1012,10 +1207,32 @@ public sealed class PageView : Control
             case Drag.Crop:
                 if (Doc.Find(_originals.Keys.First()) is PictureObject pic)
                 {
-                    pic.OffsetX = Math.Round(_cropFrom.X + p.X - _dragStart.X, 2);
-                    pic.OffsetY = Math.Round(_cropFrom.Y + p.Y - _dragStart.Y, 2);
+                    // Along the picture's own axes, if it is turned.
+                    var d = Shapes.Rotate(p, _dragStart, -pic.Rotation);
+                    pic.OffsetX = Math.Round(_cropFrom.X + d.X - _dragStart.X, 2);
+                    pic.OffsetY = Math.Round(_cropFrom.Y + d.Y - _dragStart.Y, 2);
                     _editor.Preview();
                 }
+                break;
+            case Drag.Rotate:
+                if (Doc.Find(_originals.Keys.First()) is { } turning)
+                {
+                    var c = new Pt(_originals.Values.First().CentreX, _originals.Values.First().CentreY);
+                    var angle = Math.Atan2(p.Y - c.Y, p.X - c.X) * 180 / Math.PI + 90;
+                    if (_shift) angle = Math.Round(angle / 15) * 15;
+                    turning.Rotation = Normalise(Math.Round(angle, 2));
+                    _editor.Preview();
+                }
+                break;
+            case Drag.Pen:
+                if (_pen is { Count: > 0 })
+                {
+                    _pen[^1] = PathNode.Smooth(_penFrom, p); // dragging out of a point makes it smooth
+                    InvalidateVisual();
+                }
+                break;
+            case Drag.Node:
+                DragNode(p);
                 break;
             case Drag.Create:
                 _dragNow = Snapped(p);
@@ -1031,7 +1248,7 @@ public sealed class PageView : Control
             case Drag.Text:
                 if (Editing is { } t && LayoutOf(t.StoryId) is { } layout &&
                     HitObject(p, o => o is TextFrame f && f.StoryId == t.StoryId) is TextFrame frame &&
-                    layout.IndexAt(frame.Id, p) is { } index && index != t.Caret)
+                    layout.IndexAt(frame.Id, Shapes.ToLocal(frame, p)) is { } index && index != t.Caret)
                 {
                     t.Caret = index;
                     CaretMoved();
@@ -1056,6 +1273,15 @@ public sealed class PageView : Control
         return new Pt(a.X + Math.Sign(dx == 0 ? 1 : dx) * size, a.Y + Math.Sign(dy == 0 ? 1 : dy) * size);
     }
 
+    /// <summary>An angle in degrees, from -180 (not included) to 180.</summary>
+    public static double Normalise(double degrees)
+    {
+        degrees %= 360;
+        if (degrees > 180) degrees -= 360;
+        if (degrees <= -180) degrees += 360;
+        return degrees == 0 ? 0 : degrees;
+    }
+
     private void MoveObjects(Pt p)
     {
         var dx = p.X - _dragStart.X;
@@ -1063,7 +1289,7 @@ public sealed class PageView : Control
         if (_shift) { if (Math.Abs(dx) > Math.Abs(dy)) dy = 0; else dx = 0; }
         if (Snapping)
         {
-            var moved = Box.Union(_originals.Values.Select(b => b.Offset(dx, dy)));
+            var moved = Box.Union(_extents.Values.Select(b => b.Offset(dx, dy)));
             var (sx, sy) = Targets().SnapBox(moved, Tolerance);
             dx += sx;
             dy += sy;
@@ -1090,6 +1316,9 @@ public sealed class PageView : Control
             _editor.Preview();
             return;
         }
+        var turn = o.Rotation;
+        var c0 = new Pt(box.CentreX, box.CentreY);
+        if (turn != 0) at = Shapes.Rotate(p, c0, -turn); // snapping means nothing across a turned edge
         double x0 = box.X, y0 = box.Y, x1 = box.Right, y1 = box.Bottom;
         if (_handle is 0 or 6 or 7) x0 = at.X;
         if (_handle is 2 or 3 or 4) x1 = at.X;
@@ -1103,7 +1332,13 @@ public sealed class PageView : Control
             if (_handle is 0 or 2) y0 = y1 - box.H * s; else y1 = y0 + box.H * s;
         }
         var r = Box.FromCorners(new Pt(x0, y0), new Pt(x1, y1));
-        o.Bounds = r with { W = Math.Max(1, r.W), H = Math.Max(1, r.H) };
+        r = r with { W = Math.Max(1, r.W), H = Math.Max(1, r.H) };
+        if (turn != 0)
+        {
+            var c = Shapes.Rotate(new Pt(r.CentreX, r.CentreY), c0, turn);
+            r = new Box(c.X - r.W / 2, c.Y - r.H / 2, r.W, r.H);
+        }
+        o.Bounds = r;
         _editor.Preview();
     }
 
@@ -1124,6 +1359,12 @@ public sealed class PageView : Control
             case Drag.Crop:
                 _editor.Commit("Crop picture");
                 break;
+            case Drag.Rotate:
+                _editor.Commit("Rotate");
+                break;
+            case Drag.Node:
+                _editor.Commit("Edit points");
+                break;
             case Drag.Create:
                 FinishCreate();
                 break;
@@ -1131,7 +1372,7 @@ public sealed class PageView : Control
                 if (_dragMoved)
                 {
                     var area = Box.FromCorners(_dragStart, _dragNow);
-                    var hits = CurrentSheet.Objects.Where(o => o.Bounds.Inside(area)).Select(o => o.Id);
+                    var hits = CurrentSheet.Objects.Where(o => Shapes.Extent(o).Inside(area)).Select(o => o.Id);
                     Select(_shift ? _selection.Concat(hits).ToList() : hits);
                 }
                 break;
@@ -1144,7 +1385,7 @@ public sealed class PageView : Control
 
     private void CancelDrag()
     {
-        if (_drag is Drag.Move or Drag.Resize or Drag.Crop) _editor.Cancel();
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node) _editor.Cancel();
         _drag = Drag.None;
         InvalidateVisual();
     }
@@ -1273,6 +1514,7 @@ public sealed class PageView : Control
         DrawFrames(dc, sheet);
         DrawSelection(dc);
         DrawText(dc);
+        DrawPen(dc);
         DrawDrag(dc);
         DrawRulers(dc, bounds);
     }
@@ -1331,14 +1573,33 @@ public sealed class PageView : Control
 
     private static Rect Crisp(Rect r) => new(Math.Round(r.X) + 0.5, Math.Round(r.Y) + 0.5, Math.Round(r.Width), Math.Round(r.Height));
 
+    /// <summary>An object's frame drawn in the view, turned as it is.</summary>
+    private void Outline(DrawingContext dc, PageObject o, IBrush? fill, IPen pen)
+    {
+        if (o.Rotation == 0) { dc.DrawRectangle(fill, pen, Crisp(ToView(o.Bounds))); return; }
+        var corners = Shapes.Corners(o).Select(ToView).ToList();
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            c.BeginFigure(corners[0], true);
+            foreach (var q in corners.Skip(1)) c.LineTo(q);
+            c.EndFigure(true);
+        }
+        dc.DrawGeometry(fill, pen, g);
+    }
+
+    /// <summary>Turns what is drawn next (in view units) the way an object is turned on the page.</summary>
+    private DrawingContext.PushedState? Turned(DrawingContext dc, PageObject? o) =>
+        o is { Rotation: not 0 } ? dc.PushTransform(PageRenderer.Turn(o, Scale, (Vector)ToView(new Pt(0, 0)))) : null;
+
     private void DrawFrames(DrawingContext dc, Sheet sheet)
     {
-        foreach (var frame in sheet.Objects.OfType<TextFrame>())
+        foreach (var frame in sheet.All.OfType<TextFrame>())
         {
-            dc.DrawRectangle(null, Look.FrameEdge, Crisp(ToView(frame.Bounds)));
+            Outline(dc, frame, null, Look.FrameEdge);
             if (frame.Columns > 1)
                 foreach (var c in frame.ColumnBoxes().Skip(1))
-                    dc.DrawLine(Look.FrameEdge, ToView(new Pt(c.X - frame.Gutter / 2, c.Y)), ToView(new Pt(c.X - frame.Gutter / 2, c.Bottom)));
+                    dc.DrawLine(Look.FrameEdge, ToView(Shapes.ToPage(frame, new Pt(c.X - frame.Gutter / 2, c.Y))), ToView(Shapes.ToPage(frame, new Pt(c.X - frame.Gutter / 2, c.Bottom))));
             if (OversetMark(frame) is { } mark)
             {
                 dc.FillRectangle(Brushes.White, mark);
@@ -1348,11 +1609,12 @@ public sealed class PageView : Control
                 dc.DrawLine(pen, new Point(mark.Left + 3, mark.Center.Y), new Point(mark.Right - 3, mark.Center.Y));
             }
         }
-        if (LinkFrom is not null && sheet.Objects.FirstOrDefault(o => o.Id == LinkFrom) is { } from)
-            dc.DrawRectangle(Look.LinkFrom, new Pen(Look.Handle, 2), ToView(from.Bounds));
+        if (LinkFrom is not null && sheet.All.FirstOrDefault(o => o.Id == LinkFrom) is { } from)
+            Outline(dc, from, Look.LinkFrom, new Pen(Look.Handle, 2));
 
         // The chains of the selected text frames, as arrows from each frame to the next.
         var shown = new HashSet<string>();
+        var here = sheet.All.ToHashSet();
         foreach (var f in Selected.OfType<TextFrame>().Concat(LinkFrom is not null && Doc.Find(LinkFrom) is TextFrame lf ? [lf] : []))
         {
             if (!shown.Add(f.StoryId) || Doc.StoryOf(f) is not { } story) continue;
@@ -1361,11 +1623,13 @@ public sealed class PageView : Control
             {
                 var a = frames[i];
                 var b = frames[i + 1];
-                var onA = sheet.Objects.Contains(a);
-                var onB = sheet.Objects.Contains(b);
+                var onA = here.Contains(a);
+                var onB = here.Contains(b);
                 if (!onA && !onB) continue;
-                var start = onA ? ToView(new Pt(a.X + a.W, a.Y + a.H)) : ToView(new Pt(b.X, b.Y)) - new Vector(30, 30);
-                var end = onB ? ToView(new Pt(b.X, b.Y)) : start + new Vector(30, 30);
+                var aEnd = ToView(Shapes.ToPage(a, new Pt(a.X + a.W, a.Y + a.H)));
+                var bStart = ToView(Shapes.ToPage(b, new Pt(b.X, b.Y)));
+                var start = onA ? aEnd : bStart - new Vector(30, 30);
+                var end = onB ? bStart : start + new Vector(30, 30);
                 DrawArrow(dc, start, end);
             }
         }
@@ -1379,41 +1643,83 @@ public sealed class PageView : Control
             dc.DrawLine(Look.Chain, b, new Point(b.X - 9 * Math.Cos(angle + side), b.Y - 9 * Math.Sin(angle + side)));
     }
 
+    private void Square(DrawingContext dc, Pt at, bool hollow)
+    {
+        var c = ToView(at);
+        var r = new Rect(Math.Round(c.X - HandleSize / 2), Math.Round(c.Y - HandleSize / 2), HandleSize, HandleSize);
+        if (hollow) dc.DrawRectangle(Brushes.White, Look.Selection, r);
+        else dc.DrawRectangle(Look.Handle, new Pen(Brushes.White, 1), r);
+    }
+
     private void DrawSelection(DrawingContext dc)
     {
         var selected = Selected;
         foreach (var o in selected)
         {
-            if (o is not LineObject) dc.DrawRectangle(null, Look.Selection, Crisp(ToView(o.Bounds)));
-            if (Editing is not null) continue;
-            foreach (var h in Handles(o))
+            if (o is not LineObject) Outline(dc, o, null, o is GroupObject ? Look.Marquee : Look.Selection);
+            if (Editing is not null || EditingPoints == o.Id) continue;
+            foreach (var h in Handles(o)) Square(dc, h, o.Locked);
+            if (selected.Count == 1 && CanRotate(o) && !o.Locked)
             {
-                var c = ToView(h);
-                var r = new Rect(Math.Round(c.X - HandleSize / 2), Math.Round(c.Y - HandleSize / 2), HandleSize, HandleSize);
-                if (o.Locked) dc.DrawRectangle(Brushes.White, Look.Selection, r);
-                else dc.DrawRectangle(Look.Handle, new Pen(Brushes.White, 1), r);
+                var top = ToView(Shapes.ToPage(o, new Pt(o.X + o.W / 2, o.Y)));
+                var knob = ToView(RotateHandleAt(o));
+                dc.DrawLine(Look.Selection, top, knob);
+                dc.DrawEllipse(Look.Handle, new Pen(Brushes.White, 1), knob, HandleSize / 2 + 0.5, HandleSize / 2 + 0.5);
             }
+        }
+        if (EditingPoints is { } id && Doc.Find(id) is PathObject path) DrawPoints(dc, path.Nodes, -1);
+    }
+
+    /// <summary>A path's points as squares and their handles as dots on lines; <paramref name="first"/> marks the point that closes a path being drawn.</summary>
+    private void DrawPoints(DrawingContext dc, IReadOnlyList<PathNode> nodes, int first)
+    {
+        var line = new Pen(Look.Handle, 1);
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var n = nodes[i];
+            foreach (var h in new[] { n.In, n.Out })
+            {
+                if (h is not { } q) continue;
+                dc.DrawLine(line, ToView(n.At), ToView(q));
+                dc.DrawEllipse(Brushes.White, line, ToView(q), 3.5, 3.5);
+            }
+            Square(dc, n.At, hollow: i == first);
         }
     }
 
     private void DrawText(DrawingContext dc)
     {
         if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout) return;
-        bool OnSheet(int area) => CurrentSheet.Objects.Any(o => o.Id == layout.Areas[area].FrameId);
+        var here = CurrentSheet.All.ToDictionary(o => o.Id);
+        PageObject? FrameOf(int area) => here.GetValueOrDefault(layout.Areas[area].FrameId);
         if (t.Length > 0)
         {
             foreach (var (area, box) in layout.SelectionBoxes(t.Start, t.Start + t.Length))
-                if (OnSheet(area)) dc.FillRectangle(Look.TextSelection, ToView(box));
+                if (FrameOf(area) is { } f)
+                    using (Turned(dc, f))
+                        dc.FillRectangle(Look.TextSelection, ToView(box));
         }
         if (!_caretOn && IsFocused) return;
         var i = layout.LineOf(t.Caret);
-        if (i < 0 || !OnSheet(layout.Lines[i].Area)) return;
+        if (i < 0 || FrameOf(layout.Lines[i].Area) is not { } frame) return;
         var line = layout.Lines[i];
         var x = layout.CaretX(i, t.Caret);
         var top = ToView(new Pt(x, line.Baseline - line.Ascent));
         var bottom = ToView(new Pt(x, line.Baseline + line.Descent));
-        var cx = Math.Round(top.X) + 0.5;
-        dc.DrawLine(new Pen(Look.Caret, 1.5), new Point(cx, top.Y), new Point(cx, bottom.Y));
+        var cx = frame.Rotation == 0 ? Math.Round(top.X) + 0.5 : top.X;
+        using (Turned(dc, frame))
+            dc.DrawLine(new Pen(Look.Caret, 1.5), new Point(cx, top.Y), new Point(cx, bottom.Y));
+    }
+
+    /// <summary>The path the Pen is drawing, with a line on to the mouse.</summary>
+    private void DrawPen(DrawingContext dc)
+    {
+        if (_pen is not { Count: > 0 } nodes) return;
+        if (nodes.Count > 1)
+            using (dc.PushTransform(Matrix.CreateScale(Scale, Scale) * Matrix.CreateTranslation(ToView(new Pt(0, 0)).X, ToView(new Pt(0, 0)).Y)))
+                dc.DrawGeometry(null, new Pen(Look.Handle, 1.5 / Scale), PageRenderer.PathGeometry(new PathObject(), nodes, closed: false));
+        if (_penPreview is { } q && _drag != Drag.Pen) dc.DrawLine(Look.Marquee, ToView(nodes[^1].At), ToView(q));
+        DrawPoints(dc, nodes, nodes.Count >= 3 ? 0 : -1);
     }
 
     private void DrawDrag(DrawingContext dc)
@@ -1515,7 +1821,7 @@ public sealed class PageView : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        if (_drag is Drag.Move or Drag.Resize or Drag.Crop && _editor.Busy) _editor.Commit("Move");
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node && _editor.Busy) _editor.Commit("Move");
         _drag = Drag.None;
     }
 }

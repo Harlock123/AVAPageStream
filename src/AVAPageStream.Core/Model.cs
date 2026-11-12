@@ -63,6 +63,10 @@ public sealed record Guide(bool Vertical, double Position);
 public abstract class Sheet
 {
     public List<PageObject> Objects { get; set; } = [];
+
+    /// <summary>The objects and everything inside their groups, in drawing order.</summary>
+    [JsonIgnore]
+    public IEnumerable<PageObject> All => Shapes.Flatten(Objects);
     public List<Guide> Guides { get; set; } = [];
 }
 
@@ -101,6 +105,8 @@ public enum Fit { Stretch, Fit, Fill, Actual }
 [JsonDerivedType(typeof(LineObject), "line")]
 [JsonDerivedType(typeof(TextFrame), "text")]
 [JsonDerivedType(typeof(PictureObject), "picture")]
+[JsonDerivedType(typeof(PathObject), "path")]
+[JsonDerivedType(typeof(GroupObject), "group")]
 public abstract class PageObject
 {
     public string Id { get; set; } = "";
@@ -120,14 +126,36 @@ public abstract class PageObject
 
     /// <summary>The box text keeps out of when this object wraps.</summary>
     [JsonIgnore]
-    public Box WrapBox => Box.FromCorners(new Pt(X, Y), new Pt(X + W, Y + H)).Inflate(WrapGap);
+    public Box WrapBox => Shapes.Extent(this).Inflate(WrapGap);
 
+    /// <summary>Turned clockwise about the frame's centre, in degrees.</summary>
+    public double Rotation { get; set; }
+
+    /// <summary>
+    /// The frame, unrotated. Setting it moves and resizes the object (a group moves and scales what is in it, a path
+    /// its points), so every move and resize goes through here.
+    /// </summary>
     [JsonIgnore]
     public Box Bounds
     {
         get => new(X, Y, W, H);
-        set { X = value.X; Y = value.Y; W = value.W; H = value.H; }
+        set => SetBounds(value);
     }
+
+    protected virtual void SetBounds(Box b)
+    {
+        X = b.X;
+        Y = b.Y;
+        W = b.W;
+        H = b.H;
+    }
+
+    public void MoveBy(double dx, double dy) => Bounds = Bounds.Offset(dx, dy);
+
+    /// <summary>A point's place when a box is mapped onto another (for scaling what is inside a group or path).</summary>
+    protected static Pt Map(Pt p, Box from, Box to) => new(
+        to.X + (from.W == 0 ? p.X - from.X : (p.X - from.X) * to.W / from.W),
+        to.Y + (from.H == 0 ? p.Y - from.Y : (p.Y - from.Y) * to.H / from.H));
 
     /// <summary>What this kind of object is called in the window.</summary>
     [JsonIgnore]
@@ -195,4 +223,86 @@ public sealed class PictureObject : PageObject
     public double OffsetY { get; set; }
 
     public override string Kind => "Picture";
+}
+
+/// <summary>A point of a path, with the Bézier handles that shape the curve into it and out of it (none: a corner).</summary>
+public sealed record PathNode(double X, double Y, double? InX = null, double? InY = null, double? OutX = null, double? OutY = null)
+{
+    public Pt At => new(X, Y);
+    public Pt? In => InX is { } x && InY is { } y ? new Pt(x, y) : null;
+    public Pt? Out => OutX is { } x && OutY is { } y ? new Pt(x, y) : null;
+
+    public static PathNode Corner(Pt p) => new(p.X, p.Y);
+
+    /// <summary>A smooth point: its handle out where it is dragged to, and the handle in mirrored.</summary>
+    public static PathNode Smooth(Pt p, Pt handle) => new(p.X, p.Y, 2 * p.X - handle.X, 2 * p.Y - handle.Y, handle.X, handle.Y);
+
+    public PathNode Moved(Func<Pt, Pt> f)
+    {
+        var at = f(At);
+        var i = In is { } a ? f(a) : (Pt?)null;
+        var o = Out is { } b ? f(b) : (Pt?)null;
+        return new(at.X, at.Y, i?.X, i?.Y, o?.X, o?.Y);
+    }
+}
+
+/// <summary>A polygon or Bézier path: its points in page points, its frame the box round them and their handles.</summary>
+public sealed class PathObject : PageObject
+{
+    public List<PathNode> Nodes { get; set; } = [];
+
+    /// <summary>Whether the last point joins back to the first (only a closed path is filled).</summary>
+    public bool Closed { get; set; }
+
+    public override string Kind => Nodes.All(n => n.In is null && n.Out is null) ? (Closed ? "Polygon" : "Polyline") : "Path";
+
+    /// <summary>Sets the frame to the box round the points and handles, without moving them.</summary>
+    public void Fit()
+    {
+        var pts = Nodes.SelectMany(n => new[] { n.At, n.In ?? n.At, n.Out ?? n.At }).ToList();
+        if (pts.Count == 0) return;
+        var b = Box.FromCorners(new Pt(pts.Min(p => p.X), pts.Min(p => p.Y)), new Pt(pts.Max(p => p.X), pts.Max(p => p.Y)));
+        (X, Y, W, H) = (b.X, b.Y, b.W, b.H);
+    }
+
+    protected override void SetBounds(Box b)
+    {
+        var from = Bounds;
+        Nodes = Nodes.Select(n => n.Moved(p => Map(p, from, b))).ToList();
+        base.SetBounds(b);
+    }
+}
+
+/// <summary>Objects that move, resize and arrange as one. Its frame is the box round them.</summary>
+public sealed class GroupObject : PageObject
+{
+    public GroupObject()
+    {
+        Stroke = null;
+    }
+
+    public List<PageObject> Children { get; set; } = [];
+
+    public override string Kind => "Group";
+
+    /// <summary>Sets the frame to the box round what is in the group, without moving it.</summary>
+    public void Fit()
+    {
+        if (Children.Count == 0) return;
+        var b = Box.Union(Children.Select(Shapes.Extent));
+        (X, Y, W, H) = (b.X, b.Y, b.W, b.H);
+    }
+
+    protected override void SetBounds(Box b)
+    {
+        var from = Bounds;
+        foreach (var c in Children)
+        {
+            var cb = c.Bounds;
+            var tl = Map(new Pt(cb.X, cb.Y), from, b);
+            var br = Map(new Pt(cb.Right, cb.Bottom), from, b);
+            c.Bounds = new Box(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
+        }
+        base.SetBounds(b);
+    }
 }

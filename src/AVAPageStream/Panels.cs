@@ -115,6 +115,7 @@ public sealed class SidePanel : TabControl
     public TextBox YBox { get; } = Ui.Box();
     public TextBox WBox { get; } = Ui.Box();
     public TextBox HBox { get; } = Ui.Box();
+    public TextBox RotationBox { get; } = Ui.Box("degrees, clockwise");
     public TextBox FillBox { get; } = Ui.Box("none, a name or #RRGGBB");
     public TextBox StrokeBox { get; } = Ui.Box("none, a name or #RRGGBB");
     public TextBox StrokeWidthBox { get; } = Ui.Box();
@@ -130,6 +131,7 @@ public sealed class SidePanel : TabControl
     public TextBox WrapGapBox { get; } = Ui.Box();
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
     private readonly StackPanel _cornerRow = new();
+    private readonly StackPanel _rotationRow = new();
     private readonly StackPanel _frameRows = new();
     private readonly StackPanel _pictureRows = new();
     private readonly Border _fillSwatch = Swatch();
@@ -263,10 +265,23 @@ public sealed class SidePanel : TabControl
             swatchMenu.Children.Add(b);
         }
 
-        MeasureBox(XBox, (o, v) => o.X = v, "Move");
-        MeasureBox(YBox, (o, v) => o.Y = v, "Move");
-        MeasureBox(WBox, (o, v) => o.W = Math.Max(o is LineObject ? 0 : 1, v), "Resize");
-        MeasureBox(HBox, (o, v) => o.H = Math.Max(o is LineObject ? 0 : 1, v), "Resize");
+        // Through Bounds, so a group or path moves (and scales) what is in it.
+        MeasureBox(XBox, (o, v) => o.Bounds = o.Bounds with { X = v }, "Move");
+        MeasureBox(YBox, (o, v) => o.Bounds = o.Bounds with { Y = v }, "Move");
+        MeasureBox(WBox, (o, v) => o.Bounds = o.Bounds with { W = Math.Max(o is LineObject or PathObject ? 0 : 1, v) }, "Resize");
+        MeasureBox(HBox, (o, v) => o.Bounds = o.Bounds with { H = Math.Max(o is LineObject or PathObject ? 0 : 1, v) }, "Resize");
+        Commit(RotationBox, text =>
+        {
+            if (View.Selected.Count == 0) return;
+            var clean = text.Replace("°", "").Trim();
+            if (!double.TryParse(clean, NumberStyles.Float, CultureInfo.InvariantCulture, out var degrees))
+            {
+                _window.Say("Type an angle in degrees, such as 15 or -90.");
+                return;
+            }
+            var angle = PageView.Normalise(Math.Round(degrees, 2));
+            ChangeSelected("Rotate", o => { if (o is not (LineObject or GroupObject)) o.Rotation = angle; });
+        });
         MeasureBox(StrokeWidthBox, (o, v) => o.StrokeWidth = Math.Max(0, v), "Stroke width", remember: true);
         MeasureBox(CornerBox, (o, v) => { if (o is RectangleObject r) r.CornerRadius = Math.Max(0, v); }, "Corner radius");
         MeasureBox(GutterBox, (o, v) => { if (o is TextFrame f) f.Gutter = Math.Max(0, v); }, "Gutter");
@@ -301,6 +316,7 @@ public sealed class SidePanel : TabControl
         };
 
         _cornerRow.Children.Add(Ui.Row(("Corners", CornerBox)));
+        _rotationRow.Children.Add(Ui.Row(("Rotation", RotationBox)));
         _frameRows.Children.AddRange([
             Ui.Heading("Text frame"),
             Ui.Row(("Columns", ColumnsBox)),
@@ -327,6 +343,7 @@ public sealed class SidePanel : TabControl
             Ui.Heading("Frame"),
             Ui.Row(("X", XBox), ("Y", YBox)),
             Ui.Row(("W", WBox), ("H", HBox)),
+            _rotationRow,
             Ui.Heading("Colour"),
             Ui.Row(("Fill", WithSwatch(FillBox, _fillSwatch))),
             Ui.Row(("Stroke", WithSwatch(StrokeBox, _strokeSwatch))),
@@ -815,7 +832,7 @@ public sealed class SidePanel : TabControl
         ObjectTitle.Text = selected.Count switch
         {
             0 => "Nothing selected",
-            1 => selected[0].Kind + (selected[0].Locked ? " (locked)" : ""),
+            1 => selected[0].Kind + (selected[0] is GroupObject g ? $" of {g.Children.Count}" : "") + (selected[0].Locked ? " (locked)" : ""),
             _ => $"{selected.Count} objects",
         };
         if (selected.Count == 0) return;
@@ -833,6 +850,8 @@ public sealed class SidePanel : TabControl
         _strokeSwatch.Background = Brush(first.Stroke);
         Set(StrokeWidthBox, Units.Format(first.StrokeWidth, Unit));
         _cornerRow.IsVisible = one is RectangleObject;
+        _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject));
+        Set(RotationBox, first.Rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
         if (one is RectangleObject r) Set(CornerBox, Units.Format(r.CornerRadius, Unit));
         _frameRows.IsVisible = one is TextFrame;
         if (one is TextFrame f)

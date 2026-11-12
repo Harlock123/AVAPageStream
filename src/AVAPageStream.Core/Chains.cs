@@ -20,10 +20,11 @@ public static class Chains
         foreach (var frame in FramesOf(doc, story))
         {
             var sheet = doc.SheetOf(frame.Id);
-            var objects = sheet?.Objects ?? [];
+            var objects = sheet?.All.ToList() ?? [];
             var wrapping = objects.Skip(objects.IndexOf(frame) + 1);
-            if (sheet is Page page && doc.Master(page.Master) is { } master) wrapping = master.Objects.Concat(wrapping);
-            var keep = wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(o => o.WrapBox).ToList();
+            if (sheet is Page page && doc.MasterFor(page) is { } master) wrapping = master.All.Concat(wrapping);
+            // A turned frame sets its text in its own unturned frame, where the page's wrap boxes don't fall: it keeps its text whole.
+            var keep = frame.Rotation != 0 ? [] : wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(o => o.WrapBox).ToList();
             var column = 0;
             foreach (var box in frame.ColumnBoxes())
             {
@@ -43,7 +44,7 @@ public static class Chains
         if (story.Frames.Count == 0) return 0;
         var first = story.Frames[0];
         for (var i = 0; i < doc.Pages.Count; i++)
-            if (doc.Pages[i].Objects.Any(o => o.Id == first)) return i + 1;
+            if (doc.Pages[i].All.Any(o => o.Id == first)) return i + 1;
         return 0;
     }
 
