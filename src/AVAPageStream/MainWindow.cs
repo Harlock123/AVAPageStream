@@ -67,6 +67,48 @@ public sealed class MainWindow : Window
     /// <summary>Sends a PDF to the printer, returning why it couldn't; tests answer it themselves.</summary>
     public Func<string, Task<string?>> SendToPrinter { get; set; } = Printing.Send;
 
+    /// <summary>The user's own dictionary: a word a line.</summary>
+    public string UserWordsPath { get; set; } = Path.Combine(AppSettings.Folder, "words.txt");
+
+    private HashSet<string>? _userWords;
+
+    /// <summary>The words spelling passes besides the dictionary's: the user's own and the document's ignored ones.</summary>
+    public ISet<string> SpellingWords()
+    {
+        _userWords ??= File.Exists(UserWordsPath) ? [.. File.ReadAllLines(UserWordsPath).Select(l => l.Trim()).Where(l => l.Length > 0)] : [];
+        var all = new HashSet<string>(_userWords);
+        all.UnionWith(Editor.Doc.IgnoredWords);
+        return all;
+    }
+
+    /// <summary>Adds a word to the user's own dictionary.</summary>
+    public void AddWord(string word)
+    {
+        SpellingWords();
+        if (!_userWords!.Add(word)) return;
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(UserWordsPath)!);
+            File.WriteAllLines(UserWordsPath, _userWords.Order(StringComparer.OrdinalIgnoreCase));
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't save the dictionary: {e.Message}");
+        }
+        View.RecheckSpelling();
+        Say($"Added \"{word}\" to your dictionary.");
+    }
+
+    /// <summary>Opens the spelling window, which goes from the caret through the document.</summary>
+    public SpellingWindow OpenSpelling()
+    {
+        var w = new SpellingWindow(this);
+        w.Show(this);
+        return w;
+    }
+
+    private readonly MenuItem _spellItem = new() { Header = "Check spelling as you _type", ToggleType = MenuItemToggleType.CheckBox };
+
     /// <summary>The folder templates are saved in.</summary>
     public string TemplatesFolder { get; set; } = Path.Combine(AppSettings.Folder, "templates");
 
@@ -92,7 +134,8 @@ public sealed class MainWindow : Window
         Background = Look.Window;
         Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://AVAPageStream/Assets/AVAPageStream.png")));
 
-        View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides, ShowGrid = Settings.ShowGrid, SnapGrid = Settings.SnapGrid };
+        View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides, ShowGrid = Settings.ShowGrid, SnapGrid = Settings.SnapGrid, CheckSpelling = Settings.CheckSpelling };
+        View.SpellingWords = SpellingWords;
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
         View.PickImage = async () => await PickOpen("image") is { } path ? await File.ReadAllBytesAsync(path) : null;
@@ -169,6 +212,14 @@ public sealed class MainWindow : Window
             SaveSettings();
         };
         _gridItem.Click += (_, _) => SetGrid(show: !View.ShowGrid, snap: View.SnapGrid);
+        _spellItem.IsChecked = Settings.CheckSpelling;
+        _spellItem.Click += (_, _) =>
+        {
+            View.CheckSpelling = Settings.CheckSpelling = !View.CheckSpelling;
+            _spellItem.IsChecked = View.CheckSpelling;
+            View.InvalidateVisual();
+            SaveSettings();
+        };
         _snapGridItem.Click += (_, _) => SetGrid(show: View.ShowGrid || !View.SnapGrid, snap: !View.SnapGrid);
         _recentMenu.SubmenuOpened += (_, _) => FillRecent();
         _templatesMenu.SubmenuOpened += (_, _) => FillTemplates();
@@ -235,6 +286,7 @@ public sealed class MainWindow : Window
                         _guidesItem,
                         _gridItem,
                         _snapGridItem,
+                        _spellItem,
                     },
                 },
                 new MenuItem
@@ -269,6 +321,7 @@ public sealed class MainWindow : Window
                         new Separator(),
                         Item("_Story editor…", () => OpenStoryEditor(), "Ctrl+Shift+E"),
                         Item("Table of _contents…", () => _ = MakeContents()),
+                        Item("Check _spelling…", () => OpenSpelling(), "F7"),
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
                         Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
@@ -1063,6 +1116,12 @@ public sealed class MainWindow : Window
     {
         var command = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
         var shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+        if (e.Key == Key.F7)
+        {
+            OpenSpelling();
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.F3)
         {
             if (!FindBar.IsVisible) ShowFind();

@@ -11,6 +11,7 @@ public sealed class AppSettings
     public bool ShowGuides { get; set; } = true;
     public bool ShowGrid { get; set; }
     public bool SnapGrid { get; set; }
+    public bool CheckSpelling { get; set; } = true;
     public Unit Unit { get; set; } = Unit.Point;
     public int ExportDpi { get; set; } = 150;
 

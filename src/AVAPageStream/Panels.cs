@@ -209,6 +209,8 @@ public sealed class SidePanel : TabControl
     public TextBox SwatchNameBox { get; } = Ui.Box("Name");
     public TextBox SwatchValueBox { get; } = Ui.Box("#RRGGBB");
 
+    public ComboBox LanguageChoice { get; } = new() { ItemsSource = Speller.Languages.Select(l => l.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+
     public ComboBox UnitChoice { get; } = new() { ItemsSource = Units.All.Select(Units.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
 
     // Drawn with the tab control's own template: themes look a control's template up by its exact type.
@@ -824,6 +826,13 @@ public sealed class SidePanel : TabControl
             SwatchNameBox.Text = w.Name;
             SwatchValueBox.Text = w.Colour;
         };
+        LanguageChoice.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || LanguageChoice.SelectedIndex < 0) return;
+            var code = Speller.Languages[LanguageChoice.SelectedIndex].Code;
+            if (code != Doc.Language) Editor.Change("Spelling language", d => d.Language = code);
+            View.InvalidateVisual();
+        };
         FacingBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -877,6 +886,8 @@ public sealed class SidePanel : TabControl
                     Text = "Colours picked by a swatch's name follow it when it changes.",
                     Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4),
                 },
+                Ui.Heading("Spelling"),
+                Ui.Row(("Language", LanguageChoice)),
                 Ui.Heading("Units"),
                 Ui.Row(("Measure in", UnitChoice)),
                 new TextBlock
@@ -1154,6 +1165,7 @@ public sealed class SidePanel : TabControl
         Set(GridBox, Units.Format(s.Grid, Unit));
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
         FacingBox.IsChecked = s.Facing;
+        LanguageChoice.SelectedIndex = Math.Max(0, Array.FindIndex(Speller.Languages, l => l.Code == Doc.Language));
         if (SwatchList.ItemsSource is not IEnumerable<Swatch> shown || !shown.SequenceEqual(Doc.Swatches))
         {
             var selected = SelectedSwatch?.Name;

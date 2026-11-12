@@ -133,6 +133,31 @@ public sealed class PageView : Control
 
     private bool Snapping => Snap || SnapGrid;
 
+    /// <summary>Whether misspelt words are underlined, and the words to pass besides the dictionary's.</summary>
+    public bool CheckSpelling { get; set; } = true;
+    public Func<ISet<string>> SpellingWords { get; set; } = () => new HashSet<string>();
+
+    private readonly Dictionary<string, (string Text, string Language, int Words, List<Match> Found)> _misspelt = [];
+
+    /// <summary>A story's misspelt words, worked out again only when its text, the language or the passed words change.</summary>
+    public List<Match> MisspeltIn(string storyId)
+    {
+        if (!Doc.Stories.TryGetValue(storyId, out var story)) return [];
+        var also = SpellingWords();
+        var key = also.Count + Doc.IgnoredWords.Count * 7919;
+        if (_misspelt.TryGetValue(storyId, out var c) && c.Text == story.Text && c.Language == Doc.Language && c.Words == key) return c.Found;
+        var found = Speller.For(Doc.Language).Misspelt(story, also).ToList();
+        _misspelt[storyId] = (story.Text, Doc.Language, key, found);
+        return found;
+    }
+
+    /// <summary>Forgets what was found misspelt (after a word is added to the dictionary).</summary>
+    public void RecheckSpelling()
+    {
+        _misspelt.Clear();
+        InvalidateVisual();
+    }
+
     public SheetRef Sheet
     {
         get => _sheet;
@@ -1588,6 +1613,7 @@ public sealed class PageView : Control
             var spine = Math.Round(Origin.X + doc.Setup.PageWidth * Scale) + 0.5;
             dc.DrawLine(new Pen(Look.Faint, 1), new Point(spine, ToView(new Pt(0, 0)).Y), new Point(spine, ToView(new Pt(0, doc.Setup.PageHeight)).Y));
         }
+        if (CheckSpelling) DrawMisspelt(dc);
         DrawSelection(dc);
         DrawText(dc);
         DrawPen(dc);
@@ -1788,6 +1814,33 @@ public sealed class PageView : Control
         var cx = frame.Rotation == 0 ? Math.Round(top.X) + 0.5 : top.X;
         using (Turned(dc, frame))
             dc.DrawLine(new Pen(Look.Caret, 1.5), new Point(cx, top.Y), new Point(cx, bottom.Y));
+    }
+
+    /// <summary>A red wavy line under each misspelt word on the page being worked on (on screen only).</summary>
+    private void DrawMisspelt(DrawingContext dc)
+    {
+        var here = CurrentSheet.All.ToDictionary(o => o.Id);
+        var pen = new Pen(Look.Overset, 1);
+        foreach (var storyId in here.Values.OfType<TextFrame>().Select(f => f.StoryId).Distinct())
+        {
+            if (LayoutOf(storyId) is not { } layout) continue;
+            foreach (var m in MisspeltIn(storyId))
+                foreach (var (area, box) in layout.SelectionBoxes(m.Start, m.Start + m.Length))
+                {
+                    if (!here.TryGetValue(layout.Areas[area].FrameId, out var frame)) continue;
+                    var a = ToView(new Pt(box.X, box.Bottom));
+                    var b = ToView(new Pt(box.Right, box.Bottom));
+                    var g = new StreamGeometry();
+                    using (var c = g.Open())
+                    {
+                        c.BeginFigure(new Point(a.X, a.Y), false);
+                        var up = true;
+                        for (var x = a.X + 2; x <= b.X; x += 2, up = !up) c.LineTo(new Point(x, a.Y + (up ? -1.5 : 0.5)));
+                        c.EndFigure(false);
+                    }
+                    using (Turned(dc, frame)) dc.DrawGeometry(null, pen, g);
+                }
+        }
     }
 
     /// <summary>The path the Pen is drawing, with a line on to the mouse.</summary>

@@ -26,7 +26,14 @@ public partial class WindowTests
 
     private static MainWindow Open(string? file = null, int width = 1360, int height = 880)
     {
-        var w = new MainWindow(Path.Combine(Folder(), "settings.json"), file) { Width = width, Height = height };
+        var home = Folder();
+        var w = new MainWindow(Path.Combine(home, "settings.json"), file)
+        {
+            Width = width,
+            Height = height,
+            UserWordsPath = Path.Combine(home, "words.txt"),       // never the real dictionary
+            TemplatesFolder = Path.Combine(home, "templates"),     // or the real templates
+        };
         w.Ask = (_, _, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked.");
         w.PickOpen = _ => throw new Xunit.Sdk.XunitException("Nothing should have asked for a file.");
         w.PickSave = (_, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked where to save.");

@@ -55,6 +55,12 @@ public sealed class Document
     public List<MasterPage> Masters { get; set; } = [];
     public List<Page> Pages { get; set; } = [];
 
+    /// <summary>The language spelling is checked in ("en-US", "en-GB").</summary>
+    public string Language { get; set; } = "en-US";
+
+    /// <summary>Words the spelling checker passes in this document (Ignore all).</summary>
+    public List<string> IgnoredWords { get; set; } = [];
+
     /// <summary>The number the next new id is made from.</summary>
     public int NextId { get; set; } = 1;
 
