@@ -343,7 +343,11 @@ public sealed class PictureObject : PageObject
 }
 
 /// <summary>A point of a path, with the Bézier handles that shape the curve into it and out of it (none: a corner).</summary>
-public sealed record PathNode(double X, double Y, double? InX = null, double? InY = null, double? OutX = null, double? OutY = null)
+/// <summary>
+/// A point of a path, with its handles if it has them. <see cref="Start"/> begins a new part of the path (as each
+/// letter's outline and the hole in an o are), not joined to the point before.
+/// </summary>
+public sealed record PathNode(double X, double Y, double? InX = null, double? InY = null, double? OutX = null, double? OutY = null, bool Start = false)
 {
     public Pt At => new(X, Y);
     public Pt? In => InX is { } x && InY is { } y ? new Pt(x, y) : null;
@@ -359,7 +363,7 @@ public sealed record PathNode(double X, double Y, double? InX = null, double? In
         var at = f(At);
         var i = In is { } a ? f(a) : (Pt?)null;
         var o = Out is { } b ? f(b) : (Pt?)null;
-        return new(at.X, at.Y, i?.X, i?.Y, o?.X, o?.Y);
+        return new(at.X, at.Y, i?.X, i?.Y, o?.X, o?.Y, Start);
     }
 }
 
@@ -370,6 +374,21 @@ public sealed class PathObject : PageObject
 
     /// <summary>Whether the last point joins back to the first (only a closed path is filled).</summary>
     public bool Closed { get; set; }
+
+    /// <summary>Filled by the non-zero rule (as letters are) rather than even-odd, where its parts overlap.</summary>
+    public bool NonZero { get; set; }
+
+    /// <summary>Its parts, each a run of points from one that starts a part (the first always does).</summary>
+    public List<List<PathNode>> Parts()
+    {
+        var parts = new List<List<PathNode>>();
+        foreach (var n in Nodes)
+        {
+            if (parts.Count == 0 || n.Start) parts.Add([]);
+            parts[^1].Add(n);
+        }
+        return parts;
+    }
 
     /// <summary>The story set along the path, if it has text on it.</summary>
     public string? StoryId { get; set; }

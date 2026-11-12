@@ -175,6 +175,10 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **Object styles** (`Document.ObjectStyles`, Core's `ObjectStyles.cs`) copy their look onto objects
   (`ObjectStyle.ApplyTo`); `PageObject.ObjectStyle` only names the style. A new look property of objects belongs in
   `ObjectStyle`, its `From` and `ApplyTo`.
+- **Text to outlines** (`Outlines.cs`) records `PageRenderer.DrawCharacters` into a `DrawingGroup` and turns each
+  `GlyphRun`'s glyphs into Skia glyph paths, reading the font file the run was shaped with through
+  `GlyphTypeface.PlatformTypeface.TryGetStream` (so the glyph numbers match). A path's parts start at a node with
+  `Start`; `PathObject.Parts()` splits them, and anything walking `Nodes` as one run should use it.
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

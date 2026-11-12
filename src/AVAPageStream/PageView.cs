@@ -226,6 +226,7 @@ public sealed class PageView : Control
     public IReadOnlyList<string> SelectedIds => _selection;
 
     internal Layouts Layouts => _layouts;
+    internal PageRenderer Renderer => _renderer;
 
     internal TextLayout? LayoutOf(string storyId) => _layouts.Of(Doc, storyId);
 
@@ -1361,7 +1362,10 @@ public sealed class PageView : Control
         _editor.Change("Delete point", d =>
         {
             var pth = (PathObject)d.Find(id)!;
-            pth.Nodes.RemoveAt(Math.Min(i, pth.Nodes.Count - 1));
+            var at = Math.Min(i, pth.Nodes.Count - 1);
+            var starts = pth.Nodes[at].Start;
+            pth.Nodes.RemoveAt(at);
+            if (starts && at < pth.Nodes.Count && at > 0) pth.Nodes[at] = pth.Nodes[at] with { Start = true }; // the part's next point starts it
             pth.Fit();
         });
         _lastNode = null;

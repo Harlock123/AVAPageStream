@@ -421,6 +421,23 @@ selected:
 Draw the path with no stroke to show the text alone. Text that runs past the path's end isn't shown: the story
 editor counts how much. Find and the spelling check go along paths too.
 
+### Text to outlines
+
+![A headline turned into outlines, filled with a gradient and stroked](docs/images/guide/outlines.png)
+
+**Object ▸ Text to outlines** (Ctrl+Shift+O) turns text into paths, shaped exactly as the letters were, for a
+headline or a logo that has to look the same everywhere, with no font needed to print it. The paths can be filled
+(a gradient too), stroked, given effects, and their points moved like any path's (double-click it).
+
+- With **text frames selected**, their text becomes outlines in its place: one path for each colour of text (grouped
+  if there are several), with the frame's opacity, blend and shadow. A frame with a fill or a stroke of its own stays
+  under them, empty; one without goes. A frame linked to others has to be unlinked first.
+- With **some text selected** in a frame, just those letters become outlines, on top of the text. The letters stay in
+  the text, made clear, so nothing after them moves; delete them if they aren't needed.
+
+Outlines are no longer text: they can't be edited as words, spelt, or found. Keep a copy of the frame (on a layer that
+doesn't print, say) if the words may change.
+
 ## Tables
 
 ![A table of tide times with a shaded header row, and the table's settings in the Object tab](docs/images/guide/tables.png)

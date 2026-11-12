@@ -113,4 +113,109 @@ public partial class WindowTests
         Assert.Equal((null, "@Blue"), (w.Editor.Doc.Find(b.Id)!.ObjectStyle, w.Editor.Doc.Find(b.Id)!.Fill));
         Done(w);
     }
+
+    private static byte[] Bytes(Avalonia.Media.Imaging.RenderTargetBitmap b)
+    {
+        var px = new byte[b.PixelSize.Width * b.PixelSize.Height * 4];
+        unsafe { fixed (byte* p = px) b.CopyPixels(new Avalonia.PixelRect(b.PixelSize), (nint)p, px.Length, b.PixelSize.Width * 4); }
+        return px;
+    }
+
+    /// <summary>How many pixels are dark in a bitmap, and how many of them are darkish in the other too.</summary>
+    private static (int Dark, int Both) Overlap(Avalonia.Media.Imaging.RenderTargetBitmap a, Avalonia.Media.Imaging.RenderTargetBitmap b, Avalonia.PixelRect r)
+    {
+        var (pa, pb, w) = (Bytes(a), Bytes(b), a.PixelSize.Width);
+        int Sum(byte[] px, int x, int y) { var o = (y * w + x) * 4; return px[o] + px[o + 1] + px[o + 2]; }
+        var (dark, both) = (0, 0);
+        for (var y = r.Y; y < r.Bottom; y++)
+            for (var x = r.X; x < r.Right; x++)
+            {
+                if (Sum(pa, x, y) > 300) continue;
+                dark++;
+                if (Sum(pb, x, y) < 450) both++;
+            }
+        return (dark, both);
+    }
+
+    [AvaloniaFact]
+    public void Text_turned_to_outlines_draws_where_the_text_did()
+    {
+        var w = Open();
+        var e = w.Editor;
+        e.Change("Page", d => d.Setup = d.Setup with { PageWidth = 400, PageHeight = 200 });
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 20, Y = 20, W = 360, H = 160 });
+        e.ReplaceText(f.StoryId, 0, 0, "Bog & Quay", new CharFormat(Fonts.Sans, 48, Bold: true));
+        e.ReplaceText(f.StoryId, e.Doc.Stories[f.StoryId].Length, 0, "\nunderlined serif", new CharFormat(Fonts.Serif, 28, Italic: true, Underline: true, Colour: "@Red"));
+        using var before = DrawPage(e.Doc);
+        w.View.Select([f.Id]);
+        w.TextToOutlines();
+        Assert.Null(e.Doc.Find(f.Id));                                     // the frame has gone, and its story
+        Assert.False(e.Doc.Stories.ContainsKey(f.StoryId));
+        var group = Assert.IsType<GroupObject>(e.Doc.Pages[0].Objects.Single());
+        Assert.Equal("Outlines", group.Name);
+        var paths = group.Children.Cast<PathObject>().ToList();
+        Assert.Equal(["#000000", "@Red"], paths.Select(p => p.Fill).Order());
+        Assert.All(paths, p => Assert.True(p.NonZero && p.Closed && p.Stroke is null));
+        Assert.True(paths[0].Parts().Count >= 10, $"{paths[0].Parts().Count} parts");      // a part for each contour: B's two holes, o's, &'s…
+        using var after = DrawPage(e.Doc);
+        var area = new Avalonia.PixelRect(20, 20, 360, 120);
+        var (dark, both) = Overlap(before, after, area);
+        Assert.True(dark > 1500 && both > dark * 0.95, $"{both} of {dark}");
+        var (dark2, both2) = Overlap(after, before, area);                  // and nothing where there wasn't text (edges are smoothed a little differently)
+        Assert.True(both2 > dark2 * 0.95, $"{both2} of {dark2}");
+        e.Undo();
+        Assert.NotNull(e.Doc.Find(f.Id));
+        Assert.Single(e.Doc.Pages[0].Objects);
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Selected_text_is_outlined_where_it_is_and_left_clear()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 50, Y = 50, W = 400, H = 100, Fill = "@Yellow" });
+        e.ReplaceText(f.StoryId, 0, 0, "Big Harbour Lights", new CharFormat(Fonts.Sans, 30));
+        var lineBefore = w.View.Layouts.Of(e.Doc, f.StoryId)!.Lines[0];
+        w.View.StartEditing((TextFrame)e.Doc.Find(f.Id)!);
+        (w.View.Editing!.Anchor, w.View.Editing.Caret) = (4, 11);          // "Harbour"
+        w.TextToOutlines();
+        var story = e.Doc.Stories[f.StoryId];
+        Assert.Equal("Big Harbour Lights", story.Text);                    // the text stays,
+        Assert.Equal(Editor.Clear, story.FormatAt(6).Colour);              // clear where it was outlined,
+        Assert.NotEqual(Editor.Clear, story.FormatAt(2).Colour);
+        Assert.Equal(lineBefore.Pieces.Last().X, w.View.Layouts.Of(e.Doc, f.StoryId)!.Lines[0].Pieces.Last().X); // and nothing moves
+        var path = Assert.IsType<PathObject>(e.Doc.Pages[0].Objects[1]);
+        var measure = w.View.Layouts.Measurer;
+        var harbourX = 50 + TextFlow.Measure(measure, "Big ", story.FormatAt(0));
+        Assert.InRange(path.X, harbourX - 1, harbourX + 4);               // the H's stem, just inside where the word starts
+        Assert.InRange(path.X + path.W, harbourX + TextFlow.Measure(measure, "Harbour", story.FormatAt(0)) - 4, harbourX + TextFlow.Measure(measure, "Harbour", story.FormatAt(0)) + 1);
+        e.Undo();                                                          // one step puts it all back
+        Assert.Single(e.Doc.Pages[0].Objects);
+        Assert.NotEqual(Editor.Clear, e.Doc.Stories[f.StoryId].FormatAt(6).Colour);
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Linked_frames_are_not_outlined_and_a_filled_frame_stays()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var a = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 120, H = 40 });
+        var b = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 300, W = 120, H = 40 });
+        e.ReplaceText(a.StoryId, 0, 0, "A long story that runs on into the next frame and further still.");
+        Assert.Null(e.TryChange("Link", d => Chains.Link(d, (TextFrame)d.Find(a.Id)!, (TextFrame)d.Find(b.Id)!)));
+        w.View.Select([a.Id]);
+        w.TextToOutlines();
+        Assert.Contains("unlink it first", w.Message.Text);
+        Assert.NotNull(e.Doc.Find(a.Id));
+        var c = e.Add(SheetRef.PageAt(0), new TextFrame { X = 300, Y = 72, W = 200, H = 60, Fill = "@Cyan", Shadow = new Shadow() });
+        e.ReplaceText(c.StoryId, 0, 0, "Kept box");
+        w.View.Select([c.Id]);
+        w.TextToOutlines();
+        var kept = (TextFrame)e.Doc.Find(c.Id)!;
+        Assert.Equal(("", (Shadow?)null), (e.Doc.Stories[kept.StoryId].Text, kept.Shadow)); // its text gone, its shadow gone to the outlines
+        Assert.NotNull(e.Doc.Pages[0].Objects.OfType<PathObject>().Single().Shadow);
+        Done(w);
+    }
 }

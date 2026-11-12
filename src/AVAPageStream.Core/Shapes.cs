@@ -72,11 +72,20 @@ public static class Shapes
         return new Keep(bounds, outline);
     }
 
-    /// <summary>A path's outline as straight segments: each curve cut into twelve.</summary>
-    public static List<Pt> Flatten(PathObject path)
+    /// <summary>A path's outline as straight segments, each curve cut into twelve: all its parts, or only its first.</summary>
+    public static List<Pt> Flatten(PathObject path, bool firstPart = false)
     {
         var pts = new List<Pt>();
-        var n = path.Nodes;
+        foreach (var part in path.Parts())
+        {
+            Flatten(part, path.Closed, pts);
+            if (firstPart) break;
+        }
+        return pts;
+    }
+
+    private static void Flatten(List<PathNode> n, bool closed, List<Pt> pts)
+    {
         void Segment(PathNode a, PathNode b)
         {
             if (a.Out is null && b.In is null) { pts.Add(b.At); return; }
@@ -89,11 +98,10 @@ public static class Shapes
                                u * u * u * p0.Y + 3 * u * u * t * p1.Y + 3 * u * t * t * p2.Y + t * t * t * p3.Y));
             }
         }
-        if (n.Count == 0) return pts;
+        if (n.Count == 0) return;
         pts.Add(n[0].At);
         for (var i = 1; i < n.Count; i++) Segment(n[i - 1], n[i]);
-        if (path.Closed) Segment(n[^1], n[0]);
-        return pts;
+        if (closed) Segment(n[^1], n[0]);
     }
 
     /// <summary>Objects and everything inside their groups, in the order they are drawn (a group before what it holds).</summary>

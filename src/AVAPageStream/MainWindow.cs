@@ -395,6 +395,7 @@ public sealed class MainWindow : Window
                         Item("Place _text…", () => _ = PlaceText()),
                         Item("Unlink text _frame", UnlinkSelected),
                         Item("Te_xt on path", TextOnPath),
+                        Item("Text to _outlines", TextToOutlines, "Ctrl+Shift+O"),
                         new Separator(),
                         new MenuItem
                         {
@@ -826,6 +827,49 @@ public sealed class MainWindow : Window
         var story = ((PathObject)Editor.Doc.Find(path.Id)!).StoryId!;
         View.Reveal(story, 0, Editor.Doc.Stories[story].Length);
         Say("Type the path's text. The Text tab sets its type, and its alignment where it sits on the path.");
+    }
+
+    /// <summary>
+    /// Turns text into paths: the selected frames' text, replacing it, or the selected characters, outlined where they
+    /// are and left in the text as clear characters (so nothing moves).
+    /// </summary>
+    public void TextToOutlines()
+    {
+        var doc = Editor.Doc;
+        if (View.Editing is { Length: > 0 } t)
+        {
+            if (!doc.Stories.TryGetValue(t.StoryId, out var story) || Chains.FramesOf(doc, story) is not { Count: > 0 } frames)
+            {
+                Say("Only a text frame's text can be turned into outlines.");
+                return;
+            }
+            var (start, length) = (t.Start, t.Length);
+            var outlines = frames.Select(f => (f.Id, Paths: Outlines.Of(View.Renderer, doc, f, start, start + length))).Where(o => o.Paths.Count > 0).ToList();
+            if (outlines.Count == 0) { Say("There is nothing to outline there: select some letters."); return; }
+            var made = new List<string>();
+            for (var i = 0; i < outlines.Count; i++)
+                if (Editor.AddOutlines(outlines[i].Id, outlines[i].Paths, replace: false, i == 0 ? (start, length) : null) is { } id) made.Add(id);
+            View.Select(made);
+            Say("Outlined: the paths are on top, and the text under them is clear, so it keeps its place. Delete it if it isn't wanted.");
+            return;
+        }
+        var selected = View.Selected.OfType<TextFrame>().Where(f => !f.Locked).ToList();
+        if (selected.Count == 0) { Say("Select a text frame, or some of its text, to turn into outlines."); return; }
+        foreach (var f in selected)
+            if (doc.Stories.TryGetValue(f.StoryId, out var s) && Chains.FramesOf(doc, s).Count > 1)
+            {
+                Say("One of those frames is linked to others: unlink it first, so its text has nowhere else to go.");
+                return;
+            }
+        var ids = new List<string>();
+        foreach (var f in selected)
+        {
+            var paths = Outlines.Of(View.Renderer, Editor.Doc, f);
+            if (Editor.AddOutlines(f.Id, paths, replace: true) is { } id) ids.Add(id);
+        }
+        if (ids.Count == 0) { Say("Those frames have no text to outline."); return; }
+        View.Select(ids);
+        Say("Turned into outlines: paths now, filled with the text's colours. Edit points (double-click) to reshape them.");
     }
 
     /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>
@@ -1389,6 +1433,7 @@ public sealed class MainWindow : Window
         {
             case Key.F when (e.KeyModifiers & KeyModifiers.Alt) != 0: InsertFootnote(); break;
             case Key.N: _ = New(); break;
+            case Key.O when shift && !inBox: TextToOutlines(); break;
             case Key.O: _ = OpenWithPicker(); break;
             case Key.S when shift: _ = SaveAs(); break;
             case Key.S: _ = Save(); break;

@@ -43,7 +43,7 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
 - **Text on a path**: type set along any curve or polyline, turned to follow it.
 - **Effects**: linear and radial gradients of any number of colours, opacity and blend modes, drop shadows and
   glows, and rounded or cut corners, on anything on the page; object styles that keep a look by name and update
-  everything in it; and rules above and below paragraphs, in their styles.
+  everything in it; rules above and below paragraphs, in their styles; and text turned into outlines.
 - **Linked pictures**, read from their files and updated when the files change, or kept in the document.
 - **Printing to the edge**: a bleed, and PDFs with crop marks and trim and bleed boxes.
 - **Preflight and packaging**: a list of what would go wrong in print (overset text, missing or low-resolution

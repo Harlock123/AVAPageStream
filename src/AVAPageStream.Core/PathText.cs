@@ -10,7 +10,7 @@ public sealed record PathGlyph(int Index, string Text, CharFormat Format, Pt At,
 /// </summary>
 public static class PathText
 {
-    public static List<Pt> Points(PathObject path) => Shapes.Flatten(path);
+    public static List<Pt> Points(PathObject path) => Shapes.Flatten(path, firstPart: true);
 
     public static double Length(IReadOnlyList<Pt> pts)
     {

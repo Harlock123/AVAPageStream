@@ -474,4 +474,31 @@ public partial class WindowTests
         Guide(w, "objectstyles");
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_outlines()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 80, W = 460, H = 140 });
+        e.ReplaceText(f.StoryId, 0, 0, "HARBOUR", new CharFormat(Fonts.Sans, 80, Bold: true));
+        w.View.Select([f.Id]);
+        w.TextToOutlines();
+        var path = (PathObject)w.View.Selected.Single();
+        e.Change("Gradient", d =>
+        {
+            var o = d.Find(path.Id)!;
+            o.Gradient = new Gradient(false, [new ColourStop(0, "@Blue"), new ColourStop(1, "@Cyan")], 90);
+            (o.Stroke, o.StrokeWidth) = ("@Blue", 1.5);
+        });
+        var below = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 230, W = 460, H = 60 });
+        e.ReplaceText(below.StoryId, 0, 0, "Each letter is a path now: filled with a gradient, stroked, and its points free to move.", new CharFormat(Fonts.Serif, 14, Italic: true));
+        w.View.Select([path.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0, 200);
+        Assert.Equal(13, path.Parts().Count); // H, U one each; A, R, O, R two; B three
+        w.Refresh();
+        Guide(w, "outlines");
+        Done(w);
+    }
 }

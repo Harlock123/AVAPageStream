@@ -244,39 +244,74 @@ internal sealed class PageRenderer
         if (para.RuleBelow is { } below && line.LastOfParagraph) Rule(below, line.Baseline + line.Descent + below.Offset + below.Weight / 2);
     }
 
+    /// <summary>The brushes used while drawing text for outlines, and the colour (as the document has it) each is for.</summary>
+    private Dictionary<IBrush, string?>? _outlining;
+
+    /// <summary>
+    /// Draws only a frame's characters (or those of them from <paramref name="start"/> to <paramref name="end"/>), with
+    /// no rules or leaders, for turning into outlines. Gives the colour each brush drawn with stands for.
+    /// </summary>
+    internal Dictionary<IBrush, string?> DrawCharacters(DrawingContext dc, Document doc, TextFrame frame, int? page, int start, int end)
+    {
+        _outlining = new Dictionary<IBrush, string?>(ReferenceEqualityComparer.Instance);
+        try
+        {
+            DrawStory(dc, doc, frame.StoryId, id => id == frame.Id, page, (start, end));
+            return _outlining;
+        }
+        finally
+        {
+            _outlining = null;
+        }
+    }
+
     /// <summary>The lines of a story that are set in the areas <paramref name="inArea"/> picks (a frame, or a table's cell).</summary>
-    private void DrawStory(DrawingContext dc, Document doc, string storyId, Func<string, bool> inArea, int? page)
+    private void DrawStory(DrawingContext dc, Document doc, string storyId, Func<string, bool> inArea, int? page, (int Start, int End)? only = null)
     {
         if (Layouts.Of(doc, storyId, page) is not { } layout) return;
         foreach (var line in layout.Lines)
         {
             if (!inArea(layout.Areas[line.Area].FrameId)) continue;
-            DrawRules(dc, doc, layout, line);
+            if (only is null) DrawRules(dc, doc, layout, line);
             foreach (var piece in line.Pieces)
             {
                 var given = piece.Format;
                 var f = TextFlow.AsSet(given);
                 var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
+                _outlining?.TryAdd(brush, f.Colour ?? Colours.Black);
                 var baseline = line.Baseline - f.Shift + piece.Drop;
                 if (piece.Tab)
                 {
-                    if (piece.Leader != '\0') DrawLeader(dc, piece, baseline, brush);
+                    if (piece.Leader != '\0' && only is null) DrawLeader(dc, piece, baseline, brush);
                     continue;
                 }
                 var text = layout.Display(piece.Start, piece.Length) + (piece.Hyphen ? "-" : "");
+                var x0 = piece.X;
+                if (only is var (from, to))
+                {
+                    if (piece.Start >= to || piece.Start + piece.Length <= from) continue;
+                    // Part of the piece: its characters from where the range starts, placed where they were set.
+                    if (text.Length == piece.Length + (piece.Hyphen ? 1 : 0) && (from > piece.Start || to < piece.Start + piece.Length))
+                    {
+                        var a = Math.Max(0, from - piece.Start);
+                        var b = Math.Min(piece.Length, to - piece.Start);
+                        x0 += TextFlow.Measure(Layouts.Measurer, text[..a], f);
+                        text = text[a..b] + (piece.Hyphen && b == piece.Length ? "-" : "");
+                    }
+                }
                 if (f.SmallCaps)
                 {
                     foreach (var (part, pf, offset) in TextFlow.SmallCapsPieces(text, f))
                     {
                         var ft = FontSupport.Format(part, pf, brush);
-                        var x = piece.X + TextFlow.Measure(Layouts.Measurer, text[..offset], f);
+                        var x = x0 + TextFlow.Measure(Layouts.Measurer, text[..offset], f);
                         dc.DrawText(ft, new Point(x, baseline - ft.Baseline));
                     }
                 }
                 else if (f.Tracking == 0)
                 {
                     var ft = FontSupport.Format(text, f, brush);
-                    dc.DrawText(ft, new Point(piece.X, baseline - ft.Baseline));
+                    dc.DrawText(ft, new Point(x0, baseline - ft.Baseline));
                 }
                 else
                 {
@@ -284,7 +319,7 @@ internal sealed class PageRenderer
                     {
                         if (text[i] == ' ') continue;
                         var ft = FontSupport.Format(text[i].ToString(), f, brush);
-                        var x = piece.X + TextFlow.Measure(Layouts.Measurer, text[..i], f);
+                        var x = x0 + TextFlow.Measure(Layouts.Measurer, text[..i], f);
                         dc.DrawText(ft, new Point(x, baseline - ft.Baseline));
                     }
                 }
@@ -293,7 +328,7 @@ internal sealed class PageRenderer
                     var visible = text.TrimEnd();
                     var w = TextFlow.Measure(Layouts.Measurer, visible, f);
                     var y = baseline + f.Size * 0.12;
-                    dc.DrawLine(new Pen(brush, Math.Max(0.5, f.Size * 0.06)), new Point(piece.X, y), new Point(piece.X + w, y));
+                    dc.DrawLine(new Pen(brush, Math.Max(0.5, f.Size * 0.06)), new Point(x0, y), new Point(x0 + w, y));
                 }
             }
         }
@@ -437,8 +472,8 @@ internal sealed class PageRenderer
         var close = closed ?? path.Closed;
         var g = new StreamGeometry();
         using var c = g.Open();
+        c.SetFillRule(path.NonZero ? FillRule.NonZero : FillRule.EvenOdd);
         if (nodes.Count == 0) return g;
-        c.BeginFigure(new Point(nodes[0].X, nodes[0].Y), close);
         void Segment(PathNode a, PathNode b)
         {
             if (a.Out is null && b.In is null) c.LineTo(new Point(b.X, b.Y));
@@ -449,9 +484,16 @@ internal sealed class PageRenderer
                 c.CubicBezierTo(new Point(p1.X, p1.Y), new Point(p2.X, p2.Y), new Point(b.X, b.Y));
             }
         }
-        for (var i = 1; i < nodes.Count; i++) Segment(nodes[i - 1], nodes[i]);
-        if (close && nodes.Count > 2) Segment(nodes[^1], nodes[0]);
-        c.EndFigure(close);
+        var first = 0;
+        for (var end = 1; end <= nodes.Count; end++)
+        {
+            if (end < nodes.Count && !nodes[end].Start) continue;
+            c.BeginFigure(new Point(nodes[first].X, nodes[first].Y), close);
+            for (var i = first + 1; i < end; i++) Segment(nodes[i - 1], nodes[i]);
+            if (close && end - first >= 2) Segment(nodes[end - 1], nodes[first]);
+            c.EndFigure(close);
+            first = end;
+        }
         return g;
     }
 

@@ -898,6 +898,58 @@ public sealed class Editor
         return null;
     }
 
+    /// <summary>The colour text outlined from a selection is left in: clear, so it keeps its place and nothing moves.</summary>
+    public const string Clear = "#00000000";
+
+    /// <summary>
+    /// Puts outlines of text above the frame they were made from: one path, or a group of a path for each colour.
+    /// With <paramref name="replace"/>, they take the frame's place and its effects: the frame goes, or keeps only its
+    /// own fill and stroke if it has them, its text gone. Otherwise <paramref name="clear"/>'s characters are made clear.
+    /// Gives the new object's id.
+    /// </summary>
+    public string? AddOutlines(string frameId, IReadOnlyList<PathObject> paths, bool replace, (int Start, int Length)? clear = null)
+    {
+        if (paths.Count == 0 || Doc.Find(frameId) is not TextFrame) return null;
+        return Change(replace ? "Text to outlines" : "Selection to outlines", d =>
+        {
+            var frame = (TextFrame)d.Find(frameId)!;
+            var list = Shapes.ContainerOf(d.SheetOf(frameId)!.Objects, frameId)!;
+            PageObject made;
+            if (paths.Count == 1) made = paths[0];
+            else
+            {
+                var group = new GroupObject { Children = [.. paths], Layer = frame.Layer };
+                group.Fit();
+                made = group;
+            }
+            foreach (var p in paths) p.Id = d.NewId("object");
+            if (made is GroupObject) made.Id = d.NewId("object");
+            made.Name = "Outlines";
+            made.Layer = frame.Layer;
+            list.Insert(list.IndexOf(frame) + 1, made);
+            var story = d.Stories[frame.StoryId];
+            if (replace)
+            {
+                (made.Opacity, made.Blend, made.Shadow) = (frame.Opacity, frame.Blend, frame.Shadow);
+                if (frame.Fill is not null || frame.Gradient is not null || frame.Stroke is not null)
+                {
+                    story.Delete(0, story.Length);
+                    (frame.Opacity, frame.Blend, frame.Shadow) = (1, BlendMode.Normal, null);
+                }
+                else
+                {
+                    Chains.Forget(d, frame);
+                    var around = Shapes.GroupsAround(d.SheetOf(frameId)!.Objects, frameId);
+                    list.Remove(frame);
+                    foreach (var g in around) g.Fit();
+                }
+            }
+            else if (clear is var (start, length))
+                story.FormatChars(start, length, f => f with { Colour = Clear });
+            return made.Id;
+        });
+    }
+
     /// <summary>Gives objects an object style's look, or (with null) takes them out of their style, keeping their look.</summary>
     public string? ApplyObjectStyle(IEnumerable<string> ids, string? style)
     {
