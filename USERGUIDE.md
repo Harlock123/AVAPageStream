@@ -301,8 +301,9 @@ Click a picture with the Picture tool to replace it. Pictures can be:
   PostScript in it: its shapes, lines, colours, gradients, the pictures inside it and its text, kept as vector so it
   prints sharp. Fonts the file carries (TrueType, Type 1 and Type 3) are drawn from it; fonts it only names, as
   printers have built in (Times, Helvetica, Courier and their bold and italic), are drawn with the Liberation fonts,
-  made to the same widths, so the text sets as it was meant to. For the rare file that uses something it can't read
-  (the Symbol font, Asian composite fonts, tiling patterns), [Ghostscript](https://ghostscript.com) draws it if it
+  made to the same widths, so the text sets as it was meant to. It reads composite and CID fonts (as Asian text and
+  Unicode fonts use), CFF fonts, the Symbol and Dingbats fonts, patterns and every kind of smooth shading. For the
+  rare file that uses something it can't read, [Ghostscript](https://ghostscript.com) draws it if it
   is installed, or the preview the file carries shows: in colour for the EPS files Illustrator, CorelDRAW and most Windows programs save (a TIFF preview), in grey
   for EPSI previews. With neither, it is a labelled box. The status bar says which drew it when it is placed.
 
@@ -511,7 +512,13 @@ or post online. Choose all the pages, the one shown, or a range such as `1-3, 7`
 - **links** from each entry of a table of contents to its heading's page, and from every web address in the text
   (`https://…` or `www.…`) to the web.
 
-After exporting or printing, the status bar says if preflight would find anything that will show in print.
+**CMYK, for a press.** Tick **In CMYK** when exporting a PDF and its colours are written as the inks they print with:
+a CMYK swatch's own inks, a spot swatch as its own ink at its tint, and every other colour converted to CMYK so it
+looks the same on screen. Pictures are converted too, except JPEG photographs, which stay in RGB rather than lose
+quality; the status bar says if there are any.
+
+Before exporting or printing, if preflight finds problems that will show in print, it asks whether to go on, or
+shows them. To stop it asking, untick **Ask before exporting or printing** in the preflight window.
 
 **PNG.** File › Export PNG… writes each page as a picture, at a resolution from 72 to 600 dots an inch. Several pages
 go to numbered files: `leaflet-1.png`, `leaflet-2.png`.
@@ -554,7 +561,9 @@ Click an entry to go to it: its page is shown and the object selected, or the ca
 folder you pick, ready to hand to a printer or take to another computer:
 
 - a copy of the document, its linked pictures copied into **Links** and the copy linked to them there;
-- the font files of the fonts it uses, in **Fonts** (the Liberation fonts are inside AVAPageStream, so they aren't);
+- the font files of the fonts it uses, in **Fonts** (the Liberation fonts are inside AVAPageStream, so they aren't),
+  found in the system's font folders or, where they are installed elsewhere, through fontconfig or Windows' list of
+  fonts;
 - **Report.txt**: the page size and bleed, the pictures, the fonts and where they came from, the inks it prints
   with, what preflight found, and anything that couldn't be found.
 

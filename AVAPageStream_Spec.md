@@ -589,7 +589,9 @@ Making what is there dependable on its way to a printer or a reader, before addi
 
 **Status (12 November 2026):** done. The trim and bleed boxes and the outline of bookmarks are added by an update
 appended to the PDF SkiaSharp writes (`PdfExtras.Finish`); links and destinations are SkiaSharp's own annotations.
-Preflight warns after exporting and printing, in the status bar, rather than stopping them. A font's licence is read
+Preflight asks before exporting and printing when it finds problems that will show (a setting turns that off). PDFs
+can be written in CMYK, by rewriting the colours of the finished file (`PdfColour`): JPEG pictures stay RGB, and it
+is not PDF/X (that needs an output intent and every picture converted). A font's licence is read
 from its OS/2 table; one installed but not found by name in the usual font folders can't be packaged.
 
 ### Milestone 6: EPS without Ghostscript
@@ -642,4 +644,31 @@ hint replacement and seac), Type 3 fonts (BuildGlyph and BuildChar), and the pri
 Liberation fonts (Liberation Mono now bundled for Courier). Tested with a Type 1 font built and encrypted in the
 tests, a Type 3 font like matplotlib's, and EPS text from pdftocairo and pdftops compared with rsvg-convert's
 picture. Not done: the Symbol and Dingbats fonts' encodings, composite (Type 0 and CID) and CFF fonts, and
-encoded number strings for xshow. Next: stage 4, the big programs' procedure sets.
+encoded number strings for xshow.
+
+Since then, the gaps filled: binary data straight in the program (Flate by an inflater of our own that stops at its
+end), strokepath, cshow, encoded number strings, the CIE colour spaces, masked images (ImageType 3 and 4), tiling
+patterns, smooth shading of types 1 and 4 to 7, the Symbol and Dingbats fonts, composite fonts (FMapType 2, 4, 5, 6
+and 9), CMaps, CIDFontType 0 and 2, and CFF font sets with Type 2 charstrings. Still not done: the escape-mapped
+composite fonts (FMapType 3, 7 and 8), CIDFontType 1, and binary tokens. Next: stage 4, the big programs' procedure
+sets, which needs EPS files from Illustrator, CorelDRAW, QuarkXPress and FreeHand to work through.
+
+### Milestone 7: design
+
+What a designer laying out a page reaches for, on the program's own shapes, frames and text:
+
+- **Gradients**: linear and radial fills of any number of colour stops (swatches and tints among them) on shapes,
+  frames and table cells, set and dragged in the Object tab and on the page; drawn the same on screen and in PDFs.
+- **Transparency**: an opacity for each object (and its fill and stroke apart), and blend modes (multiply, screen,
+  overlay and the rest), with text and pictures under them showing through.
+- **Drop shadows and glows**: on any object or text frame: colour, opacity, offset and softness.
+- **Rounded and cut corners** on rectangles and frames, each corner its own.
+- **Paragraph rules**: a line above and below a paragraph, its weight, colour, length (the text, the column, or a
+  measure) and offset, as part of the paragraph's style.
+- **Object styles**: named sets of fill, stroke, corners, shadow, opacity and text wrap, applied to objects and
+  updating them when redefined, like paragraph styles.
+- **Text to outlines**: a frame's text (or a selection of it) turned into paths that can be reshaped and filled.
+- **Placing PDF pages as pictures**, through PDFium (BSD-licensed): a page of a PDF placed like an SVG, kept as
+  vector in the exported PDF where it can be.
+
+**Status (12 November 2026):** planned.

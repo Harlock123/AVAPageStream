@@ -67,8 +67,8 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
 - **Measures in any unit.** Every box takes `54`, `0.75in`, `4p6`, `20mm` or a sum like `1in + 6pt`.
 - **Undo** for every change, all the way back. A run of typing or nudging is one step.
 - **PDF and PNG.** Export all the pages, this page or a range (`1-3, 5`) as a vector PDF with its fonts embedded,
-  bookmarks from the headings, links from the contents and web addresses, and its title and author, or as PNGs at
-  72 to 600 dpi. They are drawn
+  bookmarks from the headings, links from the contents and web addresses, and its title and author, in RGB or in
+  CMYK for a press (swatches' own inks, spot colours as their own), or as PNGs at 72 to 600 dpi. They are drawn
   by the same code as the screen, so line breaks and positions match exactly.
 - **Print and booklets.** Print straight from the program (through the system's printing), and print or export a
   booklet: pages paired on each sheet in the order that folds into a stapled booklet.
@@ -128,7 +128,7 @@ dotnet run --project src/AVAPageStream
 The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures, text and all, are drawn
 as vector by AVAPageStream's own PostScript interpreter; the few it can't read are shown by
 [Ghostscript](https://ghostscript.com) when it is installed, otherwise by the colour or grey preview they carry.
-PDFs are written in RGB. Liberation Mono is bundled too, for EPS files set in Courier.
+Liberation Mono is bundled too, for EPS files set in Courier.
 
 ## The user guide
 

@@ -17,6 +17,7 @@ public sealed class PreflightWindow : Window
     public ListBox List { get; } = new() { Height = 340, FontSize = 12 };
     public TextBlock Summary { get; } = new() { Foreground = Look.Heading, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     public IReadOnlyList<Issue> Issues { get; private set; } = [];
+    public CheckBox AskFirstBox { get; } = new() { Content = "Ask before exporting or printing when there are problems that will show", FontSize = 12 };
 
     public PreflightWindow(MainWindow window)
     {
@@ -36,6 +37,12 @@ public sealed class PreflightWindow : Window
         again.Click += (_, _) => Check();
         var close = new Button { Content = "Close", FontSize = 12 };
         close.Click += (_, _) => Close();
+        AskFirstBox.IsChecked = window.Settings.PreflightFirst;
+        AskFirstBox.IsCheckedChanged += (_, _) =>
+        {
+            window.Settings.PreflightFirst = AskFirstBox.IsChecked == true;
+            window.SaveSettings();
+        };
         Content = new StackPanel
         {
             Margin = new Thickness(16),
@@ -44,6 +51,7 @@ public sealed class PreflightWindow : Window
             {
                 Summary,
                 List,
+                AskFirstBox,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { again, close } },
             },
         };
