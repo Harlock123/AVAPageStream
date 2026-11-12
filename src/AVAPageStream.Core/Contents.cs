@@ -23,7 +23,7 @@ public static class Contents
             if (story.Frames.Count == 0 || !pageOf.ContainsKey(story.Frames[0])) continue; // a master's story
             var first = Chains.PageOf(doc, story);
             var fields = new FieldContext(first, doc.Pages.Count, first > 0 ? doc.PageLabel(first - 1) : null);
-            var layout = TextFlow.Layout(story, Chains.Areas(doc, story), measurer, fields);
+            var layout = TextFlow.Layout(story, Chains.Areas(doc, story), measurer, fields, story.Table is null ? doc.Setup.Baselines : null);
             for (var p = 0; p < story.ParagraphCount; p++)
             {
                 var level = IndexOf(styles, story.Paras[p].Style);

@@ -53,6 +53,16 @@ public sealed record Keep(Box Bounds, IReadOnlyList<Pt>? Outline = null)
 }
 
 /// <summary>
+/// The lines text set on the grid sits on: every <see cref="Step"/> points from <see cref="Start"/>, down from the top
+/// of the page, so baselines line up across columns and frames.
+/// </summary>
+public readonly record struct BaselineGrid(double Start, double Step)
+{
+    /// <summary>The first grid line at or below a baseline.</summary>
+    public double Snap(double baseline) => Step <= 0 ? baseline : Start + Math.Ceiling((baseline - Start - 0.001) / Step) * Step;
+}
+
+/// <summary>
 /// A box text may fill: one column of one frame in a story's chain, and what in it text must keep out of (objects
 /// with text wrap).
 /// </summary>
@@ -318,7 +328,7 @@ public static class TextFlow
     /// Sets a story through its areas. Lines keep out of each area's exclusions: a line beside one may be set in
     /// pieces on either side of it, and where no word fits beside it the text moves on below it.
     /// </summary>
-    public static TextLayout Layout(Story story, IReadOnlyList<Area> areas, ITextMeasurer measurer, FieldContext? fields = null)
+    public static TextLayout Layout(Story story, IReadOnlyList<Area> areas, ITextMeasurer measurer, FieldContext? fields = null, BaselineGrid? grid = null)
     {
         var ctx = new Ctx(measurer, fields);
         var lines = new List<Line>();
@@ -392,6 +402,7 @@ public static class TextFlow
                     var (a0, d0) = Height([f0], measurer);
                     var trial = previousBaseline is { } pb0 ? pb0 + Leading(para, f0.Size) + pendingSpace : box.Y + a0;
                     if (jumpTo is { } j0 && j0 > trial) trial = j0;
+                    if (para.OnGrid && grid is { } g0) trial = g0.Snap(trial);
                     if (trial + d0 > box.Bottom + Slack) { NextArea(); continue; }
                     var slots = Room(area.Keep, left, width, trial - a0, trial + d0);
                     var clear = slots.Count == 1 && slots[0] == new Slot(left, width);
@@ -427,6 +438,7 @@ public static class TextFlow
                     var largest = formats.Max(f => f.Size);
                     var baseline = previousBaseline is { } pb ? pb + Leading(para, largest) + pendingSpace : box.Y + ascent;
                     if (jumpTo is { } j && j > baseline) baseline = j - a0 + ascent;
+                    if (para.OnGrid && grid is { } g) baseline = g.Snap(baseline);
                     if (baseline + descent > box.Bottom + Slack) { NextArea(); continue; }
 
                     if (drop > 0 && linesInPara == 0)

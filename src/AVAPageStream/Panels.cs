@@ -214,6 +214,12 @@ public sealed class SidePanel : TabControl
     public NumericUpDown PageColumnsBox { get; } = new() { Minimum = 1, Maximum = 12, Increment = 1, FormatString = "0", FontSize = 12 };
     public TextBox PageGutterBox { get; } = Ui.Box();
     public TextBox GridBox { get; } = Ui.Box();
+    public CheckBox LinkedBox { get; } = new() { Content = "Linked to its file, not kept in the document", FontSize = 12 };
+    public TextBlock LinkInfo { get; } = new() { Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    public TextBox BleedBox { get; } = Ui.Box("0, or such as 9pt");
+    public TextBox BaselineBox { get; } = Ui.Box("none, or such as 14pt");
+    public TextBox BaselineFromBox { get; } = Ui.Box("the top margin");
+    public CheckBox OnGridBox { get; } = new() { Content = "Align to the baseline grid", FontSize = 12 };
     public CheckBox FacingBox { get; } = new() { Content = "Facing pages: left and right, in spreads", FontSize = 12 };
     public TextBlock MarginLeftLabel { get; } = Ui.Label("Left", 52);
     private readonly TextBlock _marginRightLabel = Ui.Label("Right", 52);
@@ -385,7 +391,16 @@ public sealed class SidePanel : TabControl
                 Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap,
             },
             Ui.Buttons(Ui.Button("Replace picture…", () => { if (View.Selected is [PictureObject p]) _ = View.ReplaceImage(p.Id); })),
+            LinkedBox,
+            LinkInfo,
+            Ui.Buttons(Ui.Button("Update links", () => _window.UpdateLinks(), "Read every linked picture's file again")),
         ]);
+        LinkedBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing || View.Selected is not [PictureObject p]) return;
+            if (Editor.SetLinked(p.Id, LinkedBox.IsChecked == true) is { } why) { _window.Say(why); Refresh(); }
+            else _window.Say(LinkedBox.IsChecked == true ? "Linked: the picture is read from its file, and follows it when it changes." : "Embedded: the document keeps a copy of the picture.");
+        };
 
         _objectBody.Children.AddRange([
             Ui.Heading("Frame"),
@@ -656,6 +671,7 @@ public sealed class SidePanel : TabControl
         KeepTogetherBox.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyPara(p => p with { KeepTogether = KeepTogetherBox.IsChecked == true }, "Keep lines together"); };
         OrphansBox.ValueChanged += (_, _) => { if (!_refreshing && OrphansBox.Value is { } v) View.ApplyPara(p => p with { Orphans = (int)v }, "Orphan control"); };
         WidowsBox.ValueChanged += (_, _) => { if (!_refreshing && WidowsBox.Value is { } v) View.ApplyPara(p => p with { Widows = (int)v }, "Widow control"); };
+        OnGridBox.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyPara(p => p with { OnGrid = OnGridBox.IsChecked == true }, "Baseline grid"); };
         HyphenateBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -699,6 +715,7 @@ public sealed class SidePanel : TabControl
             Ui.Row(("Drop cap", DropLinesBox)),
             Ui.Row(("Letters", DropCharsBox)),
             HyphenateBox,
+            OnGridBox,
             KeepWithNextBox,
             KeepTogetherBox,
             Ui.Row(("Orphans", OrphansBox)),
@@ -1087,13 +1104,17 @@ public sealed class SidePanel : TabControl
                 Ui.Row(("Orientation", OrientationChoice)),
                 Ui.Row(("W", PageWidthBox), ("H", PageHeightBox)),
                 FacingBox,
+                Ui.Row(("Bleed", BleedBox)),
                 Ui.Heading("Margins"),
                 Ui.Row(("Top", MarginTopBox), ("Bot", MarginBottomBox)),
                 SideRow(MarginLeftLabel, MarginLeftBox, _marginRightLabel, MarginRightBox),
                 Ui.Heading("Columns"),
                 Ui.Row(("Columns", PageColumnsBox)),
                 Ui.Row(("Gutter", PageGutterBox)),
-                Ui.Buttons(Ui.Button("Apply", ApplySetup, "Change the page size, margins and columns")),
+                Ui.Heading("Baseline grid"),
+                Ui.Row(("Spacing", BaselineBox)),
+                Ui.Row(("First line", BaselineFromBox)),
+                Ui.Buttons(Ui.Button("Apply", ApplySetup, "Change the page size, bleed, margins, columns and baseline grid")),
                 Ui.Heading("Grid"),
                 Ui.Row(("Spacing", GridBox)),
                 Ui.Buttons(
@@ -1145,7 +1166,7 @@ public sealed class SidePanel : TabControl
         return g;
     }
 
-    private void ApplySetup()
+    internal void ApplySetup()
     {
         double Read(TextBox b, string what)
         {
@@ -1161,7 +1182,12 @@ public sealed class SidePanel : TabControl
             if (margins.Left + margins.Right >= w || margins.Top + margins.Bottom >= h) throw new FormatException("margins");
             var columns = (int)(PageColumnsBox.Value ?? 1);
             var gutter = Read(PageGutterBox, "gutter");
-            var setup = Doc.Setup with { PageWidth = w, PageHeight = h, Margins = margins, Columns = columns, Gutter = gutter };
+            var bleed = string.IsNullOrWhiteSpace(BleedBox.Text) ? 0 : Read(BleedBox, "bleed");
+            if (bleed > 72) throw new FormatException("bleed");
+            var baseline = string.IsNullOrWhiteSpace(BaselineBox.Text) || BaselineBox.Text.Trim().Equals("none", StringComparison.OrdinalIgnoreCase) ? 0 : Read(BaselineBox, "baseline grid's spacing");
+            if (baseline is > 0 and < 2) throw new FormatException("baseline");
+            double? from = string.IsNullOrWhiteSpace(BaselineFromBox.Text) ? null : Read(BaselineFromBox, "baseline grid's first line");
+            var setup = Doc.Setup with { PageWidth = w, PageHeight = h, Margins = margins, Columns = columns, Gutter = gutter, Bleed = bleed, BaselineGrid = baseline, BaselineFrom = from };
             if (setup == Doc.Setup) return;
             Editor.Change("Document setup", d => d.Setup = setup);
             View.FitPage();
@@ -1173,6 +1199,8 @@ public sealed class SidePanel : TabControl
             {
                 "size" => "A page must be between half an inch and 200 inches each way.",
                 "margins" => "The margins leave no room on the page.",
+                "bleed" => "A bleed is at most an inch; 9 pt (1/8 in) or 3 mm is usual.",
+                "baseline" => "The baseline grid's spacing is at least 2 pt; usually the body text's leading, such as 14pt.",
                 _ => $"The {e.Message} isn't a measure. Type something like 36, 0.5in or 12mm.",
             });
             Refresh();
@@ -1270,6 +1298,16 @@ public sealed class SidePanel : TabControl
             FitChoice.SelectedIndex = (int)p.Fit;
             Set(OffsetXBox, Units.Format(p.OffsetX, Unit));
             Set(OffsetYBox, Units.Format(p.OffsetY, Unit));
+            LinkedBox.IsChecked = p.Linked;
+            LinkedBox.IsEnabled = p.Source is not null;
+            var file = p.Source is null ? null : Path.GetFileName(p.Source);
+            LinkInfo.Text = Links.StateOf(Doc, p, _window.DocumentFolder) switch
+            {
+                LinkState.UpToDate => $"Linked to {file}.",
+                LinkState.Changed => $"Linked to {file}, which has changed: Update links.",
+                LinkState.Missing => $"Linked to {file}, which can't be found.",
+                _ => file is null ? "Kept in the document." : $"Kept in the document (placed from {file}).",
+            };
         }
         LockedBox.IsChecked = selected.All(o => o.Locked);
         WrapBox.IsChecked = selected.All(o => o.Wrap);
@@ -1349,6 +1387,7 @@ public sealed class SidePanel : TabControl
         DropLinesBox.Value = p.DropLines;
         DropCharsBox.Value = Math.Max(1, p.DropChars);
         HyphenateBox.IsChecked = p.Hyphenate;
+        OnGridBox.IsChecked = p.OnGrid;
         KeepWithNextBox.IsChecked = p.KeepWithNext;
         KeepTogetherBox.IsChecked = p.KeepTogether;
         OrphansBox.Value = Math.Max(1, p.Orphans);
@@ -1426,6 +1465,9 @@ public sealed class SidePanel : TabControl
         PageColumnsBox.Value = s.Columns;
         Set(PageGutterBox, Units.Format(s.Gutter, Unit));
         Set(GridBox, Units.Format(s.Grid, Unit));
+        Set(BleedBox, s.Bleed > 0 ? Units.Format(s.Bleed, Unit) : "");
+        Set(BaselineBox, s.BaselineGrid > 0 ? Units.Format(s.BaselineGrid, Unit) : "");
+        Set(BaselineFromBox, s.BaselineFrom is { } bf ? Units.Format(bf, Unit) : "");
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
         FacingBox.IsChecked = s.Facing;
         LanguageChoice.SelectedIndex = Math.Max(0, Array.FindIndex(Speller.Languages, l => l.Code == Doc.Language));

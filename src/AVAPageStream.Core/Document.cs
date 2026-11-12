@@ -12,9 +12,12 @@ public sealed class ImageStore
 {
     private readonly Dictionary<string, byte[]> _images = [];
 
+    /// <summary>The key an image's bytes are kept under.</summary>
+    public static string Key(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
+
     public string Add(byte[] bytes)
     {
-        var key = Convert.ToHexStringLower(SHA256.HashData(bytes));
+        var key = Key(bytes);
         _images.TryAdd(key, bytes);
         return key;
     }

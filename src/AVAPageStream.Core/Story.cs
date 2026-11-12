@@ -36,7 +36,8 @@ public sealed record ParaFormat(
     bool KeepWithNext = false, // in the same column as the next paragraph's first line (a heading)
     bool KeepTogether = false, // all its lines in one column
     int Orphans = 1,         // at least this many of its lines at the foot of a column it starts in
-    int Widows = 1);         // at least this many at the top of a column it runs on into
+    int Widows = 1,          // at least this many at the top of a column it runs on into
+    bool OnGrid = false);    // its baselines on the document's baseline grid
 
 /// <summary>A named set of character and paragraph settings.</summary>
 public sealed record ParagraphStyle(string Name, CharFormat Char, ParaFormat Para);

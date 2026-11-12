@@ -33,7 +33,8 @@ public static class DocumentFile
         var entry = zip.CreateEntry("document.json", CompressionLevel.Optimal);
         using (var w = new StreamWriter(entry.Open(), new UTF8Encoding(false)))
             w.Write(doc.ToJson());
-        var used = doc.AllObjects.OfType<PictureObject>().Select(p => p.Image).Where(k => k.Length > 0).Distinct();
+        // A linked picture's file stays where it is, and is read from there.
+        var used = doc.AllObjects.OfType<PictureObject>().Where(p => !p.Linked).Select(p => p.Image).Where(k => k.Length > 0).Distinct();
         foreach (var key in used)
         {
             if (doc.Images.Get(key) is not { } bytes) continue;
@@ -46,11 +47,12 @@ public static class DocumentFile
     public static Document Load(string path)
     {
         using var stream = File.OpenRead(path);
-        return Read(stream);
+        return Read(stream, Path.GetDirectoryName(Path.GetFullPath(path)));
     }
 
     /// <summary>Reads a document, refusing files that aren't one or that are from a newer version of the program.</summary>
-    public static Document Read(Stream stream)
+    /// <param name="folder">The document's folder, where linked pictures are looked for if they have moved.</param>
+    public static Document Read(Stream stream, string? folder = null)
     {
         ZipArchive zip;
         try
@@ -99,6 +101,7 @@ public static class DocumentFile
                 throw new InvalidDataException("The document is damaged: " + e.Message);
             }
             Repair(doc);
+            Links.Refresh(doc, folder);
             return doc;
         }
     }

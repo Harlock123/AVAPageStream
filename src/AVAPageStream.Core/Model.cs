@@ -38,9 +38,15 @@ public sealed record Setup(
     double Gutter = 18,
     Unit Unit = Unit.Point,
     double Grid = 18,      // the document grid's spacing, in points
-    bool Facing = false)   // pages in spreads: odd pages on the right, margins inside and outside
+    bool Facing = false,   // pages in spreads: odd pages on the right, margins inside and outside
+    double BaselineGrid = 0,     // the baseline grid's spacing (0: none)
+    double? BaselineFrom = null, // its first line, down from the top of the page (null: the top margin)
+    double Bleed = 0)            // how far artwork may run past the trim, for printing to the edge
 {
     public Margins Margin => Margins ?? Margins.Half;
+
+    /// <summary>The baseline grid paragraphs set on it use, or null for none.</summary>
+    public BaselineGrid? Baselines => BaselineGrid > 0 ? new BaselineGrid(BaselineFrom ?? Margin.Top, BaselineGrid) : null;
 
     public Box Page => new(0, 0, PageWidth, PageHeight);
 
@@ -299,6 +305,15 @@ public sealed class PictureObject : PageObject
     /// <summary>How far the image is moved from where its fit puts it, in points: cropping a different part into view.</summary>
     public double OffsetX { get; set; }
     public double OffsetY { get; set; }
+
+    /// <summary>The file the image was placed from, if it came from one.</summary>
+    public string? Source { get; set; }
+
+    /// <summary>
+    /// Whether the picture is linked to <see cref="Source"/> rather than kept in the document: the file is read when the
+    /// document opens and again when it changes, and isn't saved in the .avps.
+    /// </summary>
+    public bool Linked { get; set; }
 
     public override string Kind => "Picture";
 }

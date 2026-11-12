@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using AVAPageStream.Core;
 using Page = AVAPageStream.Core.Page;
 
@@ -118,9 +119,19 @@ public sealed class MainWindow : Window
     /// <summary>Asks where to save (kind "document", "pdf" or "png", and a suggested name); tests answer it themselves.</summary>
     public Func<string, string, Task<string?>> PickSave { get; set; }
 
+    /// <summary>Where unsaved work is copied every few minutes, beside the settings.</summary>
+    public Recovery Recovery { get; }
+
+    /// <summary>This window's copy in <see cref="Recovery"/>.</summary>
+    public string RecoveryId { get; private set; } = Guid.NewGuid().ToString("N");
+
+    private int _autosavedStamp = -1;
+    private readonly DispatcherTimer _autosave = new();
+
     public MainWindow(string settingsPath, string? open = null)
     {
         _settingsPath = settingsPath;
+        Recovery = new Recovery(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(settingsPath))!, "Recovery"));
         Settings = AppSettings.Load(settingsPath);
         Editor = new Editor(Document.New(new Setup(Unit: Settings.Unit)));
         Ask = (title, message, buttons) => AskDialog.Show(this, title, message, buttons);
@@ -138,7 +149,7 @@ public sealed class MainWindow : Window
         View.SpellingWords = SpellingWords;
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
-        View.PickImage = async () => await PickOpen("image") is { } path ? await File.ReadAllBytesAsync(path) : null;
+        View.PickImage = async () => await PickOpen("image") is { } path ? (await File.ReadAllBytesAsync(path), path) : null;
         View.SelectionChanged += Refresh;
         View.ViewChanged += () => ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";
         View.Status += Say;
@@ -179,6 +190,15 @@ public sealed class MainWindow : Window
 
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         Opened += (_, _) => View.Focus();
+        Activated += (_, _) => UpdateLinks(quiet: true);
+        if (Settings.AutosaveMinutes > 0)
+        {
+            _autosave.Interval = TimeSpan.FromMinutes(Settings.AutosaveMinutes);
+            _autosave.Tick += (_, _) => Autosave();
+            _autosave.Start();
+            Closed += (_, _) => _autosave.Stop();
+        }
+        if (open is null) Opened += async (_, _) => await OfferRecovery();
         _snapItem.IsChecked = View.Snap;
         _guidesItem.IsChecked = View.ShowGuides;
         _gridItem.IsChecked = View.ShowGrid;
@@ -860,8 +880,66 @@ public sealed class MainWindow : Window
         };
     }
 
+    /// <summary>The folder the document is in, where linked pictures that have moved are looked for.</summary>
+    public string? DocumentFolder => FilePath is null ? null : Path.GetDirectoryName(Path.GetFullPath(FilePath));
+
+    /// <summary>Brings linked pictures up to date with their files (when the window comes back to the front, say).</summary>
+    public void UpdateLinks(bool quiet = false)
+    {
+        var n = Editor.UpdateLinks(DocumentFolder);
+        var missing = Links.Missing(Editor.Doc, DocumentFolder).Count;
+        if (n > 0) Say($"Updated {n} linked picture{(n == 1 ? "" : "s")} from {(n == 1 ? "its file" : "their files")}." + (missing > 0 ? $" {missing} can't be found." : ""));
+        else if (!quiet) Say(missing > 0 ? $"{missing} linked picture{(missing == 1 ? "'s file" : "s' files")} can't be found." : "The linked pictures are up to date.");
+    }
+
+    /// <summary>Copies the document to the recovery folder if it has changed since it was saved, or last copied.</summary>
+    public void Autosave()
+    {
+        if (!Editor.Dirty || Editor.Stamp == _autosavedStamp) return;
+        try
+        {
+            Recovery.Save(Editor.Doc, FilePath, RecoveryId);
+            _autosavedStamp = Editor.Stamp;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't save a recovery copy: {e.Message}");
+        }
+    }
+
+    /// <summary>
+    /// When the program last stopped without saving, offers what was saved automatically: the newest copy first; any
+    /// others are offered the next time.
+    /// </summary>
+    public async Task OfferRecovery()
+    {
+        if (Recovery.Found(RecoveryId) is not [var r, ..]) return;
+        var when = r.Saved.ToLocalTime().ToString("d MMMM 'at' HH:mm", System.Globalization.CultureInfo.CurrentCulture);
+        var answer = await Ask("Recover your work?",
+            $"AVAPageStream stopped before {r.Name} was saved. Its changes up to {when} were saved automatically. Open them?",
+            ["Recover", "Discard", "Not now"]);
+        if (answer == 1) { Recovery.Discard(r.Id); Say($"Discarded the recovered copy of {r.Name}."); return; }
+        if (answer != 0) return;
+        try
+        {
+            var doc = DocumentFile.Load(r.Copy);
+            Use(new Editor(doc), r.Original);
+            Editor.MarkUnsaved();
+            Recovery.Discard(RecoveryId);
+            Recovery.Adopt(r.Id, RecoveryId);
+            UpdateTitle();
+            Say($"Recovered {r.Name}. Save it to keep it.");
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't recover {r.Name}: {e.Message}");
+        }
+    }
+
     private void Use(Editor editor, string? path)
     {
+        Recovery.Discard(RecoveryId); // the document it was a copy of is going
+        _autosavedStamp = -1;
         foreach (var se in _storyEditors.ToList()) se.Close();
         Editor.Changed -= OnChanged;
         Editor = editor;
@@ -894,7 +972,9 @@ public sealed class MainWindow : Window
             Use(new Editor(doc), path);
             Settings.Opened(path);
             SaveSettings();
-            Say($"Opened {Path.GetFileName(path)}: {doc.Pages.Count} page{(doc.Pages.Count == 1 ? "" : "s")}.");
+            var missing = Links.Missing(doc, DocumentFolder).Count;
+            Say($"Opened {Path.GetFileName(path)}: {doc.Pages.Count} page{(doc.Pages.Count == 1 ? "" : "s")}." +
+                (missing > 0 ? $" {missing} linked picture{(missing == 1 ? "'s file" : "s' files")} can't be found: put {(missing == 1 ? "it" : "them")} beside the document, or replace {(missing == 1 ? "it" : "them")}." : ""));
             return true;
         }
         catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -920,6 +1000,7 @@ public sealed class MainWindow : Window
             DocumentFile.Save(Editor.Doc, path);
             FilePath = path;
             Editor.MarkSaved();
+            Recovery.Discard(RecoveryId);
             Settings.Opened(path);
             SaveSettings();
             UpdateTitle();
@@ -943,7 +1024,7 @@ public sealed class MainWindow : Window
         try
         {
             if (choice.Booklet) await Export.Booklet(Editor.Doc, path, choice.Pages, BaseName);
-            else await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName);
+            else await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks);
             Say(choice.Booklet
                 ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
                 : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.");
@@ -1205,7 +1286,7 @@ public sealed class MainWindow : Window
     protected override async void OnClosing(WindowClosingEventArgs e)
     {
         base.OnClosing(e);
-        if (_closing || !Editor.Dirty) return;
+        if (_closing || !Editor.Dirty) { if (!e.Cancel) Recovery.Discard(RecoveryId); return; }
         e.Cancel = true;
         if (!await SaveChanges()) return;
         _closing = true;

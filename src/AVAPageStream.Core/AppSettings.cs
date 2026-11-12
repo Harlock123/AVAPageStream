@@ -14,6 +14,7 @@ public sealed class AppSettings
     public bool CheckSpelling { get; set; } = true;
     public Unit Unit { get; set; } = Unit.Point;
     public int ExportDpi { get; set; } = 150;
+    public int AutosaveMinutes { get; set; } = 2; // 0: never
 
     public const int MaxRecent = 10;
 

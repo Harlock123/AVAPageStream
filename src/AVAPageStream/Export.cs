@@ -13,7 +13,8 @@ namespace AVAPageStream;
 internal static class Export
 {
     /// <summary>Writes the pages (all, or the ones given, counting from 0) to a PDF, with their fonts embedded.</summary>
-    public static async Task Pdf(Document doc, string path, IEnumerable<int>? pages = null, string? title = null)
+    /// <param name="marks">Each page on a larger sheet with its bleed and crop marks, for printing to the edge.</param>
+    public static async Task Pdf(Document doc, string path, IEnumerable<int>? pages = null, string? title = null, bool marks = false)
     {
         var renderer = new PageRenderer(new Layouts(FontMeasurer.Shared)) { Screen = false };
         var temp = path + ".part";
@@ -30,10 +31,11 @@ internal static class Export
                 using var pdf = SKDocument.CreatePdf(stream, metadata);
                 foreach (var index in pages ?? Enumerable.Range(0, doc.Pages.Count))
                 {
-                    var canvas = pdf.BeginPage((float)doc.Setup.PageWidth, (float)doc.Setup.PageHeight);
+                    var (w, h) = marks ? PrintMarks.Sheet(doc.Setup) : (doc.Setup.PageWidth, doc.Setup.PageHeight);
+                    var canvas = pdf.BeginPage((float)w, (float)h);
                     // At 96 dpi Avalonia draws one of its units as one of the canvas's, and a PDF page's unit is a point.
-                    var visual = new PageVisual(doc, doc.Pages[index], renderer);
-                    await DrawingContextHelper.RenderAsync(canvas, visual, new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight), new Vector(96, 96));
+                    Avalonia.Visual visual = marks ? new MarkedPageVisual(doc, doc.Pages[index], renderer) : new PageVisual(doc, doc.Pages[index], renderer);
+                    await DrawingContextHelper.RenderAsync(canvas, visual, new Rect(0, 0, w, h), new Vector(96, 96));
                     pdf.EndPage();
                 }
                 pdf.Close();

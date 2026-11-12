@@ -14,7 +14,7 @@ namespace AVAPageStream;
 /// </summary>
 internal sealed class Layouts(ITextMeasurer measurer)
 {
-    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, TextLayout Layout);
+    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, BaselineGrid? Grid, TextLayout Layout);
 
     // By story, and by the page a master's story is drawn on: its page-number fields differ from page to page.
     private readonly Dictionary<(string, int), Entry> _layouts = [];
@@ -37,13 +37,14 @@ internal sealed class Layouts(ITextMeasurer measurer)
         var fields = new FieldContext(number, doc.Pages.Count, number > 0 ? doc.PageLabel(number - 1) : null);
         var key = (storyId, page ?? -1);
         var areas = Chains.Areas(doc, story);
-        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields &&
+        var grid = story.Table is null ? doc.Setup.Baselines : null; // a table's cells keep to their rows
+        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid &&
             e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) && e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) &&
             e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
             return e.Layout;
-        var layout = TextFlow.Layout(story, areas, measurer, fields);
+        var layout = TextFlow.Layout(story, areas, measurer, fields, grid);
         LaidOut++;
-        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, layout);
+        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, grid, layout);
         return layout;
     }
 }
@@ -64,10 +65,14 @@ internal sealed class PageRenderer
     /// <summary>Whether to show what only the screen needs: crossed boxes for pictures without an image.</summary>
     public bool Screen { get; init; } = true;
 
-    public void Draw(DrawingContext dc, Document doc, Sheet sheet)
+    /// <summary>
+    /// Draws a sheet on its paper. Artwork runs out past the page's edge by <paramref name="bleed"/> (the document's
+    /// bleed on screen and in a PDF with crop marks; none otherwise) and is cut off there.
+    /// </summary>
+    public void Draw(DrawingContext dc, Document doc, Sheet sheet, double bleed = 0)
     {
         dc.FillRectangle(Look.Paper, new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight));
-        using (dc.PushClip(new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight)))
+        using (dc.PushClip(new Rect(-bleed, -bleed, doc.Setup.PageWidth + 2 * bleed, doc.Setup.PageHeight + 2 * bleed)))
         {
             if (sheet is Page page && doc.MasterFor(page) is { } master)
             {
@@ -355,6 +360,37 @@ internal sealed class PageRenderer
 }
 
 /// <summary>One page drawn at its own size in points, for exporting: Avalonia renders it into a bitmap or a PDF page.</summary>
+/// <summary>
+/// A page on a sheet larger than itself, for printing to the edge: its artwork out to the bleed, and crop marks in the
+/// margin round it showing where to cut.
+/// </summary>
+internal sealed class MarkedPageVisual : Control
+{
+    private static readonly Pen Mark = new(Brushes.Black, 0.25);
+    private readonly PageRenderer _renderer;
+    private readonly Document _doc;
+    private readonly Sheet _sheet;
+
+    public MarkedPageVisual(Document doc, Sheet sheet, PageRenderer renderer)
+    {
+        _doc = doc;
+        _sheet = sheet;
+        _renderer = renderer;
+        (Width, Height) = PrintMarks.Sheet(doc.Setup);
+        Measure(new Size(Width, Height));
+        Arrange(new Rect(0, 0, Width, Height));
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        var slug = PrintMarks.Slug(_doc.Setup);
+        using (context.PushTransform(Matrix.CreateTranslation(slug, slug)))
+            _renderer.Draw(context, _doc, _sheet, _doc.Setup.Bleed);
+        foreach (var (from, to) in PrintMarks.Lines(_doc.Setup))
+            context.DrawLine(Mark, new Point(from.X, from.Y), new Point(to.X, to.Y));
+    }
+}
+
 internal sealed class PageVisual : Control
 {
     private readonly PageRenderer _renderer;

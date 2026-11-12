@@ -113,7 +113,8 @@ public sealed class PageView : Control
     public event Action<SheetRef>? ShowSheet;
 
     /// <summary>Asks for an image file's bytes for a picture frame; tests answer it themselves.</summary>
-    public Func<Task<byte[]?>>? PickImage { get; set; }
+    /// <summary>Asks for a picture file: its bytes and where it is.</summary>
+    public Func<Task<(byte[] Bytes, string Path)?>>? PickImage { get; set; }
 
     public double Zoom { get; private set; } = 1;
 
@@ -1618,15 +1619,14 @@ public sealed class PageView : Control
     public async Task ReplaceImage(string pictureId)
     {
         if (PickImage is null) return;
-        var bytes = await PickImage();
-        if (bytes is null) return;
+        if (await PickImage() is not var (bytes, path)) return;
         if (!ImageStore.IsImage(bytes))
         {
             Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP, WebP, SVG or EPS).");
             return;
         }
         var key = Doc.Images.Add(bytes);
-        _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) p.Image = key; });
+        _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) { p.Image = key; p.Source = path; } });
         Select([pictureId]);
         if (_renderer.Describe(Doc, key) is { } what) Status?.Invoke($"Placed {what}.");
     }
@@ -1677,8 +1677,9 @@ public sealed class PageView : Control
             dc.FillRectangle(Look.PageShadow, page.Translate(new Vector(4, 4)));
             var corner = ToView(new Pt(0, 0));
             using (dc.PushTransform(Matrix.CreateScale(Scale, Scale) * Matrix.CreateTranslation(corner.X, corner.Y)))
-                _renderer.Draw(dc, doc, sheet);
+                _renderer.Draw(dc, doc, sheet, doc.Setup.Bleed);
             if (ShowGrid) DrawGrid(dc, doc);
+            if (ShowGuides) DrawPrintGuides(dc, doc);
             if (ShowGuides) DrawGuides(dc, doc, sheet, r == _sheet ? null : page);
             DrawFrames(dc, sheet);
         }
@@ -1695,6 +1696,22 @@ public sealed class PageView : Control
         DrawPen(dc);
         DrawDrag(dc);
         DrawRulers(dc, bounds);
+    }
+
+    /// <summary>The baseline grid across the page's live area, and the bleed's edge round the page.</summary>
+    private void DrawPrintGuides(DrawingContext dc, Document doc)
+    {
+        var s = doc.Setup;
+        if (s.Baselines is { } grid && grid.Step * Scale >= 4)
+        {
+            var live = ToView(s.Live);
+            for (var y = grid.Snap(s.Live.Y); y <= s.Live.Bottom; y += grid.Step)
+            {
+                var vy = Math.Round(ToView(new Pt(0, y)).Y) + 0.5;
+                dc.DrawLine(Look.BaselineGuide, new Point(live.Left, vy), new Point(live.Right, vy));
+            }
+        }
+        if (s.Bleed > 0) dc.DrawRectangle(null, Look.BleedGuide, ToView(new Box(-s.Bleed, -s.Bleed, s.PageWidth + 2 * s.Bleed, s.PageHeight + 2 * s.Bleed)));
     }
 
     /// <summary>The document grid across the page, when its lines would be at least 6 pixels apart.</summary>

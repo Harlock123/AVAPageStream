@@ -47,7 +47,7 @@ internal sealed class AskDialog : Window
 }
 
 /// <summary>What to export or print: the pages (counting from 0), for PNG the resolution, and for PDF or print whether as a booklet.</summary>
-public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false);
+public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false, bool Marks = false);
 
 /// <summary>Asks which pages to export (all, this one, or a range like "1-3, 5") and, for PNG, at what resolution.</summary>
 internal sealed class ExportDialog : Window
@@ -72,6 +72,9 @@ internal sealed class ExportDialog : Window
         range.TextChanged += (_, _) => { if (Error is not null && range.Text != checkedText) Error.IsVisible = false; };
         var resolution = Resolution = new NumericUpDown { Minimum = 72, Maximum = 600, Increment = 25, Value = dpi, FormatString = "0", Width = 130 };
         var booklet = BookletBox = new CheckBox { Content = "As a booklet: pages in pairs on each sheet, in the order that folds", IsVisible = !png };
+        var marks = MarksBox = new CheckBox { Content = "Crop marks and bleed: each page on a larger sheet, for printing to the edge", IsVisible = kind == "pdf" };
+        booklet.IsCheckedChanged += (_, _) => { if (booklet.IsChecked == true) marks.IsChecked = false; };
+        marks.IsCheckedChanged += (_, _) => { if (marks.IsChecked == true) booklet.IsChecked = false; };
         var error = Error = new TextBlock { Foreground = Look.Error, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
         var export = ExportButton = new Button { Content = kind == "print" ? "Print" : "Export", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
@@ -94,7 +97,7 @@ internal sealed class ExportDialog : Window
                 pages = chosen;
             }
             else pages = [.. Enumerable.Range(0, pageCount)];
-            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi), booklet.IsChecked == true));
+            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi), booklet.IsChecked == true, marks.IsChecked == true));
         };
 
         Content = new StackPanel
@@ -120,6 +123,7 @@ internal sealed class ExportDialog : Window
                     },
                 },
                 booklet,
+                marks,
                 error,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { export, cancel } },
             },
@@ -127,6 +131,7 @@ internal sealed class ExportDialog : Window
     }
 
     internal CheckBox BookletBox { get; }
+    internal CheckBox MarksBox { get; }
     internal RadioButton Some { get; }
     internal TextBox Range { get; }
     internal NumericUpDown Resolution { get; }

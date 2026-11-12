@@ -38,6 +38,39 @@ public sealed class Editor
     public void MarkSaved() => _savedStamp = _stamp;
 
     /// <summary>
+    /// Brings linked pictures up to date with their files; one undo step if any had changed. Returns how many.
+    /// </summary>
+    public int UpdateLinks(string? folder)
+    {
+        var changed = Links.Changed(Doc, folder);
+        if (changed.Count == 0) return 0;
+        var keys = changed.Select(c => (c.Id, c.Path, Key: Doc.Images.Add(c.Bytes))).ToList();
+        Change("Update linked pictures", d =>
+        {
+            foreach (var (id, path, key) in keys)
+                if (d.Find(id) is PictureObject p) { p.Image = key; p.Source = path; }
+        });
+        return changed.Count;
+    }
+
+    /// <summary>Links a picture to the file it was placed from, or keeps a copy of it in the document. Returns why not, or null.</summary>
+    public string? SetLinked(string pictureId, bool linked)
+    {
+        if (Doc.Find(pictureId) is not PictureObject p) return "That isn't a picture.";
+        if (p.Linked == linked) return null;
+        if (linked && p.Source is null) return "This picture wasn't placed from a file, so it can't be linked. Replace it from the file first.";
+        if (!linked && Doc.Images.Get(p.Image) is null) return "The linked file is missing, so there is no copy to keep. Find the file first.";
+        Change(linked ? "Link picture" : "Embed picture", d => { if (d.Find(pictureId) is PictureObject q) q.Linked = linked; });
+        return null;
+    }
+
+    /// <summary>Marks the document as having changes to save (a recovered one, which was never saved as it is).</summary>
+    public void MarkUnsaved() => _savedStamp = -1;
+
+    /// <summary>Which state of the document this is: it changes with every change, undo and redo.</summary>
+    public int Stamp => _stamp;
+
+    /// <summary>
     /// Makes a change as one undo step. Consecutive changes with the same <paramref name="merge"/> key (typing into
     /// one story, nudging) make one step between them.
     /// </summary>

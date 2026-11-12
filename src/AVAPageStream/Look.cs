@@ -26,6 +26,8 @@ internal static class Look
 
     public static readonly IPen MarginGuide = new Pen(Brush("#C040C0"), 1);
     public static readonly IPen ColumnGuide = new Pen(Brush("#8060E0"), 1);
+    public static readonly IPen BaselineGuide = new Pen(Brush("#5000A8E8"), 1);
+    public static readonly IPen BleedGuide = new Pen(Brush("#E04040"), 1, new DashStyle([4, 3], 0));
     public static readonly IPen RulerGuide = new Pen(Brush("#00A8E8"), 1);
     public static readonly IPen FrameEdge = new Pen(Brush("#9AA3B5"), 1, new DashStyle([3, 3], 0));
     public static readonly IPen Selection = new Pen(Brush("#FF6A3D"), 1);
