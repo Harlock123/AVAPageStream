@@ -630,7 +630,11 @@ Tick the paragraph styles to list, the first ticked as the top level: Heading an
 paragraph in those styles becomes a line of the contents, with its page number at the right after a row of dots.
 The contents are set in styles of their own, Contents 1, Contents 2 and so on, which you can change like any other.
 
-The page numbers are the pages as they are now. After the pages move about, make the contents again.
+The contents keep up with the document. Text › **Update contents and index** makes every table of contents and
+index again where it is, as one step to undo, going round again if making them moves headings on to other pages.
+Exporting and printing do it first, and preflight lists any that are out of date. Choosing Table of contents… with
+the caret in a contents (or its frame selected) makes that one again, with the styles you tick, rather than adding
+a second. Changes typed into a contents' entries go when it is made again: change its Contents styles instead.
 
 ## An index
 
@@ -649,8 +653,8 @@ Mark each place a topic is discussed, then make the index from the marks.
 Topics are sorted alphabetically under a heading for each letter (topics that don't start with a letter go under
 #), whatever their capitals. A topic found on pages 1, 2 and 3 shows as 1–3, by the pages' own numbering. A topic
 with pages and a see shows "See also". The index is set in styles of its own, Index Heading, Index 1 and Index 2,
-which you can change like any other. Like a table of contents, its pages are the pages as they are now: after the
-pages move about, delete the old index and make it again.
+which you can change like any other. Like a table of contents, it keeps up: Text › **Update contents and index**,
+exporting and printing make it again with the pages as they are then.
 
 ## Templates
 

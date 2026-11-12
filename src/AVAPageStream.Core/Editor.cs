@@ -763,23 +763,91 @@ public sealed class Editor
     }
 
     /// <summary>
-    /// Puts a table of contents into a story at <paramref name="index"/>, as one step: a "Contents" style for each
-    /// level (made, or remade, with its page-number tab at <paramref name="width"/>), then a paragraph an entry.
+    /// Puts a table of contents of the paragraphs in <paramref name="styles"/> into a story at <paramref name="index"/>,
+    /// as one step: a "Contents" style for each level (made, or remade, with its page-number tab at
+    /// <paramref name="width"/>), then a paragraph an entry. With the place in a contents already, it is made again
+    /// there instead. Gives where it ends, or -1 if there is nothing to list.
     /// </summary>
-    public int InsertContents(string storyId, int index, IReadOnlyList<ContentsEntry> entries, double width)
+    public int InsertContents(string storyId, int index, IReadOnlyList<string> styles, double width, ITextMeasurer measurer)
     {
-        if (entries.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
+        if (!Doc.Stories.ContainsKey(storyId) || Contents.Find(Doc, styles, measurer).Count == 0) return -1;
+        var existing = GeneratedLists.At(Doc, storyId, index) is { Kind: ListKind.Contents } l ? l.Id : null;
         return Change("Table of contents", d =>
         {
-            foreach (var level in entries.Select(e => e.Level).Distinct())
-            {
-                var style = Contents.MakeStyle(d, level, width);
-                var i = d.Styles.FindIndex(s => s.Name == style.Name);
-                if (i >= 0) d.Styles[i] = style;
-                else d.Styles.Add(style);
-            }
-            return PlaceInto(d, storyId, index, Contents.Paragraphs(entries));
+            var list = new GeneratedList(existing ?? d.NewId("list"), ListKind.Contents, [.. styles], width);
+            return Settle(d, list, PutList(d, list, storyId, index, measurer), measurer);
         });
+    }
+
+    /// <summary>The paragraph styles a list is set in, made or remade.</summary>
+    private static void ListStyles(Document d, GeneratedList list)
+    {
+        var styles = list.Kind == ListKind.Index ? Indexes.MakeStyles(d).ToList()
+            : Enumerable.Range(0, list.Styles.Count).Select(level => Contents.MakeStyle(d, level, list.Width)).ToList();
+        foreach (var style in styles)
+        {
+            var i = d.Styles.FindIndex(s => s.Name == style.Name);
+            if (i >= 0) d.Styles[i] = style;
+            else d.Styles.Add(style);
+        }
+    }
+
+    /// <summary>
+    /// Makes a list (again, where it is, if the document has it; otherwise at a place in a story), and remembers it.
+    /// Gives where its text ends.
+    /// </summary>
+    private static int PutList(Document d, GeneratedList list, string storyId, int index, ITextMeasurer measurer)
+    {
+        ListStyles(d, list);
+        var paras = GeneratedLists.Make(d, list, measurer);
+        if (GeneratedLists.Where(d, list) is var (id, start, end))
+        {
+            (storyId, index) = (id, start);
+            d.Stories[id].Delete(start, end - start);
+        }
+        var story = d.Stories[storyId];
+        index = Math.Clamp(index, 0, story.Length);
+        var first = index > 0 && story.Text[index - 1] != '\n' ? index + 1 : index;
+        var caret = PlaceInto(d, storyId, index, paras);
+        story.Insert(first, Fields.ListStart.ToString(), story.FormatAt(first) with { List = list.Id });
+        var i = d.Lists.FindIndex(x => x.Id == list.Id);
+        if (i >= 0) d.Lists[i] = list;
+        else d.Lists.Add(list);
+        return caret + 1;
+    }
+
+    /// <summary>A list just put in, made again while that moved what it lists (a few times at most). Gives where it ends.</summary>
+    private static int Settle(Document d, GeneratedList list, int caret, ITextMeasurer measurer)
+    {
+        for (var pass = 0; pass < 3 && GeneratedLists.IsStale(d, list, measurer); pass++) caret = PutList(d, list, "", 0, measurer);
+        return caret;
+    }
+
+    /// <summary>
+    /// Makes every contents and index that would say something different again, in place, as one step; round again
+    /// (a few times at most) while that moves pages about. Forgets any whose text has been deleted. Gives how many
+    /// were made again.
+    /// </summary>
+    public int UpdateLists(ITextMeasurer measurer)
+    {
+        bool Gone(Document d, GeneratedList l) => GeneratedLists.Where(d, l) is null;
+        if (!Doc.Lists.Any(l => Gone(Doc, l) || GeneratedLists.IsStale(Doc, l, measurer))) return 0;
+        var updated = new HashSet<string>();
+        Change("Update contents and index", d =>
+        {
+            d.Lists.RemoveAll(l => Gone(d, l));
+            for (var pass = 0; pass < 4; pass++)
+            {
+                var stale = d.Lists.Where(l => GeneratedLists.IsStale(d, l, measurer)).ToList();
+                if (stale.Count == 0) break;
+                foreach (var l in stale)
+                {
+                    PutList(d, l, "", 0, measurer);
+                    updated.Add(l.Id);
+                }
+            }
+        });
+        return updated.Count;
     }
 
     public void FormatChars(string storyId, int start, int length, Func<CharFormat, CharFormat> change, string label = "Format text") =>
@@ -1098,19 +1166,18 @@ public sealed class Editor
         return null;
     }
 
-    /// <summary>Puts an index made from the document's entries at a place in a story, with its styles. Gives where it ends.</summary>
-    public int InsertIndex(string storyId, int index, IReadOnlyList<PlacedPara> paragraphs)
+    /// <summary>
+    /// Puts an index made from the document's entries at a place in a story, with its styles, or (with the place in
+    /// an index already) makes it again there. Gives where it ends, or -1 if nothing is marked for it.
+    /// </summary>
+    public int InsertIndex(string storyId, int index, ITextMeasurer measurer)
     {
-        if (paragraphs.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
+        if (!Doc.Stories.ContainsKey(storyId) || Indexes.Entries(Doc, measurer).Count == 0) return -1;
+        var existing = GeneratedLists.At(Doc, storyId, index) is { Kind: ListKind.Index } l ? l.Id : null;
         return Change("Index", d =>
         {
-            foreach (var style in Indexes.MakeStyles(d))
-            {
-                var i = d.Styles.FindIndex(s => s.Name == style.Name);
-                if (i >= 0) d.Styles[i] = style;
-                else d.Styles.Add(style);
-            }
-            return PlaceInto(d, storyId, index, paragraphs);
+            var list = new GeneratedList(existing ?? d.NewId("list"), ListKind.Index, []);
+            return Settle(d, list, PutList(d, list, storyId, index, measurer), measurer);
         });
     }
 

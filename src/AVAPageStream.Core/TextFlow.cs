@@ -120,13 +120,16 @@ public static class Fields
     /// <summary>An index entry's marker: its format holds the topic; shows nothing.</summary>
     public const char IndexEntry = '\uE007';
 
-    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber or Anchor or Place or Reference or IndexEntry;
+    /// <summary>Where a table of contents or an index starts: its format names the list; shows nothing.</summary>
+    public const char ListStart = '\uE008';
+
+    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber or Anchor or Place or Reference or IndexEntry or ListStart;
 
     /// <summary>Text with its fields replaced by what they show ("#" for a page number on a master page itself).</summary>
     public static string Expand(string text, FieldContext? context)
     {
-        if (text.IndexOfAny([Anchor, Place, IndexEntry, Reference]) >= 0)
-            text = text.Replace(Anchor.ToString(), "").Replace(Place.ToString(), "").Replace(IndexEntry.ToString(), "").Replace(Reference.ToString(), "");
+        if (text.IndexOfAny([Anchor, Place, IndexEntry, Reference, ListStart]) >= 0)
+            text = text.Replace(Anchor.ToString(), "").Replace(Place.ToString(), "").Replace(IndexEntry.ToString(), "").Replace(Reference.ToString(), "").Replace(ListStart.ToString(), "");
         if (text.IndexOfAny([PageNumber, PageCount, Footnote, NoteNumber]) < 0) return text;
         if (text.IndexOfAny([Footnote, NoteNumber]) >= 0)
             text = text.Replace(Footnote.ToString(), "").Replace(NoteNumber.ToString(), context is { Note: > 0 } n ? n.Note.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#");

@@ -778,3 +778,30 @@ timeout) and `ParaStyle` and `CharStyle`; `Search.Problem` says what is wrong wi
 fills a pattern's groups in (with `\n` and `\t`), and with nothing to find, each stretch of text in the style is a
 match. The find bar has a Pattern box and a style list. Not done: replacing with a style (changing the look of what
 is found), and finding across paragraphs.
+
+### Milestone 10: documents that keep themselves right
+
+Milestone 9 joined a long document up; this keeps it right as it changes, and finishes what milestone 9 left. In
+stages, each usable on its own:
+
+1. **Lists that keep up.** A table of contents and an index are remembered by the document as what made them (the
+   styles a contents lists, the frame width its page numbers go to), so Text › **Update contents and index** makes
+   every one again in place, in one undo step, going round until the page numbers stop changing (a longer contents
+   can push its own headings on a page). Exporting and printing bring them up to date first; preflight says when
+   one is out of date. Making a contents with the caret in one remakes it rather than adding a second.
+2. **Replace with a style.** The find bar's replacement can put what it finds in a paragraph style or a character
+   style, with its text replaced or kept, so "every *Moon* in Emphasis" or "every line starting *Note:* in the
+   Note style" is one Replace all.
+3. **A deeper index.** A third level (topic, sub-topic, sub-sub-topic); entries that cover a stretch (to the end of
+   their paragraph, or to a named place), shown as a page range; and *see* references on sub-topics.
+4. **Patterns across paragraphs, and anchors everywhere.** A pattern can match a paragraph's end (`\n`), so
+   paragraphs can be found together and joined or split by Replace; and objects can be anchored in table cells and
+   footnotes as in any other text.
+
+**Status (12 November 2026):** started. Stage 1 done: `Document.Lists` holds each contents and index as a
+`GeneratedList` (kind, styles, width); its text starts at a `Fields.ListStart` marker (`CharFormat.List`) and runs
+through the paragraphs after it in the list's own styles (`GeneratedLists.Where`). `Editor.UpdateLists` makes the
+stale ones again (`GeneratedLists.IsStale` compares their text with what `Make` would give), up to four rounds, and
+forgets any whose marker is gone; making one settles the same way. Export, PNG and print update first; preflight
+reports `ListStale`. With it, a fix: applying or changing a paragraph style dropped what markers mark (footnote
+references, anchors, places, cross-references and index entries); `Story.Keep` holds them.

@@ -17,7 +17,8 @@ public sealed record CharFormat(
     string? Anchor = null,     // on an anchored object's marker, the object
     string? Mark = null,       // on a named place's marker, its name
     string? Ref = null,        // on a cross-reference, the place it refers to and how ("name|page")
-    string? Index = null);     // on an index entry's marker, its topic (and sub-topic after a tab, or "see" after a second)
+    string? Index = null,      // on an index entry's marker, its topic (and sub-topic after a tab, or "see" after a second)
+    string? List = null);      // on a contents' or index's start marker, the list's id
 
 /// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
 public enum Script { Normal, Super, Sub }
@@ -230,8 +231,8 @@ public sealed class Story
     public CharFormat TypingFormat(int index) =>
         (index > 0 && Text[index - 1] != '\n' ? FormatAt(index - 1) : FormatAt(index)) is var f && f.Note is not null
             ? f with { Note = null, Script = Script.Normal } // typing after a footnote's reference makes no reference
-            : f.Anchor is not null || f.Mark is not null || f.Ref is not null || f.Index is not null
-                ? f with { Anchor = null, Mark = null, Ref = null, Index = null } // nor after a marker or a reference another
+            : f.Anchor is not null || f.Mark is not null || f.Ref is not null || f.Index is not null || f.List is not null
+                ? f with { Anchor = null, Mark = null, Ref = null, Index = null, List = null } // nor after a marker or a reference another
                 : f;
 
     /// <summary>The paragraph the character at <paramref name="index"/> is in.</summary>
@@ -328,9 +329,17 @@ public sealed class Story
         {
             Paras[p] = style.Para with { Style = style.Name };
             var (start, end) = ParagraphRange(p);
-            FormatChars(start, end - start + 1, f => Over(style.Char, f.CharStyle, charStyles));
+            FormatChars(start, end - start + 1, f => Keep(f, Over(style.Char, f.CharStyle, charStyles)));
         }
     }
+
+    /// <summary>
+    /// A new look for a character that keeps what it marks: a footnote reference (and its superscript), an anchored
+    /// object, a named place, a cross-reference, an index entry or a list's start.
+    /// </summary>
+    private static CharFormat Keep(CharFormat was, CharFormat now) =>
+        was.Note is null && was.Anchor is null && was.Mark is null && was.Ref is null && was.Index is null && was.List is null ? now
+            : now with { Note = was.Note, Anchor = was.Anchor, Mark = was.Mark, Ref = was.Ref, Index = was.Index, List = was.List, Script = was.Note is not null ? was.Script : now.Script };
 
     /// <summary>A paragraph style's characters with a character style over them (if there is such a style).</summary>
     private static CharFormat Over(CharFormat basis, string? charStyle, Func<string, CharacterStyle?>? charStyles) =>
@@ -367,9 +376,9 @@ public sealed class Story
             if (Paras[p].Style != style.Name) continue;
             Paras[p] = style.Para with { Style = style.Name };
             var (start, end) = ParagraphRange(p);
-            FormatChars(start, end - start + 1, f => f.CharStyle is not null && charStyles?.Invoke(f.CharStyle) is not null
+            FormatChars(start, end - start + 1, f => Keep(f, f.CharStyle is not null && charStyles?.Invoke(f.CharStyle) is not null
                 ? Over(style.Char, f.CharStyle, charStyles)
-                : style.Char with { Bold = f.Bold, Italic = f.Italic, Underline = f.Underline });
+                : style.Char with { Bold = f.Bold, Italic = f.Italic, Underline = f.Underline }));
         }
     }
 

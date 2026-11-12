@@ -79,9 +79,9 @@ public class PrintTests
     {
         var e = Book();
         var toc = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 400, W = 300, H = 300 });
-        e.InsertContents(toc.StoryId, 0, Contents.Find(e.Doc, ["Heading", "Subheading"], M), 300);
+        e.InsertContents(toc.StoryId, 0, ["Heading", "Subheading"], 300, M);
         var story = e.Doc.Stories[toc.StoryId];
-        Assert.Equal("One\t1\nTwo\t3\nThree\t5\nFour\t–", story.Text);
+        Assert.Equal("One\t1\nTwo\t3\nThree\t5\nFour\t–", Fields.Expand(story.Text, null));
         Assert.Equal(["Contents 1", "Contents 2", "Contents 1", "Contents 1"], story.Paras.Select(p => p.Style));
         Assert.Equal([new TabStop(300, TabKind.Right, '.')], Tabs.Parse(e.Doc.Style("Contents 2").Para.Tabs));
         Assert.Equal(14, e.Doc.Style("Contents 2").Para.LeftIndent);

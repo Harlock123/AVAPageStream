@@ -447,6 +447,7 @@ public sealed class MainWindow : Window
                         Item("_Story editor…", () => OpenStoryEditor(), "Ctrl+Shift+E"),
                         Item("Table of _contents…", () => _ = MakeContents()),
                         Item("In_dex", MakeIndex),
+                        Item("_Update contents and index", () => UpdateLists()),
                         Item("Check _spelling…", () => OpenSpelling(), "F7"),
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
@@ -925,13 +926,12 @@ public sealed class MainWindow : Window
         if (View.Editing is { } t) (storyId, at) = (t.StoryId, t.Caret);
         else if (View.Selected is [TextFrame f] && Editor.Doc.StoryOf(f) is { } s) (storyId, at) = (s.Id, s.Length);
         else { Say("Put the caret in a text frame, or select one, for the index to go in."); return; }
-        var entries = Indexes.Entries(Editor.Doc, FontMeasurer.Shared);
-        if (entries.Count == 0) { Say("Nothing is marked for the index yet: Text › Mark index entry marks it."); return; }
-        var paras = Indexes.Paragraphs(Editor.Doc, entries);
-        var caret = Editor.InsertIndex(storyId, at, paras);
+        var again = GeneratedLists.At(Editor.Doc, storyId, at) is { Kind: ListKind.Index };
+        var caret = Editor.InsertIndex(storyId, at, FontMeasurer.Shared);
+        if (caret < 0) { Say("Nothing is marked for the index yet: Text › Mark index entry marks it."); return; }
         View.Reveal(storyId, caret, 0);
-        var topics = paras.Count(p => p.Style == Indexes.StyleFor(0));
-        Say($"Made an index of {topics} topic{(topics == 1 ? "" : "s")}. Make it again to bring its page numbers up to date.");
+        var topics = Indexes.Paragraphs(Editor.Doc, Indexes.Entries(Editor.Doc, FontMeasurer.Shared)).Count(p => p.Style == Indexes.StyleFor(0));
+        Say($"{(again ? "Made the index again" : "Made an index")} of {topics} topic{(topics == 1 ? "" : "s")}. It keeps up when you export or print, or choose Text › Update contents and index.");
         Refresh();
     }
 
@@ -1408,8 +1408,22 @@ public sealed class MainWindow : Window
         return answer == 0;
     }
 
+    /// <summary>
+    /// Makes any contents and index that are out of date again, as one undo step; says how many if asked. Gives what
+    /// to add to a message about it (empty if there were none).
+    /// </summary>
+    public string UpdateLists(bool say = true)
+    {
+        var n = Editor.UpdateLists(FontMeasurer.Shared);
+        if (say) Say(n == 0 ? (Editor.Doc.Lists.Count == 0 ? "There is no table of contents or index to update: Text › Table of contents or Index makes one." : "The contents and index are up to date.")
+            : $"Brought {n} {(n == 1 ? "list" : "lists")} up to date; one undo puts {(n == 1 ? "it" : "them")} back.");
+        if (n > 0) Refresh();
+        return n == 0 ? "" : $" Brought {(n == 1 ? "a contents or index" : n + " contents and indexes")} up to date first.";
+    }
+
     public async Task ExportPdf()
     {
+        var lists = UpdateLists(say: false);
         if (!await PreflightFirst()) return;
         if (await AskExport("pdf") is not { } choice) return;
         if (await PickSave("pdf", BaseName + ".pdf") is not { } path) return;
@@ -1422,7 +1436,7 @@ public sealed class MainWindow : Window
             var inks = cmyk is null ? "" : choice.PdfX ? $" As {PdfX.Version}, in CMYK." : " In CMYK" + (cmyk.PicturesLeft > 0 ? $"; {cmyk.PicturesLeft} JPEG picture{(cmyk.PicturesLeft == 1 ? " is" : "s are")} still RGB, to keep {(cmyk.PicturesLeft == 1 ? "its" : "their")} quality." : ".");
             Say((choice.Booklet
                 ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
-                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + inks + PreflightNote());
+                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + inks + lists + PreflightNote());
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1433,6 +1447,7 @@ public sealed class MainWindow : Window
     /// <summary>Exports pages as PNGs, one file each ("name-3.png" for page 3 when there are several).</summary>
     public async Task ExportPng()
     {
+        var lists = UpdateLists(say: false);
         if (!await PreflightFirst()) return;
         if (await AskExport("png") is not { } choice) return;
         var dpi = Math.Clamp(choice.Dpi, 72, 600);
@@ -1445,7 +1460,7 @@ public sealed class MainWindow : Window
         {
             foreach (var i in choice.Pages)
                 Export.Png(doc, doc.Pages[i], choice.Pages.Count == 1 ? path : Export.Numbered(path, i, doc.Pages.Count), dpi);
-            Say(choice.Pages.Count == 1 ? $"Exported {Path.GetFileName(path)} at {dpi} dpi." : $"Exported {Pages(choice.Pages.Count)} as PNG at {dpi} dpi.");
+            Say((choice.Pages.Count == 1 ? $"Exported {Path.GetFileName(path)} at {dpi} dpi." : $"Exported {Pages(choice.Pages.Count)} as PNG at {dpi} dpi.") + lists);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1458,6 +1473,7 @@ public sealed class MainWindow : Window
     /// <summary>Prints: the pages (or a booklet of them) as a PDF sent to the system's printing.</summary>
     public async Task Print()
     {
+        var lists = UpdateLists(say: false);
         if (!await PreflightFirst()) return;
         if (await AskExport("print") is not { } choice) return;
         var pdf = Path.Combine(Path.GetTempPath(), $"AVAPageStream print {DateTime.Now:yyyyMMdd-HHmmss}.pdf");
@@ -1472,7 +1488,7 @@ public sealed class MainWindow : Window
             return;
         }
         var why = await SendToPrinter(pdf);
-        Say(why ?? (choice.Booklet ? "Sent the booklet to the printer: print it on both sides, flipping on the short edge." : $"Sent {Pages(choice.Pages.Count)} to the printer.") + (why is null ? PreflightNote() : ""));
+        Say(why ?? (choice.Booklet ? "Sent the booklet to the printer: print it on both sides, flipping on the short edge." : $"Sent {Pages(choice.Pages.Count)} to the printer.") + (why is null ? lists + PreflightNote() : ""));
     }
 
     /// <summary>Puts a table of contents of the chosen styles at the caret, or at the end of the selected frame's story.</summary>
@@ -1483,16 +1499,18 @@ public sealed class MainWindow : Window
         if (View.Editing is { } t) (storyId, at) = (t.StoryId, t.Caret);
         else if (View.Selected is [TextFrame f] && Editor.Doc.StoryOf(f) is { } s) (storyId, at) = (s.Id, s.Length);
         else { Say("Put the caret in a text frame, or select one, for the table of contents to go in."); return; }
-        var styles = Editor.Doc.Styles.Select(s => s.Name).Where(n => !n.StartsWith("Contents ", StringComparison.Ordinal)).ToList();
+        var styles = Editor.Doc.Styles.Select(s => s.Name)
+            .Where(n => !n.StartsWith("Contents ", StringComparison.Ordinal) && !n.StartsWith("Index ", StringComparison.Ordinal)).ToList();
         if (await AskContents(styles) is not { Count: > 0 } chosen) return;
-        var entries = Contents.Find(Editor.Doc, chosen, FontMeasurer.Shared);
-        if (entries.Count == 0) { Say($"No paragraphs are in {string.Join(" or ", chosen)} yet."); return; }
+        var again = GeneratedLists.At(Editor.Doc, storyId, at) is { Kind: ListKind.Contents };
         // The page numbers' tab goes at the right of the column the contents go in.
         var frame = Editor.Doc.Stories[storyId].Frames.Select(Editor.Doc.Find).OfType<TextFrame>().FirstOrDefault();
         var width = frame?.ColumnBoxes().First().W ?? 300;
-        var caret = Editor.InsertContents(storyId, at, entries, width);
+        var caret = Editor.InsertContents(storyId, at, chosen, width, FontMeasurer.Shared);
+        if (caret < 0) { Say($"No paragraphs are in {string.Join(" or ", chosen)} yet."); return; }
         View.Reveal(storyId, caret, 0);
-        Say($"Made a table of contents of {entries.Count} entries. Make it again to bring its page numbers up to date.");
+        var count = Contents.Find(Editor.Doc, chosen, FontMeasurer.Shared).Count;
+        Say($"{(again ? "Made the table of contents again" : "Made a table of contents")}: {count} {(count == 1 ? "entry" : "entries")}. It keeps up when you export or print, or choose Text › Update contents and index.");
         Refresh();
     }
 

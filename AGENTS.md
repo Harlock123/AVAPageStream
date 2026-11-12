@@ -207,6 +207,10 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   worked out in `Layouts.Of` before the layout and checked again after it.
 - **Index entries** are `Fields.IndexEntry` markers with `CharFormat.Index` (`IndexMark.Key`); `Indexes.cs` finds
   their pages and makes the index as placed paragraphs, which `Editor.InsertIndex` places like the contents.
+- **Contents and indexes are remembered** (`Document.Lists`, `GeneratedLists.cs`): a `Fields.ListStart` marker, then
+  the paragraphs in the list's styles. `Editor.UpdateLists` remakes stale ones; export and print call it first.
+- **A character's markers survive restyling**: `Story.Keep` lays a style over a format without losing `Note`,
+  `Anchor`, `Mark`, `Ref`, `Index` or `List`. Any new marker field must join it (and `TypingFormat`).
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

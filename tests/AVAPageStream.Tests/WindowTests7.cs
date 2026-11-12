@@ -76,13 +76,17 @@ public partial class WindowTests
         Wait(w.MakeContents());
         Assert.Contains("Body", offered!);
         var story = w.Editor.Doc.Stories[toc.StoryId];
-        Assert.Equal("Chapter one\t1\nA section\t1", story.Text);
-        Assert.Contains("Made a table of contents of 2 entries", w.Message.Text);
+        Assert.Equal("Chapter one\t1\nA section\t1", Fields.Expand(story.Text, null));
+        Assert.Contains("Made a table of contents: 2 entries", w.Message.Text);
         Assert.Equal("Contents 2", story.Paras[1].Style);
 
         // Asked again, Contents styles aren't offered as headings.
         Wait(w.MakeContents());
         Assert.DoesNotContain(offered!, s => s.StartsWith("Contents"));
+        // And made again where it is (the frame's end is in it), not a second time.
+        Assert.Contains("Made the table of contents again", w.Message.Text);
+        Assert.Single(w.Editor.Doc.Lists);
+        Assert.Equal("Chapter one\t1\nA section\t1", Fields.Expand(w.Editor.Doc.Stories[toc.StoryId].Text, null));
         Done(w);
     }
 

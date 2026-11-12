@@ -22,7 +22,7 @@ public static class Fitting
 }
 
 /// <summary>What preflight finds.</summary>
-public enum Problem { Overset, RowsOverset, NoPicture, LinkMissing, LinkChanged, LowResolution, ShortOfBleed, NoBleed, MissingFont, NoEmbedding }
+public enum Problem { Overset, RowsOverset, NoPicture, LinkMissing, LinkChanged, LowResolution, ShortOfBleed, NoBleed, MissingFont, NoEmbedding, ListStale }
 
 /// <summary>A font as the computer has it: in the program, installed, not there, or not to be embedded in a PDF.</summary>
 public enum FontState { Bundled, Installed, Missing, NoEmbedding }
@@ -73,6 +73,13 @@ public static class Preflight
                 Bleed(doc, obj, sref, name, issues);
             }
         Fonts(doc, o, issues, SheetOf, Where);
+        foreach (var list in doc.Lists)
+            if (GeneratedLists.Where(doc, list) is var (storyId, start, _) && GeneratedLists.IsStale(doc, list, o.Measurer))
+            {
+                var frame = doc.Stories[storyId].Frames.FirstOrDefault() ?? "";
+                var what = list.Kind == ListKind.Index ? "The index" : "A table of contents";
+                issues.Add(new Issue(Problem.ListStale, SheetOf(frame), frame, $"{Where(frame)}: {what} is out of date: Text › Update contents and index makes it again (exporting and printing do too).", storyId, start));
+            }
         return issues;
     }
 

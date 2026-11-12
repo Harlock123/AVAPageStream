@@ -88,7 +88,7 @@ public class IndexTests
         e.Change("Section", d => d.Pages[2].Section = new PageNumbering(1, NumberStyle.UpperRoman));
         var paras = Indexes.Paragraphs(e.Doc, Indexes.Entries(e.Doc, M));
         Assert.Equal("Index 1: Charts, II", Lines(paras).Split('\n')[1]);
-        var end = e.InsertIndex(f[0].StoryId, e.Doc.Stories[f[0].StoryId].Length, paras);
+        var end = e.InsertIndex(f[0].StoryId, e.Doc.Stories[f[0].StoryId].Length, M);
         Assert.Contains(e.Doc.Styles, s => s.Name == Indexes.HeadingStyle);
         Assert.Contains(e.Doc.Styles, s => s.Name == "Index 1");
         Assert.Contains("Charts, II", e.Doc.Stories[f[0].StoryId].Text);

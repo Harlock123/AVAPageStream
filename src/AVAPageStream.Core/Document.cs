@@ -92,6 +92,9 @@ public sealed class Document
     /// <summary>The passwords of protected PDFs placed in it, by the image's key, so their pages can be drawn.</summary>
     public Dictionary<string, string> Passwords { get; set; } = [];
 
+    /// <summary>The tables of contents and indexes in it, by what made them, so they can be made again.</summary>
+    public List<GeneratedList> Lists { get; set; } = [];
+
     /// <summary>Words the spelling checker passes in this document (Ignore all).</summary>
     public List<string> IgnoredWords { get; set; } = [];
 
