@@ -539,4 +539,37 @@ public partial class WindowTests
         Assert.Contains("kept as vector", w.Message.Text);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_anchored()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 130, Y = 80, W = 340, H = 420 });
+        e.ReplaceText(f.StoryId, 0, 0, "Safety at the harbour\nWhen the flag is flying, small boats keep to the channel. The harbour master's launch has right of way at all times, and the bridge opens on the hour.\nTides\nHigh water at the mouth is forty minutes before the town quay. Look for the tide board by the lifeboat station.");
+        e.ApplyStyle(f.StoryId, 0, 0, "Heading");
+        var story = e.Doc.Stories[f.StoryId];
+        e.ApplyStyle(f.StoryId, story.Text.IndexOf("Tides", StringComparison.Ordinal), 0, "Subheading");
+        // A little anchor icon in the line, and a warning sign in the margin beside the first paragraph.
+        var inline = new EllipseObject { W = 12, H = 12, Fill = "@Blue", Stroke = null };
+        e.AnchorAt(f.StoryId, story.Text.IndexOf("launch", StringComparison.Ordinal), [inline]);
+        e.ReplaceText(f.StoryId, story.Text.IndexOf("launch", StringComparison.Ordinal), 0, " ");
+        var sign = new PathObject
+        {
+            Nodes = [PathNode.Corner(new Pt(20, 0)), PathNode.Corner(new Pt(40, 36)), PathNode.Corner(new Pt(0, 36))],
+            Closed = true, Fill = "@Yellow", Stroke = "@Red", StrokeWidth = 3,
+        };
+        sign.Fit();
+        var signId = e.AnchorAt(f.StoryId, story.Text.IndexOf("When", StringComparison.Ordinal), [sign]).Single();
+        e.Reanchor(signId, new Anchoring(AnchorKind.Custom, From: AnchorFrom.ColumnLeft, X: -56, Y: 2));
+        w.View.FitPage();
+        w.Refresh();
+        Pump();
+        w.View.Select([signId]);
+        ShowTab(w, 0, 0);
+        w.Refresh();
+        Guide(w, "anchored");
+        Assert.NotNull(e.Doc.Find(signId)!.PlacedIn);
+        Done(w);
+    }
 }

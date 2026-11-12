@@ -131,6 +131,13 @@ public sealed class SidePanel : TabControl
     public TextBox WrapGapBox { get; } = Ui.Box();
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
     private readonly StackPanel _cornerRow = new();
+    private readonly StackPanel _anchorRows = new();
+    public ComboBox AnchorKindChoice { get; } = new() { ItemsSource = new[] { "In the line", "Placed by hand" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox AnchorOffsetBox { get; } = Ui.Box("0, up from the baseline");
+    public ComboBox AnchorFromChoice { get; } = new() { ItemsSource = new[] { "The column's left edge", "The column's right edge", "Where it is anchored" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox AnchorXBox { get; } = Ui.Box();
+    public TextBox AnchorYBox { get; } = Ui.Box("below the line's top");
+    public CheckBox AnchorBaselineBox { get; } = new() { Content = "Down from the line's baseline, not its top", FontSize = 12 };
     public ComboBox ObjectStyleChoice { get; } = new() { HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
     public TextBox ObjectStyleNameBox { get; } = Ui.Box("New object style's name");
     public TextBlock ObjectStyleInfo { get; } = new() { Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap };
@@ -446,6 +453,7 @@ public sealed class SidePanel : TabControl
         _cornerRow.Children.Add(Ui.Row(("Corners", CornerBox)));
         _cornerRow.Children.Add(Ui.Row(("Style", CornerStyleChoice)));
         BuildEffects();
+        BuildAnchored();
         _rotationRow.Children.Add(Ui.Row(("Rotation", RotationBox)));
         BuildTableRows();
         _arrowRows.Children.AddRange([Ui.Heading("Arrowheads"), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ArrowStartBox, ArrowEndBox } }]);
@@ -510,6 +518,7 @@ public sealed class SidePanel : TabControl
             Ui.Row(("X", XBox), ("Y", YBox)),
             Ui.Row(("W", WBox), ("H", HBox)),
             _rotationRow,
+            _anchorRows,
             Ui.Heading("Colour"),
             Ui.Row(("Fill", WithSwatch(FillBox, _fillSwatch))),
             Ui.Row(("Stroke", WithSwatch(StrokeBox, _strokeSwatch))),
@@ -1011,6 +1020,54 @@ public sealed class SidePanel : TabControl
         if (CharStyleChoice.SelectedIndex <= 0) { _window.Say("Pick the character style to delete first."); return; }
         var name = (string)CharStyleChoice.SelectedItem!;
         _window.Say(Editor.DeleteCharStyle(name) ?? $"Deleted {name}; its text has its paragraph's style again.");
+    }
+
+    /// <summary>The Anchored section: how an object anchored in text is placed, and letting it go.</summary>
+    private void BuildAnchored()
+    {
+        void Changed()
+        {
+            if (_refreshing || View.Selected is not [{ Anchoring: { } was } o]) return;
+            double Measure(TextBox b, double otherwise) => Units.TryParse(b.Text, Unit, out var v) ? v : otherwise;
+            var kind = AnchorKindChoice.SelectedIndex == 1 ? AnchorKind.Custom : AnchorKind.Inline;
+            var from = (AnchorFrom)Math.Max(0, AnchorFromChoice.SelectedIndex);
+            var a = new Anchoring(kind, Measure(AnchorOffsetBox, was.Offset), from, Measure(AnchorXBox, was.X), Measure(AnchorYBox, was.Y), AnchorBaselineBox.IsChecked == true);
+            // Placed by hand for the first time: where it is now, against its line.
+            if (kind == AnchorKind.Custom && was.Kind == AnchorKind.Inline) a = a with { From = AnchorFrom.Anchor, X = 0, Y = 0 };
+            Editor.Reanchor(o.Id, a);
+            Refresh();
+        }
+        AnchorKindChoice.SelectionChanged += (_, _) => Changed();
+        AnchorFromChoice.SelectionChanged += (_, _) => Changed();
+        AnchorBaselineBox.IsCheckedChanged += (_, _) => Changed();
+        foreach (var b in new[] { AnchorOffsetBox, AnchorXBox, AnchorYBox }) Commit(b, _ => Changed());
+        _anchorRows.Children.AddRange([
+            Ui.Heading("Anchored in text"),
+            Ui.Row(("Place", AnchorKindChoice)),
+            Ui.Row(("Offset", AnchorOffsetBox)),
+            Ui.Row(("From", AnchorFromChoice)),
+            Ui.Row(("X", AnchorXBox), ("Y", AnchorYBox)),
+            AnchorBaselineBox,
+            Ui.Buttons(Ui.Button("Release from text", () => _window.ReleaseFromText(), "Put it on the page where it is, no longer moving with the text")),
+        ]);
+    }
+
+    private void RefreshAnchored(PageObject? one)
+    {
+        XBox.IsEnabled = YBox.IsEnabled = true;
+        _anchorRows.IsVisible = one?.Anchoring is not null;
+        if (one?.Anchoring is not { } a) return;
+        var custom = a.Kind == AnchorKind.Custom;
+        AnchorKindChoice.SelectedIndex = custom ? 1 : 0;
+        Set(AnchorOffsetBox, Units.Format(a.Offset, Unit));
+        AnchorFromChoice.SelectedIndex = (int)a.From;
+        Set(AnchorXBox, Units.Format(a.X, Unit));
+        Set(AnchorYBox, Units.Format(a.Y, Unit));
+        AnchorBaselineBox.IsChecked = a.FromBaseline;
+        AnchorOffsetBox.IsEnabled = !custom;
+        AnchorFromChoice.IsEnabled = AnchorXBox.IsEnabled = AnchorYBox.IsEnabled = AnchorBaselineBox.IsEnabled = custom;
+        // Where it is, it is put by its text: the frame boxes can size it, not move it.
+        XBox.IsEnabled = YBox.IsEnabled = false;
     }
 
     private void RefreshObjectStyle(IReadOnlyList<PageObject> selected)
@@ -1554,6 +1611,7 @@ public sealed class SidePanel : TabControl
         _cornerRow.IsVisible = selected.All(o => o is RectangleObject or TextFrame or PictureObject);
         RefreshEffects(first);
         RefreshObjectStyle(selected);
+        RefreshAnchored(one);
         _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject or TableObject));
         Set(RotationBox, first.Rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
         Set(CornerBox, first.Corners is { } fc ? fc.Describe(Unit) : first is RectangleObject r ? Units.Format(r.CornerRadius, Unit) : Units.Format(0, Unit));

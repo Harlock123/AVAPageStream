@@ -237,6 +237,11 @@ public sealed class Editor
         if (doomed.Count == 0) return 0;
         Change(doomed.Count == 1 ? "Delete" : $"Delete {doomed.Count} objects", d =>
         {
+            // An anchored object goes with its marker.
+            foreach (var story in d.Stories.Values)
+                foreach (var o in story.Anchored.Where(o => doomed.Contains(o.Id)).ToList())
+                    if (story.AnchorIndex(o.Id) is var at and >= 0) story.Delete(at, 1);
+                    else story.Anchored.Remove(o);
             foreach (var sheet in d.Sheets)
             {
                 var going = sheet.All.Where(o => doomed.Contains(o.Id)).ToList();
@@ -686,7 +691,7 @@ public sealed class Editor
     {
         var story = d.Stories[storyId];
         story.Delete(start, length);
-        story.InsertFragment(start, fragment);
+        story.InsertFragment(start, Anchors.Rekey(d, fragment)); // its anchored objects as new ones
         return start + fragment.Text.Length;
     });
 
@@ -956,6 +961,91 @@ public sealed class Editor
             return made.Id;
         });
     }
+
+    /// <summary>
+    /// Anchors copies of objects in a story at a place in its text, set in the line, one after another; the objects
+    /// on the page go. Gives the anchored objects' ids.
+    /// </summary>
+    public List<string> AnchorAt(string storyId, int index, IReadOnlyList<PageObject> objects, bool removeFromPage = false) => Change("Anchor in text", d =>
+    {
+        var story = d.Stories[storyId];
+        var made = new List<string>();
+        index = Math.Clamp(index, 0, story.Length);
+        foreach (var o in objects)
+        {
+            var copy = Copy(d, o);
+            copy.Anchoring = new Anchoring();
+            copy.Rotation = o.Rotation;
+            story.Anchored.Add(copy);
+            story.Insert(index, Fields.Anchor.ToString(), story.TypingFormat(index) with { Anchor = copy.Id });
+            index++;
+            made.Add(copy.Id);
+            if (removeFromPage && d.SheetOf(o.Id) is { } sheet && d.Find(o.Id) is { } onPage) Shapes.ContainerOf(sheet.Objects, o.Id)?.Remove(onPage);
+        }
+        return made;
+    });
+
+    /// <summary>
+    /// Anchors an object on the page to the text beside it: to the start of the line its top is level with (or the
+    /// nearest), in a frame on the same page, placed by hand so it stays where it is. Gives why not, or null.
+    /// </summary>
+    public string? AnchorBeside(string objectId, Func<string, TextLayout?> layoutOf)
+    {
+        if (Doc.Find(objectId) is not { } o || Doc.SheetOf(objectId) is not { } sheet) return "Select an object on the page to anchor.";
+        if (o is TextFrame || o is TableObject) return "A text frame or table can be anchored by pasting it into text.";
+        var b = o.Bounds;
+        (TextLayout Layout, Line Line, double Distance)? best = null;
+        foreach (var frame in Shapes.Flatten(sheet.Objects).OfType<TextFrame>())
+        {
+            if (frame.Id == objectId || layoutOf(frame.StoryId) is not { } layout) continue;
+            foreach (var line in layout.Lines)
+            {
+                if (layout.Areas[line.Area].FrameId != frame.Id) continue;
+                var top = line.Baseline - line.Ascent;
+                var dist = Math.Abs(top - b.Y) + Math.Max(0, Math.Max(layout.Areas[line.Area].Box.X - b.Right, b.X - layout.Areas[line.Area].Box.Right)) * 0.5;
+                if (best is null || dist < best.Value.Distance) best = (layout, line, dist);
+            }
+        }
+        if (best is not { } chosen) return "There is no text on this page to anchor it to.";
+        var (lay, ln, _) = chosen;
+        var col = lay.Areas[ln.Area].Box;
+        var anchoring = new Anchoring(AnchorKind.Custom, 0, AnchorFrom.ColumnLeft, b.X - col.X, b.Y - (ln.Baseline - ln.Ascent));
+        var storyId = lay.Story.Id;
+        var at = ln.Start;
+        Change("Anchor to text", d =>
+        {
+            var story = d.Stories[storyId];
+            var live = d.Find(objectId)!;
+            var sh = d.SheetOf(objectId)!;
+            var around = Shapes.GroupsAround(sh.Objects, objectId);
+            Shapes.ContainerOf(sh.Objects, objectId)?.Remove(live);
+            foreach (var g in around) g.Fit();
+            live.Anchoring = anchoring;
+            story.Anchored.Add(live);
+            story.Insert(at, Fields.Anchor.ToString(), story.TypingFormat(at) with { Anchor = live.Id });
+        });
+        return null;
+    }
+
+    /// <summary>Lets an anchored object go from its text: onto the page it is drawn on, where it is, its marker gone.</summary>
+    public string? Release(string objectId, SheetRef? onto)
+    {
+        if (Doc.AnchoredIn(objectId) is not { } story || story.Anchored.FirstOrDefault(o => o.Id == objectId) is not { } o) return "That object isn't anchored in text.";
+        if (onto is null) return "Its text isn't set anywhere, so it has no place on a page: make room for the text first.";
+        Change("Release from text", d =>
+        {
+            var s = d.Stories[story.Id];
+            var live = s.Anchored.First(x => x.Id == objectId);
+            s.Anchored.Remove(live);
+            if (s.AnchorIndex(objectId) is var at and >= 0) s.Delete(at, 1);
+            live.Anchoring = null;
+            onto.Value.Resolve(d).Objects.Add(live);
+        });
+        return null;
+    }
+
+    /// <summary>Changes how an anchored object is placed.</summary>
+    public void Reanchor(string objectId, Anchoring anchoring) => Change("Anchored object", d => { if (d.Find(objectId) is { } o) o.Anchoring = anchoring; });
 
     /// <summary>Gives objects an object style's look, or (with null) takes them out of their style, keeping their look.</summary>
     public string? ApplyObjectStyle(IEnumerable<string> ids, string? style)

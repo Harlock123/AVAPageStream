@@ -98,11 +98,15 @@ public static class Fields
     /// <summary>In a footnote's own text, its number.</summary>
     public const char NoteNumber = '\uE003';
 
-    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber;
+    /// <summary>Where an object is anchored in the text: as wide as it is, for one set in the line; shows nothing itself.</summary>
+    public const char Anchor = '\uE004';
+
+    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber or Anchor;
 
     /// <summary>Text with its fields replaced by what they show ("#" for a page number on a master page itself).</summary>
     public static string Expand(string text, FieldContext? context)
     {
+        if (text.Contains(Anchor)) text = text.Replace(Anchor.ToString(), "");
         if (text.IndexOfAny([PageNumber, PageCount, Footnote, NoteNumber]) < 0) return text;
         if (text.IndexOfAny([Footnote, NoteNumber]) >= 0)
             text = text.Replace(Footnote.ToString(), "").Replace(NoteNumber.ToString(), context is { Note: > 0 } n ? n.Note.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#");
@@ -339,12 +343,17 @@ public static class TextFlow
     }
 
     /// <summary>Measuring through a story's fields.</summary>
-    private readonly record struct Ctx(ITextMeasurer M, FieldContext? Fields, IReadOnlyDictionary<string, int> Numbers)
+    private readonly record struct Ctx(ITextMeasurer M, FieldContext? Fields, IReadOnlyDictionary<string, int> Numbers, Story Story)
     {
-        // A footnote's reference is a run of its own, its format naming the note.
-        public double Measure(string text, CharFormat f) => TextFlow.Measure(M, Core.Fields.Expand(
-            f.Note is { } note && text.Contains(Core.Fields.Footnote) ? text.Replace(Core.Fields.Footnote.ToString(), Numbers.TryGetValue(note, out var n) ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") : text,
-            Fields), f);
+        // A footnote's reference is a run of its own, its format naming the note; so is an anchored object's marker,
+        // as wide as the object if it is set in the line.
+        public double Measure(string text, CharFormat f)
+        {
+            var objects = f.Anchor is { } id && text.Contains(Core.Fields.Anchor) && Anchors.Inline(Story, id) is { } o ? o.W * text.Count(c => c == Core.Fields.Anchor) : 0;
+            return objects + TextFlow.Measure(M, Core.Fields.Expand(
+                f.Note is { } note && text.Contains(Core.Fields.Footnote) ? text.Replace(Core.Fields.Footnote.ToString(), Numbers.TryGetValue(note, out var n) ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") : text,
+                Fields), f);
+        }
     }
 
     private readonly record struct Slot(double X, double W);
@@ -363,7 +372,7 @@ public static class TextFlow
         Func<string, double, double>? noteHeight = null)
     {
         var numbers = Footnotes.Numbers(story);
-        var ctx = new Ctx(measurer, fields, numbers);
+        var ctx = new Ctx(measurer, fields, numbers, story);
         var notes = new List<(int Area, string Id, double Height)>();
         double NotesIn(int area)
         {
@@ -439,7 +448,7 @@ public static class TextFlow
                     // Where the line would go, judged by the format it starts in, and the room there.
                     var startIndex = w < words.Count ? words[w].Start + charSplit : pEnd;
                     var f0 = story.FormatAt(startIndex);
-                    var (a0, d0) = Height([f0], measurer);
+                    var (a0, d0) = Height([f0], measurer, story);
                     var trial = previousBaseline is { } pb0 ? pb0 + Leading(para, f0.Size) + pendingSpace : box.Y + a0;
                     if (jumpTo is { } j0 && j0 > trial) trial = j0;
                     if (para.OnGrid && grid is { } g0) trial = g0.Snap(trial);
@@ -475,9 +484,12 @@ public static class TextFlow
 
                     var formats = made.SelectMany(m => m.Pieces).Select(x => x.Format).ToList();
                     if (formats.Count == 0) formats.Add(story.FormatAt(pEnd));
-                    var (ascent, descent) = Height(formats, measurer);
+                    var (ascent, descent) = Height(formats, measurer, story);
                     var largest = formats.Max(f => f.Size);
-                    var baseline = previousBaseline is { } pb ? pb + Leading(para, largest) + pendingSpace : box.Y + ascent;
+                    // A line holding an object taller than its type is as far down as the object needs.
+                    var lead = Leading(para, largest);
+                    if (formats.Any(f => f.Anchor is { } aid && Anchors.Inline(story, aid) is not null)) lead = Math.Max(lead, ascent + 0.25 * largest);
+                    var baseline = previousBaseline is { } pb ? pb + lead + pendingSpace : box.Y + ascent;
                     if (jumpTo is { } j && j > baseline) baseline = j - a0 + ascent;
                     if (para.OnGrid && grid is { } g) baseline = g.Snap(baseline);
                     if (baseline + descent > bottom + Slack) { NextArea(); continue; }
@@ -604,11 +616,19 @@ public static class TextFlow
         }
     }
 
-    private static (double Ascent, double Descent) Height(IEnumerable<CharFormat> formats, ITextMeasurer m)
+    private static (double Ascent, double Descent) Height(IEnumerable<CharFormat> formats, ITextMeasurer m, Story? story = null)
     {
         double ascent = 0, descent = 0;
         foreach (var given in formats)
         {
+            // An object in the line: as tall above the baseline as it is (raised or lowered by its offset).
+            if (given.Anchor is { } id && story is not null && Anchors.Inline(story, id) is { } o)
+            {
+                var offset = o.Anchoring?.Offset ?? 0;
+                ascent = Math.Max(ascent, o.H + offset);
+                descent = Math.Max(descent, -offset);
+                continue;
+            }
             var f = AsSet(given);
             var fm = m.Metrics(f with { SmallCaps = false });
             ascent = Math.Max(ascent, fm.Ascent + Math.Max(0, f.Shift));

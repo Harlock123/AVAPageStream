@@ -14,7 +14,7 @@ namespace AVAPageStream;
 /// </summary>
 internal sealed class Layouts(ITextMeasurer measurer)
 {
-    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, BaselineGrid? Grid, string Notes, TextLayout Layout);
+    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, BaselineGrid? Grid, string Notes, string Anchored, TextLayout Layout);
 
     // By story, and by the page a master's story is drawn on: its page-number fields differ from page to page.
     private readonly Dictionary<(string, int), Entry> _layouts = [];
@@ -61,13 +61,27 @@ internal sealed class Layouts(ITextMeasurer measurer)
             notes = string.Join("\u0001", Footnotes.Numbers(story).Keys.Select(id => doc.Stories.TryGetValue(id, out var n)
                 ? n.Text + string.Concat(n.Runs) + string.Concat(n.Paras) : ""));
         }
-        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid && e.Notes == notes &&
+        var anchored = Anchors.Signature(story);
+        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid && e.Notes == notes && e.Anchored == anchored &&
             e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) && e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) &&
             e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
             return e.Layout;
         var layout = TextFlow.Layout(story, areas, measurer, fields, grid, heights);
         LaidOut++;
-        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, grid, notes, layout);
+        Anchors.Place(story, layout);
+        // Objects placed by hand that wrap text: kept out of the area they fall in, and the story laid out again.
+        var wrapping = story.Anchored.Where(o => o.Anchoring?.Kind == AnchorKind.Custom && o.Wrap && o.PlacedIn is not null).ToList();
+        if (wrapping.Count > 0)
+        {
+            var kept = areas.Select(a =>
+            {
+                var mine = wrapping.Where(o => o.PlacedIn == a.FrameId && o.Bounds.Inflate(o.WrapGap).Intersects(a.Box)).Select(Shapes.KeepOf).ToList();
+                return mine.Count == 0 ? a : a with { Exclusions = [.. a.Keep, .. mine] };
+            }).ToList();
+            layout = TextFlow.Layout(story, kept, measurer, fields, grid, heights);
+            Anchors.Place(story, layout);
+        }
+        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, grid, notes, anchored, layout);
         return layout;
     }
 }
@@ -273,6 +287,11 @@ internal sealed class PageRenderer
         {
             if (!inArea(layout.Areas[line.Area].FrameId)) continue;
             if (only is null) DrawRules(dc, doc, layout, line);
+            // Its anchored objects, where the layout put them.
+            if (only is null)
+                foreach (var piece in line.Pieces)
+                    if (piece.Format.Anchor is { } aid && layout.Story.Anchored.FirstOrDefault(o => o.Id == aid) is { } anchored && anchored.PlacedIn is not null && doc.LayerOf(anchored).Visible)
+                        DrawObject(dc, doc, anchored, page);
             foreach (var piece in line.Pieces)
             {
                 var given = piece.Format;

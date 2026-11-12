@@ -734,3 +734,29 @@ Stage 4 done: PDF/X-4 (`PdfX.cs`, `IccCmyk.cs`): an output intent with a profile
 agree, an /ID, PDF 1.6, trim boxes, transparency groups in CMYK, JPEGs converted, links left out. Knockout groups and
 Type 3 glyphs as a clip are drawn. (With it, a bug in CMYK export fixed: SkiaSharp's small uncompressed forms were
 written back deflated without saying so.) Not validated by a PDF/X checker, none being free to run here.
+
+### Milestone 9: long documents, joined up
+
+What a book, a manual or a report needs beyond flowing text: things that travel with the words, and parts that
+are made from the rest of the document and stay right as it changes. In stages, each usable on its own:
+
+1. **Anchored objects.** A picture, shape, table or text frame placed in the text, so it moves when the text
+   reflows: *inline* (it sits on the line, which grows to hold it, with an offset up or down), or *custom*
+   (placed against its anchor's line, by the frame's edges or the anchor itself, such as an icon in the margin
+   beside its paragraph, with text wrapping round it if it asks). Selected, styled and changed like any object;
+   deleted with its anchor; copied with the text.
+2. **Cross-references.** A reference to a heading, or to any place in the text given a name, shown as its page
+   number, its text, or both (`see "Tide tables" on page 12`), kept up to date as pages move, and a link in the
+   PDF.
+3. **An index.** Entries marked in the text (a topic, and a sub-topic under it; or *see* another topic), then an
+   index made from them: alphabetical, with a heading for each letter, page numbers joined into ranges, in index
+   styles, flowed into a frame like a table of contents, and made again when asked.
+4. **Find and replace with patterns.** Regular expressions in the find bar (with groups and `$1` in the
+   replacement), and finding by paragraph or character style.
+
+**Status (12 November 2026):** started. Stage 1 done: an anchored object is kept in its story (`Story.Anchored`) at a
+marker character (`Fields.Anchor`, whose format names it), measured into its line by the layout (inline) or placed
+against it afterwards (custom; a story is laid out twice when one wraps text), and drawn with its frame's text.
+`Document.AllObjects` includes them, so they are found, saved, styled and preflighted as any; the page view picks
+those set on its sheet. Not done: anchoring in table cells and footnotes, and objects that are anchored and also
+in groups.

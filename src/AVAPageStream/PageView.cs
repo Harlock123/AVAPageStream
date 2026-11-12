@@ -224,7 +224,10 @@ public sealed class PageView : Control
     public TextEdit? Editing { get; private set; }
 
     /// <summary>The selected objects on the sheet shown, top-most last.</summary>
-    public IReadOnlyList<PageObject> Selected => CurrentSheet.All.Where(o => _selection.Contains(o.Id)).ToList();
+    public IReadOnlyList<PageObject> Selected => _selection.Count == 0 ? [] : Here().Where(o => _selection.Contains(o.Id)).ToList();
+
+    /// <summary>What can be selected on this sheet: its objects, and those anchored in text set on it.</summary>
+    private IEnumerable<PageObject> Here() => CurrentSheet.All.Concat(Shapes.Flatten(AnchoredHere()));
 
     /// <summary>The path whose points are being edited (double-click a path with Select), or null.</summary>
     public string? EditingPoints { get; private set; }
@@ -366,7 +369,8 @@ public sealed class PageView : Control
     public void Select(IEnumerable<string> ids)
     {
         _selection.Clear();
-        _selection.AddRange(ids.Where(id => CurrentSheet.All.Any(o => o.Id == id)).Distinct());
+        var here = Here().Select(o => o.Id).ToHashSet();
+        _selection.AddRange(ids.Where(here.Contains).Distinct());
         if (EditingPoints is not null && !_selection.Contains(EditingPoints)) EditingPoints = null;
         Notify();
         InvalidateVisual();
@@ -949,7 +953,16 @@ public sealed class PageView : Control
     /// (<paramref name="which"/>) finds it inside groups.
     /// </summary>
     private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null) =>
-        Hit(Doc.Ordered(CurrentSheet.Objects).Where(Pickable).ToList(), p, which);
+        Hit([.. Doc.Ordered(CurrentSheet.Objects).Where(Pickable), .. AnchoredHere().Where(Pickable)], p, which);
+
+    /// <summary>The objects anchored in text set on this sheet, where their text put them (drawn over its frames).</summary>
+    internal List<PageObject> AnchoredHere()
+    {
+        var frames = Shapes.Flatten(CurrentSheet.Objects).OfType<TextFrame>().Select(f => f.Id).ToHashSet();
+        if (frames.Count == 0) return [];
+        foreach (var f in Shapes.Flatten(CurrentSheet.Objects).OfType<TextFrame>()) _ = _layouts.Of(Doc, f.StoryId);
+        return Doc.Stories.Values.SelectMany(s => s.Anchored).Where(o => o.PlacedIn is { } p && frames.Contains(p)).ToList();
+    }
 
     /// <summary>Whether an object on the sheet can be picked: its layer shown and not locked.</summary>
     private bool Pickable(PageObject o) => Doc.LayerOf(o) is { Visible: true, Locked: false };
@@ -1665,6 +1678,19 @@ public sealed class PageView : Control
         switch (drag)
         {
             case Drag.Move:
+                // An object placed by hand against its text keeps where it was dragged to, as its offsets; one set in
+                // the line goes back to it.
+                foreach (var (id, was) in _originals)
+                    if (Doc.Find(id) is { Anchoring: { } a } moved)
+                    {
+                        var now = moved.Bounds;
+                        if (a.Kind == AnchorKind.Custom) moved.Anchoring = a with { X = a.X + now.X - was.X, Y = a.Y + now.Y - was.Y };
+                        else
+                        {
+                            moved.Bounds = was;
+                            Status?.Invoke("An object in the line moves with its text. Place it by hand (Object tab) to move it on its own.");
+                        }
+                    }
                 _editor.Commit(_originals.Count == 1 ? "Move" : $"Move {_originals.Count} objects");
                 break;
             case Drag.Resize:

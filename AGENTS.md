@@ -199,6 +199,10 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **PDF/X-4** is `PdfX.Make` on the finished CMYK PDF (after `PdfColour.Convert`, given a JPEG decoder, and
   `PdfExtras.Finish`), with `IccCmyk.Profile` as the output intent. Any stream PdfColour deflates must say
   `/Filter /FlateDecode` (`Flated`).
+- **Anchored objects** live in `Story.Anchored`, at a `Fields.Anchor` marker whose `CharFormat.Anchor` names the
+  object. Their X and Y are derived: `Anchors.Place` sets them (and `PlacedIn`) after each layout, from
+  `Layouts.Of`. `Document.AllObjects` and `Find` include them, but `SheetOf` doesn't: code that takes an object off a
+  sheet must handle anchored ones (as `Editor.Delete` does). The page view's `Here()` is what can be selected.
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

@@ -13,7 +13,8 @@ public sealed record CharFormat(
     bool SmallCaps = false,
     Script Script = Script.Normal,
     string? CharStyle = null,  // the character style it is in, by name
-    string? Note = null);      // on a footnote reference, the note's story
+    string? Note = null,       // on a footnote reference, the note's story
+    string? Anchor = null);    // on an anchored object's marker, the object
 
 /// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
 public enum Script { Normal, Super, Sub }
@@ -132,7 +133,8 @@ public sealed record Run(int Length, CharFormat Format);
 /// A stretch of a story copied with its formats: the text, runs covering exactly that text, and the format of each
 /// paragraph it touches (the first for the paragraph it starts in).
 /// </summary>
-public sealed record Fragment(string Text, IReadOnlyList<Run> Runs, IReadOnlyList<ParaFormat> Paras);
+/// <summary>A copied stretch of a story: its text, formats and paragraphs, and the objects anchored in it.</summary>
+public sealed record Fragment(string Text, IReadOnlyList<Run> Runs, IReadOnlyList<ParaFormat> Paras, IReadOnlyList<PageObject>? Objects = null);
 
 /// <summary>The fonts that ship with the program.</summary>
 public static class Fonts
@@ -160,6 +162,37 @@ public sealed class Story
 
     /// <summary>The table whose cell this story is, or null for a story in text frames.</summary>
     public string? Table { get; set; }
+
+    /// <summary>The objects anchored in the text: each at the marker whose format names it.</summary>
+    public List<PageObject> Anchored { get; set; } = [];
+
+    /// <summary>Where an anchored object's marker is in the text, or -1.</summary>
+    public int AnchorIndex(string objectId)
+    {
+        var at = 0;
+        foreach (var run in Runs)
+        {
+            if (run.Format.Anchor == objectId)
+                for (var i = at; i < at + run.Length && i < Text.Length; i++)
+                    if (Text[i] == Fields.Anchor) return i;
+            at += run.Length;
+        }
+        return -1;
+    }
+
+    /// <summary>Lets go of anchored objects whose markers have gone from the text.</summary>
+    public void Prune()
+    {
+        if (Anchored.Count == 0) return;
+        var named = new HashSet<string>();
+        var at = 0;
+        foreach (var run in Runs)
+        {
+            if (run.Format.Anchor is { } id && Text.AsSpan(Math.Min(at, Text.Length), Math.Max(0, Math.Min(run.Length, Text.Length - at))).Contains(Fields.Anchor)) named.Add(id);
+            at += run.Length;
+        }
+        Anchored.RemoveAll(o => !named.Contains(o.Id));
+    }
 
     /// <summary>The path this story is set along, or null.</summary>
     public string? OnPath { get; set; }
@@ -194,7 +227,7 @@ public sealed class Story
     public CharFormat TypingFormat(int index) =>
         (index > 0 && Text[index - 1] != '\n' ? FormatAt(index - 1) : FormatAt(index)) is var f && f.Note is not null
             ? f with { Note = null, Script = Script.Normal } // typing after a footnote's reference makes no reference
-            : f;
+            : f.Anchor is not null ? f with { Anchor = null } : f; // nor after an anchored object another
 
     /// <summary>The paragraph the character at <paramref name="index"/> is in.</summary>
     public int ParagraphAt(int index)
@@ -254,6 +287,7 @@ public sealed class Story
         Runs.RemoveRange(first, last - first);
         Text = Text.Remove(index, length);
         Normalise();
+        Prune();
     }
 
     /// <summary>Changes the format of <paramref name="length"/> characters from <paramref name="index"/>.</summary>
@@ -361,16 +395,21 @@ public sealed class Story
         }
         var first = ParagraphAt(index);
         var breaks = Text.Substring(index, length).Count(c => c == '\n');
-        return new Fragment(Text.Substring(index, length), runs, Paras.GetRange(first, breaks + 1));
+        // Copies of the objects anchored in it, which go wherever it is put.
+        var ids = runs.Select(r => r.Format.Anchor).OfType<string>().ToHashSet();
+        var objects = Anchored.Where(o => ids.Contains(o.Id)).Select(Copy).ToList();
+        return new Fragment(Text.Substring(index, length), runs, Paras.GetRange(first, breaks + 1), objects.Count > 0 ? objects : null);
     }
 
     /// <summary>
     /// Puts in a copied stretch with its formats. The paragraph it is pasted into keeps its own format; each new
     /// paragraph it makes takes the one it had.
     /// </summary>
+    /// <remarks>Its anchored objects come with it, as they are: give them ids of their own first (Anchors.Rekey).</remarks>
     public void InsertFragment(int index, Fragment fragment)
     {
         if (fragment.Text.Length == 0) return;
+        if (fragment.Objects is { } objects) Anchored.AddRange(objects.Select(Copy));
         index = Math.Clamp(index, 0, Text.Length);
         var p = ParagraphAt(index);
         Insert(index, fragment.Text, fragment.Runs.Count > 0 ? fragment.Runs[0].Format : null);
@@ -422,4 +461,7 @@ public sealed class Story
         Runs.Count > 0 && Runs.Sum(r => r.Length) == Text.Length + 1 && Runs.All(r => r.Length > 0) &&
         Runs.Zip(Runs.Skip(1)).All(p => p.First.Format != p.Second.Format) &&
         Paras.Count == Text.Count(c => c == '\n') + 1;
+
+    private static PageObject Copy(PageObject o) =>
+        System.Text.Json.JsonSerializer.Deserialize<PageObject>(System.Text.Json.JsonSerializer.Serialize(o, Document.Json), Document.Json)!;
 }

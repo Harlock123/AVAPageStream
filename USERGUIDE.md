@@ -375,6 +375,30 @@ Wrap affects only the text **under** the object, in the drawing order. So a pull
 top of its tinted box, keeps its text, while the columns underneath flow round both. Use Bring forward and Send
 backward to decide which is which. Objects on a master page wrap the text on every page that uses it.
 
+## Anchored objects
+
+![A warning sign placed in the margin beside its paragraph, and a small blue dot set in a line of text](docs/images/guide/anchored.png)
+
+An object can be anchored in text, so that it moves with the words around it as they reflow: a picture that
+belongs with its paragraph, an icon in the margin beside a heading, a symbol in the middle of a sentence.
+
+- **In the line**: copy an object, put the caret in some text and paste, and the object goes into the line like a
+  letter. The line grows to hold it. Or, with the caret in text, choose Object › Place picture… to put a picture
+  there at its own size (no wider than the column).
+- **Beside the text**: select an object on the page and choose Object › **Anchor to text**. It is anchored to the
+  start of the line it is level with, and stays where it is against that line. Move the text and it follows.
+
+The Object tab's **Anchored in text** section says how an anchored object is placed:
+
+- **In the line**, raised or lowered from the baseline by its **Offset**.
+- **Placed by hand**, taking no room in the line: its **X** measured from the column's left edge, its right edge,
+  or where it is anchored, and its **Y** down from the top of its line (or its baseline). Drag it to place it; its
+  offsets follow. Tick **Text flows round this** (Text wrap) and the text makes room for it.
+
+Click an anchored object to select it, and change it as any other: its colour, size, picture, effects and style.
+Deleting it takes its anchor out of the text, and deleting the text takes the object with it; copying text copies
+its objects too. **Release from text** (in the tab or the Object menu) puts it back on the page where it is.
+
 ## Polygons and curves
 
 ![A curve being edited: its points and the handles that shape it](docs/images/guide/points.png)

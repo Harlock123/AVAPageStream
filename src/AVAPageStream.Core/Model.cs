@@ -222,6 +222,13 @@ public abstract class PageObject
     /// <summary>For rectangles, text frames and pictures: rounded or cut corners (a rectangle's CornerRadius otherwise).</summary>
     public Corners? Corners { get; set; }
 
+    /// <summary>For an object anchored in text: how it is placed against its marker.</summary>
+    public Anchoring? Anchoring { get; set; }
+
+    /// <summary>For an anchored object, once its text is laid out: the frame it is drawn in (null if its marker isn't set).</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? PlacedIn { get; set; }
+
     /// <summary>The object style it was given, if any (its look can have been changed since).</summary>
     public string? ObjectStyle { get; set; }
 

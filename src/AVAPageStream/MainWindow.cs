@@ -397,6 +397,8 @@ public sealed class MainWindow : Window
                         Item("Unlink text _frame", UnlinkSelected),
                         Item("Te_xt on path", TextOnPath),
                         Item("Text to _outlines", TextToOutlines, "Ctrl+Shift+O"),
+                        Item("_Anchor to text", AnchorToText),
+                        Item("_Release from text", ReleaseFromText),
                         new Separator(),
                         new MenuItem
                         {
@@ -874,6 +876,36 @@ public sealed class MainWindow : Window
         Say("Turned into outlines: paths now, filled with the text's colours. Edit points (double-click) to reshape them.");
     }
 
+    /// <summary>Anchors the selected object to the text beside it, placed by hand where it is.</summary>
+    public void AnchorToText()
+    {
+        if (View.Selected is not [{ } o]) { Say("Select one object on the page to anchor it to the text beside it. (To set one in a line, copy it and paste it into the text.)"); return; }
+        if (o.Anchoring is not null) { Say("That object is anchored in text already."); return; }
+        if (Editor.AnchorBeside(o.Id, id => View.Layouts.Of(Editor.Doc, id)) is { } why) { Say(why); return; }
+        View.Select([o.Id]);
+        Say("Anchored to the text beside it: it keeps its place against that line, and moves with it.");
+    }
+
+    /// <summary>Lets the selected anchored object go from its text, onto the page where it is drawn.</summary>
+    public void ReleaseFromText()
+    {
+        if (View.Selected is not [{ Anchoring: not null } o]) { Say("Select an object anchored in text to release it."); return; }
+        SheetRef? onto = null;
+        var doc = Editor.Doc;
+        if (o.PlacedIn is { } frame)
+        {
+            for (var i = 0; i < doc.Pages.Count && onto is null; i++) if (doc.Pages[i].All.Any(x => x.Id == frame)) onto = SheetRef.PageAt(i);
+            for (var i = 0; i < doc.Masters.Count && onto is null; i++)
+            {
+                if (doc.Masters[i].All.Any(x => x.Id == frame)) onto = SheetRef.MasterAt(i);
+                else if (doc.Masters[i].Left?.All.Any(x => x.Id == frame) == true) onto = SheetRef.MasterAt(i, left: true);
+            }
+        }
+        if (Editor.Release(o.Id, onto) is { } why) { Say(why); return; }
+        View.Select([o.Id]);
+        Say("Released: on the page where it was, no longer moving with the text.");
+    }
+
     /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>
     public StoryEditor? OpenStoryEditor(string? story = null)
     {
@@ -985,9 +1017,30 @@ public sealed class MainWindow : Window
 
     private void PlacePicture()
     {
+        if (View.Editing is { } t) { _ = PlaceInText(t); return; }
         if (View.Selected is [PictureObject p]) { _ = View.ReplaceImage(p.Id); return; }
         View.Tool = Tool.Picture;
         Say("Drag out a frame for the picture.");
+    }
+
+    /// <summary>A picture placed at the caret: anchored in the line, at its own size (no wider than the column).</summary>
+    public async Task PlaceInText(TextEdit t)
+    {
+        if (View.PickImage is null || await View.PickImage() is not var (bytes, path)) return;
+        var doc = Editor.Doc;
+        if (!ImageStore.IsImage(bytes)) { Say("That file isn't a picture AVAPageStream can show."); return; }
+        if (doc.Stories[t.StoryId] is { Table: not null } or { NoteOf: not null } or { OnPath: not null }) { Say("Pictures can be anchored in a frame's text, not in tables, footnotes or text on a path."); return; }
+        if (PdfPages.IsPdf(bytes) && PdfPages.NeedsPassword(bytes)) { Say("That PDF needs its password: place it in a frame of its own first, then copy it into the text."); return; }
+        var size = Pictures.Load(bytes)?.Size ?? new Avalonia.Size(144, 144);
+        var column = View.Layouts.Of(doc, t.StoryId) is { } l && l.Lines.FirstOrDefault(x => x.Start <= t.Start && t.Start <= x.End) is { } line ? l.Areas[line.Area].Box.W : 300;
+        var scale = Math.Min(1, column / Math.Max(1, size.Width));
+        var key = doc.Images.Add(bytes);
+        var picture = new PictureObject { W = Math.Round(size.Width * scale, 2), H = Math.Round(size.Height * scale, 2), Image = key, Source = path, Fit = Fit.Fill };
+        if (t.Length > 0) Editor.ReplaceText(t.StoryId, t.Start, t.Length, "");
+        Editor.AnchorAt(t.StoryId, t.Start, [picture]);
+        t.Caret = t.Anchor = t.Start + 1;
+        View.Reveal(t.StoryId, t.Caret, 0);
+        Say("Placed in the text: it moves with it. The Object tab places it.");
     }
 
     public async Task Copy()
@@ -997,12 +1050,14 @@ public sealed class MainWindow : Window
             if (View.SelectedText() is not { } text || !Editor.Doc.Stories.TryGetValue(t.StoryId, out var story)) return;
             // Kept here with its formats, so pasting it in this program keeps them; other programs get the plain text.
             _textClipboard = (story.Extract(t.Start, t.Length), text);
+            _objectsLast = false;
             if (Clipboard is { } c) await c.SetTextAsync(text.Replace("\n", Environment.NewLine));
             return;
         }
         var ids = View.Selected.Select(o => o.Id).ToList();
         if (ids.Count == 0) return;
         _clipboard = (Editor.Doc.Clone(), ids);
+        _objectsLast = true;
         _pasteCount = 0;
         Say(ids.Count == 1 ? "Copied." : $"Copied {ids.Count} objects.");
     }
@@ -1014,10 +1069,28 @@ public sealed class MainWindow : Window
         else if (View.Editing is null) View.DeleteSelection();
     }
 
+    private bool _objectsLast;
+
     public async Task Paste()
     {
         if (View.Editing is { } t)
         {
+            // Objects copied last, pasted into text: anchored there, in the line.
+            if (_objectsLast && _clipboard is { } objects)
+            {
+                if (t.Length > 0) Editor.ReplaceText(t.StoryId, t.Start, t.Length, "");
+                var pasted = objects.Ids.Select(objects.Doc.Find).OfType<PageObject>().ToList();
+                if (Editor.Doc.Stories[t.StoryId].Table is not null || Editor.Doc.Stories[t.StoryId].NoteOf is not null)
+                {
+                    Say("Objects can be anchored in a frame's text, not in a table's cells or footnotes.");
+                    return;
+                }
+                Editor.AnchorAt(t.StoryId, t.Start, pasted);
+                t.Caret = t.Anchor = t.Start + pasted.Count;
+                View.Reveal(t.StoryId, t.Caret, 0);
+                Say(pasted.Count == 1 ? "Anchored in the text: it moves with it. The Object tab places it." : $"Anchored {pasted.Count} objects in the text.");
+                return;
+            }
             var text = Clipboard is { } c ? await c.TryGetTextAsync() : null;
             if (_textClipboard is { } styled && (text is null || text.Replace("\r\n", "\n") == styled.Plain))
             {

@@ -209,7 +209,14 @@ public sealed class Document
     public IEnumerable<Sheet> Sheets => Masters.SelectMany(m => m.Left is { } side ? new Sheet[] { side, m } : [m]).Concat(Pages);
 
     /// <summary>Every object, those inside groups too.</summary>
-    public IEnumerable<PageObject> AllObjects => Sheets.SelectMany(s => s.All);
+    /// <summary>Every object: on the pages and masters (in groups too), and anchored in the text.</summary>
+    public IEnumerable<PageObject> AllObjects => Sheets.SelectMany(s => s.All).Concat(AnchoredObjects);
+
+    /// <summary>The objects anchored in stories (and those inside them, for a group).</summary>
+    public IEnumerable<PageObject> AnchoredObjects => Shapes.Flatten(Stories.Values.SelectMany(s => s.Anchored));
+
+    /// <summary>The story an object is anchored in, if it is (or is inside one that is).</summary>
+    public Story? AnchoredIn(string id) => Stories.Values.FirstOrDefault(s => Shapes.Flatten(s.Anchored).Any(o => o.Id == id));
 
     public PageObject? Find(string id) => AllObjects.FirstOrDefault(o => o.Id == id);
 

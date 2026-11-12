@@ -427,4 +427,86 @@ public partial class WindowTests
 
     private static string Describe(AVAPageStream.Core.PostScript.PsDict d, int depth = 0) => depth > 4 ? "" :
         string.Join(" ", d.Entries.Select(e => $"{e.Key} {e.Value switch { AVAPageStream.Core.PostScript.PsDict inner => "<<" + Describe(inner, depth + 1) + ">>", AVAPageStream.Core.PostScript.PsArray a => "[" + string.Join(" ", a.All().Select(x => x is AVAPageStream.Core.PostScript.PsDict xd ? "<<" + Describe(xd, depth + 1) + ">>" : x.ToString())) + "]", var v => v?.ToString() }}"));
+
+    [AvaloniaFact]
+    public void An_object_pasted_into_text_moves_with_it()
+    {
+        var w = Open();
+        var e = w.Editor;
+        e.Change("Page", d => d.Setup = d.Setup with { PageWidth = 400, PageHeight = 200 });
+        var frame = e.Add(SheetRef.PageAt(0), new TextFrame { X = 20, Y = 20, W = 360, H = 160 });
+        e.ReplaceText(frame.StoryId, 0, 0, "Harbour lights", new CharFormat(Fonts.Sans, 14));
+        var red = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 300, Y = 150, W = 60, H = 40, Fill = "@Red", Stroke = null });
+        w.View.Select([red.Id]);
+        Wait(w.Copy());
+        e.Delete([red.Id]);
+        w.View.StartEditing((TextFrame)e.Doc.Find(frame.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = 8; // after "Harbour "
+        Wait(w.Paste());
+        Assert.Contains("Anchored in the text", w.Message.Text);
+        var story = e.Doc.Stories[frame.StoryId];
+        var box = Assert.Single(story.Anchored);
+        Assert.Equal(Fields.Anchor, story.Text[8]);
+        Assert.Empty(e.Doc.Pages[0].Objects.OfType<RectangleObject>());
+        var before = (box.X, box.Y);
+        var measure = w.View.Layouts.Measurer;
+        var harbour = TextFlow.Measure(measure, "Harbour ", story.FormatAt(0));
+        using (var page = DrawPage(e.Doc)) Assert.Equal((0xE0, 0x20, 0x20), Pixel(page, (int)(20 + harbour + 30), (int)(box.Y + 20))); // the Red swatch
+        // Words typed before it move it on.
+        e.ReplaceText(frame.StoryId, 0, 0, "Big ");
+        _ = w.View.Layouts.Of(e.Doc, frame.StoryId);
+        Assert.Equal(before.X + TextFlow.Measure(measure, "Big ", story.FormatAt(0)), box.X, 3);
+        // Clicked, it is selected; dragged, it goes back to its line.
+        w.View.StopEditing();
+        w.Refresh();
+        Pump();
+        Click(w, new Pt(box.X + 30, box.Y + 20));
+        Assert.Equal(box.Id, Assert.Single(w.View.Selected).Id);
+        var at = (box.X, box.Y);
+        // (Pressed away from where it was clicked, so the press isn't a double-click, which edits the text.)
+        Drag(w, new Pt(box.X + 45, box.Y + 32), new Pt(box.X + 45, box.Y + 102));
+        Assert.Null(w.View.Editing);
+        _ = w.View.Layouts.Of(e.Doc, frame.StoryId);
+        Assert.Equal(at, (box.X, box.Y));
+        Assert.Contains("moves with its text", w.Message.Text);
+        // Placed by hand (Object tab), then dragged: it keeps where it was put, as offsets against its line.
+        w.View.Select([box.Id]);
+        w.Panel.SelectedIndex = 0;
+        w.Refresh();
+        Pump();
+        Assert.True(w.Panel.AnchorKindChoice.IsVisible);
+        w.Panel.AnchorKindChoice.SelectedIndex = 1;
+        Pump();
+        var placed = (PageObject)e.Doc.Find(box.Id)!;
+        Assert.Equal(AnchorKind.Custom, placed.Anchoring!.Kind);
+        _ = w.View.Layouts.Of(e.Doc, frame.StoryId);
+        var from = (placed.X, placed.Y);
+        // Pressed away from where the last drag was, so the press isn't taken as a double-click (which edits the text).
+        Drag(w, new Pt(from.X + 10, from.Y + 34), new Pt(from.X + 10, from.Y + 94));
+        placed = (PageObject)e.Doc.Find(box.Id)!;
+        _ = w.View.Layouts.Of(e.Doc, frame.StoryId);
+        Assert.Null(w.View.Editing);
+        Assert.Equal(from.Y + 60, placed.Y, 0);
+        Assert.Equal(60, placed.Anchoring!.Y, 0);
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void An_object_placed_by_hand_in_the_text_wraps_it()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var frame = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 300, H = 400 });
+        e.ReplaceText(frame.StoryId, 0, 0, string.Join(" ", Enumerable.Repeat("harbour", 80)));
+        var icon = new RectangleObject { W = 80, H = 60, Fill = "@Blue", Stroke = null, Wrap = true, WrapGap = 6 };
+        var id = e.AnchorAt(frame.StoryId, 0, [icon]).Single();
+        e.Reanchor(id, new Anchoring(AnchorKind.Custom, From: AnchorFrom.ColumnLeft));
+        var layout = w.View.Layouts.Of(e.Doc, frame.StoryId)!;
+        var placed = e.Doc.Find(id)!;
+        Assert.Equal((72.0, 72.0), (Math.Round(placed.X, 3), Math.Round(placed.Y - (layout.Lines[0].Baseline - layout.Lines[0].Ascent) + 72, 3)));
+        // The lines beside it start past it and its standoff; those below it at the column's edge.
+        Assert.All(layout.Lines.Where(l => l.Baseline - l.Ascent < placed.Y + placed.H), l => Assert.True(l.Pieces[0].X >= 72 + 80 + 6 - 0.01, $"{l.Pieces[0].X}"));
+        Assert.Contains(layout.Lines, l => l.Baseline - l.Ascent > placed.Y + placed.H + 6 && Math.Abs(l.Pieces[0].X - 72) < 0.01);
+        Done(w);
+    }
 }
