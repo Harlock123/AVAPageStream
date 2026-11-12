@@ -547,23 +547,26 @@ public sealed class Editor
 
     // ---- Swatches -------------------------------------------------------------------------------------------
 
-    public string? AddSwatch(string name, string colour)
+    private const string SwatchColourHelp = "Type the swatch's colour as #RRGGBB, or as CMYK per cents: 0 100 100 0.";
+
+    /// <summary>Adds a swatch: a colour typed as #RRGGBB or as CMYK, and whether it is a spot ink.</summary>
+    public string? AddSwatch(string name, string colour, bool spot = false)
     {
         name = name.Trim();
-        if (name.Length == 0 || name.Contains('@')) return "A swatch needs a name (without @).";
+        if (name.Length == 0 || name.Contains('@') || name.EndsWith('%')) return "A swatch needs a name (without @, and not ending in %).";
         if (Doc.Swatches.Any(w => w.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return $"There is already a swatch called {name}.";
-        if (!Colours.TryParse(colour, out var c)) return "Type the swatch's colour as #RRGGBB.";
-        Change("Add swatch " + name, d => d.Swatches.Add(new Swatch(name, c.Hex)));
+        if (!Colours.TryReadSwatch(colour, out var screen, out var inks)) return SwatchColourHelp;
+        Change("Add swatch " + name, d => d.Swatches.Add(new Swatch(name, screen, inks, spot)));
         return null;
     }
 
-    /// <summary>Gives a swatch a new colour: everything using it changes with it.</summary>
-    public string? ChangeSwatch(string name, string colour)
+    /// <summary>Gives a swatch a new colour (and spot or not): everything using it changes with it.</summary>
+    public string? ChangeSwatch(string name, string colour, bool? spot = null)
     {
-        if (!Colours.TryParse(colour, out var c)) return "Type the swatch's colour as #RRGGBB.";
+        if (!Colours.TryReadSwatch(colour, out var screen, out var inks)) return SwatchColourHelp;
         var i = Doc.Swatches.FindIndex(w => w.Name == name);
         if (i < 0) return $"There is no swatch called {name}.";
-        Change("Change swatch " + name, d => d.Swatches[i] = d.Swatches[i] with { Colour = c.Hex });
+        Change("Change swatch " + name, d => d.Swatches[i] = d.Swatches[i] with { Colour = screen, Process = inks, Spot = spot ?? d.Swatches[i].Spot });
         return null;
     }
 
@@ -579,7 +582,7 @@ public sealed class Editor
         Change("Rename swatch " + old, d =>
         {
             d.Swatches[i] = d.Swatches[i] with { Name = name };
-            Recolour(d, Colours.Ref(old), Colours.Ref(name));
+            Recolour(d, c => Colours.IsRef(c) && Colours.Parse(c!) is var (n, tint) && n == old ? Colours.Ref(name, tint) : c);
         });
         return null;
     }
@@ -591,25 +594,25 @@ public sealed class Editor
         if (i < 0) return $"There is no swatch called {name}.";
         Change("Delete swatch " + name, d =>
         {
-            var value = d.Swatches[i].Colour;
+            var before = d.Swatches.ToList();
             d.Swatches.RemoveAt(i);
-            Recolour(d, Colours.Ref(name), value);
+            Recolour(d, c => Colours.IsRef(c) && Colours.Parse(c!).Name == name ? Colours.Resolve(c, before) : c);
         });
         return null;
     }
 
-    /// <summary>Replaces one colour with another everywhere: objects' fills and strokes, text, and styles.</summary>
-    private static void Recolour(Document d, string from, string to)
+    /// <summary>Changes colours everywhere: objects' fills and strokes, text, and styles.</summary>
+    private static void Recolour(Document d, Func<string?, string?> change)
     {
         foreach (var o in d.AllObjects)
         {
-            if (o.Fill == from) o.Fill = to;
-            if (o.Stroke == from) o.Stroke = to;
+            o.Fill = change(o.Fill);
+            o.Stroke = change(o.Stroke);
         }
         foreach (var story in d.Stories.Values)
-            story.FormatChars(0, story.Length + 1, f => f.Colour == from ? f with { Colour = to } : f);
+            story.FormatChars(0, story.Length + 1, f => change(f.Colour) is { } c && c != f.Colour ? f with { Colour = c } : f);
         for (var k = 0; k < d.Styles.Count; k++)
-            if (d.Styles[k].Char.Colour == from) d.Styles[k] = d.Styles[k] with { Char = d.Styles[k].Char with { Colour = to } };
+            if (change(d.Styles[k].Char.Colour) is { } c && c != d.Styles[k].Char.Colour) d.Styles[k] = d.Styles[k] with { Char = d.Styles[k].Char with { Colour = c } };
     }
 
     /// <summary>Makes the document facing or single-sided; a facing document's masters each get a left side.</summary>

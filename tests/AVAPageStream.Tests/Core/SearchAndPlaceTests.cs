@@ -193,3 +193,67 @@ public class SwatchTests
         Assert.Equal("@Navy", e.Doc.Find(box.Id)!.Stroke);
     }
 }
+
+public class InkTests
+{
+    [Theory]
+    [InlineData(0, 0, 0, 0, "#FFFFFF")]
+    [InlineData(0, 0, 0, 100, "#000000")]
+    [InlineData(0, 100, 100, 0, "#FF0000")]
+    [InlineData(100, 0, 0, 0, "#00FFFF")]
+    [InlineData(0, 0, 0, 50, "#808080")]
+    public void Cmyk_converts_to_its_screen_colour(double c, double m, double y, double k, string hex) =>
+        Assert.Equal(hex, new Cmyk(c, m, y, k).ToRgb().Hex);
+
+    [Theory]
+    [InlineData("0 100 100 0", true)]
+    [InlineData("C0 M100 Y100 K0", true)]
+    [InlineData("cmyk 0,100,100,0", true)]
+    [InlineData("#FF0000", false)]
+    [InlineData("0 100 100", null)]
+    [InlineData("0 100 100 120", null)]
+    public void Swatch_colours_are_read_as_rgb_or_cmyk(string text, bool? cmyk)
+    {
+        var ok = Colours.TryReadSwatch(text, out var colour, out var inks);
+        if (cmyk is null) { Assert.False(ok); return; }
+        Assert.True(ok);
+        Assert.Equal("#FF0000", colour);
+        Assert.Equal(cmyk.Value, inks is not null);
+    }
+
+    [Fact]
+    public void A_tint_lightens_the_swatch_toward_white_and_follows_it()
+    {
+        var e = new Editor(Document.New());
+        Assert.Null(e.AddSwatch("Harbour orange", "0 60 80 0", spot: true));
+        var swatch = e.Doc.Swatches[^1];
+        Assert.Equal(new Cmyk(0, 60, 80, 0), swatch.Process);
+        Assert.True(swatch.Spot);
+        Assert.True(Colours.TryRead("harbour orange 40%", e.Doc.Swatches, out var tint));
+        Assert.Equal("@Harbour orange 40%", tint);
+        Assert.Equal("Harbour orange 40%", Colours.Describe(tint, e.Doc.Swatches));
+        Assert.Equal("#FFC2AD", Colours.Resolve(tint, e.Doc.Swatches)); // FF6633 at 40%: each channel 40% of the way from white
+
+        var box = e.Add(SheetRef.PageAt(0), new RectangleObject { Fill = tint, Stroke = "@Harbour orange" });
+        Assert.Null(e.RenameSwatch("Harbour orange", "Quay orange"));
+        Assert.Equal("@Quay orange 40%", e.Doc.Find(box.Id)!.Fill); // the tint follows the rename
+        Assert.Null(e.DeleteSwatch("Quay orange"));
+        Assert.Equal("#FFC2AD", e.Doc.Find(box.Id)!.Fill);          // and, the swatch gone, keeps its colour
+        Assert.Equal("#FF6633", e.Doc.Find(box.Id)!.Stroke);
+    }
+
+    [Fact]
+    public void The_inks_used_are_process_and_each_spot_colour()
+    {
+        var e = new Editor(Document.New());
+        e.AddSwatch("Pantone 021", "0 53 100 0", spot: true);
+        e.AddSwatch("Unused spot", "100 0 0 0", spot: true);
+        Assert.False(Colours.Inks(e.Doc).Process); // nothing drawn yet
+        Assert.Empty(Colours.Inks(e.Doc).Spots);
+        e.Add(SheetRef.PageAt(0), new RectangleObject { Fill = "@Pantone 021 50%", Stroke = null });
+        Assert.Equal(["Pantone 021"], Colours.Inks(e.Doc).Spots);
+        Assert.False(Colours.Inks(e.Doc).Process);
+        e.Add(SheetRef.PageAt(0), new EllipseObject { Fill = "#2050D0" });
+        Assert.True(Colours.Inks(e.Doc).Process);
+    }
+}

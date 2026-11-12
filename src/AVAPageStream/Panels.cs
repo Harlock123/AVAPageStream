@@ -207,7 +207,9 @@ public sealed class SidePanel : TabControl
     // Swatches
     public ListBox SwatchList { get; } = new() { MaxHeight = 220, FontSize = 12 };
     public TextBox SwatchNameBox { get; } = Ui.Box("Name");
-    public TextBox SwatchValueBox { get; } = Ui.Box("#RRGGBB");
+    public TextBox SwatchValueBox { get; } = Ui.Box("#RRGGBB, or CMYK: 0 100 100 0");
+    public CheckBox SpotBox { get; } = new() { Content = "Spot ink (a colour of its own on press)", FontSize = 12 };
+    public TextBlock InksInfo { get; } = new() { Foreground = Look.Heading, FontSize = 12, TextWrapping = TextWrapping.Wrap };
 
     public ComboBox LanguageChoice { get; } = new() { ItemsSource = Speller.Languages.Select(l => l.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
 
@@ -817,14 +819,15 @@ public sealed class SidePanel : TabControl
             {
                 new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(3), BorderBrush = Look.Border, BorderThickness = new Thickness(1), Background = w is null ? null : Swatchless(w.Colour) },
                 new TextBlock { Text = w?.Name, Foreground = Look.Text, VerticalAlignment = VerticalAlignment.Center },
-                new TextBlock { Text = w?.Colour, Foreground = Look.Faint, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = w is null ? null : (w.Process?.ToString() ?? w.Colour) + (w.Spot ? "  spot" : ""), Foreground = Look.Faint, VerticalAlignment = VerticalAlignment.Center },
             },
         });
         SwatchList.SelectionChanged += (_, _) =>
         {
             if (_refreshing || SelectedSwatch is not { } w) return;
             SwatchNameBox.Text = w.Name;
-            SwatchValueBox.Text = w.Colour;
+            SwatchValueBox.Text = w.Process is { } ink ? FormattableString.Invariant($"{ink.C:0.#} {ink.M:0.#} {ink.Y:0.#} {ink.K:0.#}") : w.Colour;
+            SpotBox.IsChecked = w.Spot;
         };
         LanguageChoice.SelectionChanged += (_, _) =>
         {
@@ -875,15 +878,17 @@ public sealed class SidePanel : TabControl
                 SwatchList,
                 Ui.Row(("Name", SwatchNameBox)),
                 Ui.Row(("Colour", SwatchValueBox)),
+                SpotBox,
                 Ui.Buttons(
-                    Ui.Button("Add", () => SwatchSay(Editor.AddSwatch(SwatchNameBox.Text ?? "", SwatchValueBox.Text ?? ""), "Added the swatch.")),
-                    Ui.Button("Change colour", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.ChangeSwatch(w.Name, SwatchValueBox.Text ?? ""), $"{w.Name} is a new colour: everything using it changed."); },
+                    Ui.Button("Add", () => SwatchSay(Editor.AddSwatch(SwatchNameBox.Text ?? "", SwatchValueBox.Text ?? "", SpotBox.IsChecked == true), "Added the swatch.")),
+                    Ui.Button("Change colour", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.ChangeSwatch(w.Name, SwatchValueBox.Text ?? "", SpotBox.IsChecked == true), $"{w.Name} is a new colour: everything using it changed."); },
                         "Give the selected swatch the colour typed: everything using it changes"),
                     Ui.Button("Rename", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.RenameSwatch(w.Name, SwatchNameBox.Text ?? ""), "Renamed the swatch."); }),
                     Ui.Button("Delete", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.DeleteSwatch(w.Name), $"Deleted {w.Name}; what used it keeps the colour."); })),
+                InksInfo,
                 new TextBlock
                 {
-                    Text = "Colours picked by a swatch's name follow it when it changes.",
+                    Text = "Colours picked by a swatch's name follow it when it changes; \"Navy 40%\" picks a tint of it. CMYK colours are shown, and written to PDFs, as RGB.",
                     Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4),
                 },
                 Ui.Heading("Spelling"),
@@ -1166,6 +1171,9 @@ public sealed class SidePanel : TabControl
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
         FacingBox.IsChecked = s.Facing;
         LanguageChoice.SelectedIndex = Math.Max(0, Array.FindIndex(Speller.Languages, l => l.Code == Doc.Language));
+        var (process, spots) = Colours.Inks(Doc);
+        InksInfo.Text = "Inks used: " + (process || spots.Count == 0 ? "process (CMYK)" : "") + (process && spots.Count > 0 ? ", " : "") +
+            (spots.Count > 0 ? "spot " + string.Join(", ", spots) : "") + ".";
         if (SwatchList.ItemsSource is not IEnumerable<Swatch> shown || !shown.SequenceEqual(Doc.Swatches))
         {
             var selected = SelectedSwatch?.Name;
