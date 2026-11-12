@@ -295,7 +295,17 @@ internal static class EpsRender
                         BlendMode = Blend(g.Blend),
                     };
                     canvas.SaveLayer(layer);
-                    Draw(canvas, g.Ops, only, depth + 1);
+                    if (g.Knockout)
+                        foreach (var element in g.Ops)
+                        {
+                            // What it covers (its shape, whatever its opacity) cleared of what came before, then it drawn.
+                            using var clear = new SKPaint { BlendMode = SKBlendMode.DstOut };
+                            canvas.SaveLayer(clear);
+                            Draw(canvas, Shape(element), only, depth + 1);
+                            canvas.Restore();
+                            Draw(canvas, [element], only, depth + 1);
+                        }
+                    else Draw(canvas, g.Ops, only, depth + 1);
                     if (g.Mask is { } mask)
                     {
                         // The mask drawn over the group, keeping the group only as much as the mask's luminosity (or alpha) says.
@@ -353,6 +363,9 @@ internal static class EpsRender
         }
         return seamless;
     }
+
+    /// <summary>What an element covers: itself at full opacity (its groups' opacity left out).</summary>
+    private static IReadOnlyList<PsOp> Shape(PsOp op) => op is PsGroup g ? g.Ops.SelectMany(Shape).ToList() : [op];
 
     private static readonly byte[] Identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
 

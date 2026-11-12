@@ -125,7 +125,8 @@ public sealed record PsMask(IReadOnlyList<PsOp> Ops, bool Luminosity, PsColour? 
 /// Drawing that is put on the page together (a PDF's transparency): at an opacity, mixed with what is under it by a
 /// blend mode (Normal, Multiply, Screen and the others PDF names), and through a soft mask if it has one.
 /// </summary>
-public sealed record PsGroup(IReadOnlyList<PsOp> Ops, double Alpha, string Blend, PsMask? Mask, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
+/// <remarks>In a knockout group, each thing drawn replaces (by its own opacity) what the group drew under it before.</remarks>
+public sealed record PsGroup(IReadOnlyList<PsOp> Ops, double Alpha, string Blend, PsMask? Mask, IReadOnlyList<PsClip> Clips, bool Knockout = false) : PsOp(Clips);
 
 /// <summary>What an EPS draws: its bounding box (in its own points) and the drawing, in order.</summary>
 public sealed record PsDrawing(Box BoundingBox, IReadOnlyList<PsOp> Ops);

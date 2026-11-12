@@ -775,6 +775,7 @@ public sealed partial class Interpreter
                 NewPath();
             }
             var group = asGroup && form.Get("Group") is PsDict g && PdfName(g.Get("S")) == "Transparency";
+            var knockout = group && form.Get("Group") is PsDict kg && kg.Get("K") is true;
             var outer = PState;
             if (group) PState = PState with { FillAlpha = 1, StrokeAlpha = 1, Blend = "Normal", Mask = null };
             var keepBase = _patternBase;
@@ -782,11 +783,11 @@ public sealed partial class Interpreter
             var start = Ops.Count;
             RunPdf(r.Decode(form), form.Get("Resources") as PsDict ?? res);
             _patternBase = keepBase;
-            if (group && Ops.Count > start && (outer.FillAlpha < 1 || outer.Blend != "Normal" || outer.Mask is not null))
+            if (group && Ops.Count > start && (outer.FillAlpha < 1 || outer.Blend != "Normal" || outer.Mask is not null || knockout))
             {
                 var ops = Ops.GetRange(start, Ops.Count - start);
                 Ops.RemoveRange(start, Ops.Count - start);
-                Ops.Add(new PsGroup(ops, outer.FillAlpha, outer.Blend, outer.Mask, []));
+                Ops.Add(new PsGroup(ops, outer.FillAlpha, outer.Blend, outer.Mask, [], knockout));
             }
         }
         finally
@@ -1069,6 +1070,15 @@ public sealed partial class Interpreter
             if (font.Type3 is { } t3)
             {
                 if (st.Render != 3 && st.Render != 7) Type3Glyph(t3, font, code, trm, res);
+                if (st.Render >= 4)
+                {
+                    // As a clip: what the glyph fills, run apart, joins the text's clip.
+                    var mark = Ops.Count;
+                    Type3Glyph(t3, font, code, trm, res);
+                    var drawn = Ops.GetRange(mark, Ops.Count - mark);
+                    Ops.RemoveRange(mark, Ops.Count - mark);
+                    foreach (var f in Flatten(drawn).OfType<PsFill>()) (_textClip ??= new PsPath()).Segs.AddRange(f.Path.Segs);
+                }
                 advance = font.FontMatrix.Delta(font.Width(code), 0).X;
             }
             else if (font.Vertical)
@@ -1109,6 +1119,8 @@ public sealed partial class Interpreter
         }
         if (mode >= 4) (_textClip ??= new PsPath()).Segs.AddRange(outline.Segs);
     }
+
+    private static IEnumerable<PsOp> Flatten(IEnumerable<PsOp> ops) => ops.SelectMany(o => o is PsGroup g ? Flatten(g.Ops) : [o]);
 
     /// <summary>A Type 3 glyph: its content stream run in glyph space, at the place the text matrix puts it.</summary>
     private void Type3Glyph(PsDict font, PdfFont pf, int code, PsMatrix trm, PsDict res)

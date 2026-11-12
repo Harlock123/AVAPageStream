@@ -235,4 +235,45 @@ public class PdfReaderTests
         Assert.Contains(all, o => o is PsImage);
         Assert.Contains(all, o => o is PsFill { Colour: { R: 1, G: 1, B: 1 } } f && Bounds(f.Path).W > 100); // "Harbour Lights", in white
     }
+
+    /// <summary>A drawing as pixels, a point each.</summary>
+    private static SkiaSharp.SKBitmap Pixels(PsDrawing d)
+    {
+        var bmp = new SkiaSharp.SKBitmap((int)d.BoundingBox.W, (int)d.BoundingBox.H);
+        using var canvas = new SkiaSharp.SKCanvas(bmp);
+        canvas.Clear(SkiaSharp.SKColors.White);
+        using var picture = EpsRender.Record(d);
+        canvas.DrawPicture(picture);
+        return bmp;
+    }
+
+    [Fact]
+    public void In_a_knockout_group_what_is_drawn_last_hides_what_is_under_it()
+    {
+        // Blue, then red at half opacity overlapping it, in a group: knocked out, the overlap is half red over white.
+        byte[] Make(bool knockout)
+        {
+            var m = PdfMaker.Page("/G Do", "<< /XObject << /G 5 0 R >> >>");
+            m.Add(5, $"<< /Type /XObject /Subtype /Form /BBox [0 0 200 100] /Group << /S /Transparency /K {(knockout ? "true" : "false")} >> /Resources << /ExtGState << /H << /ca 0.5 >> >> >> >>",
+                "0 0 1 rg 0 0 120 100 re f /H gs 1 0 0 rg 60 0 140 100 re f");
+            return m.Build();
+        }
+        using var knocked = Pixels(Draw(Make(true)));
+        using var plain = Pixels(Draw(Make(false)));
+        var k = knocked.GetPixel(90, 50);
+        var p = plain.GetPixel(90, 50);
+        Assert.True(k.Red > 240 && k.Green is > 110 and < 145 && k.Blue is > 110 and < 145, k.ToString()); // half red over white
+        Assert.True(p.Blue > 110 && p.Red > 110 && p.Green < 20, p.ToString());                        // half red over blue
+        Assert.Equal(SkiaSharp.SKColors.Blue, knocked.GetPixel(30, 50));                            // the blue alone stays
+    }
+
+    [Fact]
+    public void A_type3_glyph_in_a_clipping_mode_clips_what_follows()
+    {
+        var m = PdfMaker.Page("BT 7 Tr /T 10 Tf 50 20 Td (a) Tj ET 1 0 0 rg 0 0 200 100 re f", "<< /Font << /T 5 0 R >> >>");
+        m.Add(5, "<< /Type /Font /Subtype /Type3 /FontBBox [0 0 1 1] /FontMatrix [1 0 0 1 0 0] /FirstChar 97 /LastChar 97 /Widths [1] /Encoding << /Differences [97 /box] >> /CharProcs << /box 6 0 R >> >>");
+        m.Add(6, "<< >>", "1 0 0 0 1 1 d1 0 0 1 1 re f");
+        var red = Assert.IsType<PsFill>(Assert.Single(Draw(m.Build()).Ops));
+        Assert.Equal(new Box(50, 20, 10, 10), Bounds(red.Clips[^1].Path));
+    }
 }
