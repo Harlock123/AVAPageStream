@@ -46,7 +46,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     (plain text and Markdown to placed paragraphs), `Tabs.cs` (tab stops), `Hyphenator.cs` (Liang's algorithm over
     the patterns embedded from `Hyphenation/`), `Contents.cs` (a table of contents), `Imposition.cs` (booklet
     order), `Templates.cs` (the built-in templates and .avpt files), `Speller.cs` (the SCOWL lists in `Spelling/`),
-    `Eps.cs` and `Ghostscript.cs` (EPS size, preview, and rendering when gs is there), `Tables.cs` (rows, columns,
+    `Eps.cs` and `Ghostscript.cs` (EPS size, preview, and rendering when gs is there), `Tiff.cs` (baseline TIFF, for
+    the previews in DOS binary EPS headers), `Tables.cs` (rows, columns,
     fitting), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
   - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),

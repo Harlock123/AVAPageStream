@@ -126,7 +126,8 @@ dotnet run --project src/AVAPageStream
 ```
 
 The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures are shown in full when
-[Ghostscript](https://ghostscript.com) is installed (otherwise by their preview), and PDFs are written in RGB.
+[Ghostscript](https://ghostscript.com) is installed (otherwise by the colour or grey preview they carry), and PDFs
+are written in RGB.
 
 ## The user guide
 

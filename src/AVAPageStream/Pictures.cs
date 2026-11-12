@@ -59,8 +59,18 @@ internal static class Pictures
         var size = new Size(Math.Max(1, box.W), Math.Max(1, box.H));
         if (Ghostscript(bytes) is { } png)
             return new PostScriptPicture(new Bitmap(new MemoryStream(png)), size, "rendered by Ghostscript at 300 dpi");
+        if (Eps.TiffPreview(bytes) is { } colour) return new PostScriptPicture(FromColour(colour), size, "its colour preview (install Ghostscript to see it in full)");
         if (Eps.Preview(bytes) is { } grey) return new PostScriptPicture(FromGrey(grey), size, "its preview (install Ghostscript to see it in full)");
         return new PostScriptPicture(null, size, "no preview (install Ghostscript to see it)");
+    }
+
+    private static WriteableBitmap FromColour(ColourImage c)
+    {
+        var bitmap = new WriteableBitmap(new PixelSize(c.Width, c.Height), new Vector(96, 96), PixelFormat.Rgba8888, AlphaFormat.Unpremul);
+        using var fb = bitmap.Lock();
+        for (var y = 0; y < c.Height; y++)
+            System.Runtime.InteropServices.Marshal.Copy(c.Rgba, y * c.Width * 4, fb.Address + y * fb.RowBytes, c.Width * 4);
+        return bitmap;
     }
 
     private static WriteableBitmap FromGrey(GreyImage g)

@@ -171,7 +171,7 @@ a group moves and scales what it holds and a path its points.
 | **Ellipse** | | Fills its frame. |
 | **Line** | which diagonal (down or up), arrowheads at either end | Drawn corner to corner across its frame; a frame may have zero width or height. |
 | **Text frame** | story id, columns, gutter, inset | Shows its part of the story; empty frames show their columns as faint guides. |
-| **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | PNG, JPEG, GIF, BMP and WebP; SVG, drawn as vector through Svg.Skia (on screen and in PDFs); EPS, sized by its bounding box and shown by Ghostscript at 300 dpi when it is installed, else by its EPSI preview, else as a labelled box. A missing picture shows a crossed box. |
+| **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | PNG, JPEG, GIF, BMP and WebP; SVG, drawn as vector through Svg.Skia (on screen and in PDFs); EPS, sized by its bounding box and shown by Ghostscript at 300 dpi when it is installed, else by its TIFF preview (in a DOS binary EPS's header) or its EPSI preview, else as a labelled box. A missing picture shows a crossed box. |
 | **Group** | children | Moves, resizes (scaling what it holds), arranges, copies and deletes as one. Its frame is the box round what it holds. Double-click a text frame in a group to type in it. Groups don't rotate (what is in them can). |
 | **Table** | columns and rows (widths and heights), a story for each cell, header rows and their fill, cell inset; rules in the stroke | Each cell's story is set in its cell, less the inset; rows keep their height, a cell whose text doesn't fit shows a red mark, and Fit rows to text makes each row as tall as its tallest cell needs. Resizing scales the columns and rows. Tables don't rotate. |
 | **Polygon / Bézier path** | points, each with optional handles in and out; closed or open | Its frame is the box round its points and handles. Only a closed path is filled. |
@@ -591,3 +591,42 @@ Making what is there dependable on its way to a printer or a reader, before addi
 appended to the PDF SkiaSharp writes (`PdfExtras.Finish`); links and destinations are SkiaSharp's own annotations.
 Preflight warns after exporting and printing, in the status bar, rather than stopping them. A font's licence is read
 from its OS/2 table; one installed but not found by name in the usual font folders can't be packaged.
+
+### Milestone 6: EPS without Ghostscript
+
+EPS pictures drawn by AVAPageStream itself: a PostScript interpreter for what EPS files use, in C# in Core, drawing
+into a Skia picture as SVG is drawn, so EPS artwork stays vector on screen and in PDFs (better than Ghostscript's
+300 dpi bitmap), the same on every computer, with nothing to install. Ghostscript, when it is there, and then the
+previews (TIFF, EPSI) are kept as fallbacks for what the interpreter doesn't do, and the picture's description says
+which drew it. In stages, each usable on its own:
+
+1. **The language and paths.** The PostScript language: the operand, dictionary, execution and graphics-state
+   stacks; numbers, names, strings, arrays, procedures and dictionaries; the operators for arithmetic, stack and
+   control (if, ifelse, for, repeat, loop, forall, exit, stopped), dictionaries (def, begin, end, load, where,
+   known) and strings and arrays; save and restore. Paths (moveto, lineto, curveto, arc, arcn, arct, closepath, the
+   relative forms, rectfill, rectstroke), fill and eofill, stroke with width, cap, join, miter limit and dashes,
+   clip and eoclip, the current transformation matrix (translate, scale, rotate, concat), gsave and grestore, and
+   colour in grey, RGB, CMYK and HSB, with the Level 2 colour spaces DeviceGray, DeviceRGB, DeviceCMYK and Indexed.
+   The EPS rules: showpage and device operators do nothing, and the picture is clipped to its bounding box. This
+   covers most technical EPS: matplotlib, gnuplot, R, Inkscape and Cairo, LaTeX figures.
+2. **Images.** image, colorimage and imagemask, with data read from the file (currentfile) through the filters EPS
+   uses: ASCIIHexDecode, ASCII85Decode, RunLengthDecode, LZWDecode, FlateDecode and DCTDecode (JPEG, through
+   SkiaSharp), and procedures that supply the data a piece at a time.
+3. **Text.** findfont, scalefont, makefont, setfont, show and its relatives (ashow, widthshow, kshow, xshow, yshow,
+   glyphshow), stringwidth and charpath. Fonts embedded in the file (Type 1, decrypted and their charstrings run;
+   Type 3, whose procedures are PostScript; Type 42, TrueType inside PostScript) are drawn as outlines. The standard
+   printer fonts map to the bundled Liberation fonts, made to the same widths: Times to Liberation Serif, Helvetica
+   to Liberation Sans, Courier to Liberation Mono (to be bundled), and Symbol to a font with its characters.
+4. **Illustrator, CorelDRAW and the rest.** Their EPS files carry large procedure sets (Adobe Illustrator's AI
+   procsets, CorelDRAW's, QuarkXPress's, FreeHand's): a collection of real EPS files from each, run until they draw,
+   adding what they need.
+
+Not planned: Level 3 smooth shading of the mesh kinds (types 4 to 7: the simpler axial and radial ones, 2 and 3, are
+in stage 1 if time allows), patterns, separations and spot colour spaces (DeviceN, Separation: drawn by their
+alternative colour), and PostScript beyond one page. A file that uses them falls back to Ghostscript or its preview.
+
+Tests: a folder of EPS files from each producer, each drawn and compared with Ghostscript's rendering of it (made once
+on a computer that has Ghostscript, and kept with the tests), the drawings matching to within a few per cent of the
+pixels; and the language tested operator by operator.
+
+**Status (12 November 2026):** planned.

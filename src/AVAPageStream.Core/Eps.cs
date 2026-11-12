@@ -8,7 +8,9 @@ public sealed record GreyImage(int Width, int Height, byte[] Pixels);
 
 /// <summary>
 /// Reading Encapsulated PostScript without a PostScript interpreter: its size (the bounding box), its PostScript (out
-/// of the DOS binary form), and the EPSI preview many EPS files carry. Drawing the PostScript itself needs Ghostscript.
+/// of the DOS binary form), and the previews EPS files carry: a TIFF in the DOS binary form's header (as Illustrator,
+/// CorelDRAW and most Windows programs write), or an EPSI preview in the PostScript. Drawing the PostScript itself
+/// needs Ghostscript.
 /// </summary>
 public static class Eps
 {
@@ -20,6 +22,16 @@ public static class Eps
         var length = BitConverter.ToInt32(eps, 8);
         if (offset < 0 || length < 0 || offset + length > eps.Length) return [];
         return eps[offset..(offset + length)];
+    }
+
+    /// <summary>The colour preview in a DOS binary EPS's TIFF section, if it has one that can be read.</summary>
+    public static ColourImage? TiffPreview(byte[] eps)
+    {
+        if (eps is not [0xC5, 0xD0, 0xD3, 0xC6, ..] || eps.Length < 28) return null;
+        var offset = BitConverter.ToInt32(eps, 20);
+        var length = BitConverter.ToInt32(eps, 24);
+        if (offset <= 0 || length <= 0 || offset + (long)length > eps.Length) return null;
+        return Tiff.Read(eps[offset..(offset + length)]);
     }
 
     private static IEnumerable<string> Lines(byte[] eps) =>

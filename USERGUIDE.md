@@ -298,7 +298,9 @@ Click a picture with the Picture tool to replace it. Pictures can be:
 - **PNG, JPEG, GIF, BMP and WebP**: the usual kinds.
 - **SVG** drawings: kept as drawings, so they stay sharp at any size, on screen and in PDFs.
 - **EPS** (Encapsulated PostScript): sized from the file. With [Ghostscript](https://ghostscript.com) installed it is
-  shown and printed in full; without it, by the preview many EPS files carry, or as a labelled box.
+  shown and printed in full; without it, by the preview many EPS files carry: in colour for the EPS files Illustrator,
+  CorelDRAW and most Windows programs save (a TIFF preview), in grey for EPSI previews. With neither, it is a
+  labelled box.
 
 The picture is stored inside the document, so moving or deleting the original file does no harm.
 
@@ -535,7 +537,7 @@ that will certainly show in red:
 - text that doesn't all fit its frames, a table's cell, or its path, and table rows with no frame to go in;
 - picture frames with no picture, and linked pictures whose files are missing or have changed;
 - pictures with too few pixels for the size they are printed at: under 150 dots an inch, a photograph looks soft or
-  blocky (a drawing, SVG or EPS, prints sharp at any size);
+  blocky (an SVG drawing prints sharp at any size; EPS pictures aren't checked);
 - filled shapes and pictures that reach the edge of the page but not out to the bleed (or, with no bleed set, that
   run to the edge at all);
 - fonts that aren't on this computer (their text is set in Liberation Serif), and fonts whose licence doesn't allow

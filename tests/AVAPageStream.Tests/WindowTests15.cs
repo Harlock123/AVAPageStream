@@ -90,4 +90,30 @@ public partial class WindowTests
         Assert.Contains("/Count 2", t); // two pages (the update writes the page objects again, with their boxes)
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void An_eps_without_ghostscript_shows_its_colour_tiff_preview()
+    {
+        var was = Pictures.Ghostscript;
+        Pictures.Ghostscript = _ => null; // as on a computer without it
+        try
+        {
+            var ps = System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 80 40\n");
+            var tiff = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Core", "Samples", "rgb-lzw.tif"));
+            var header = new byte[30];
+            (header[0], header[1], header[2], header[3]) = (0xC5, 0xD0, 0xD3, 0xC6);
+            BitConverter.GetBytes(30).CopyTo(header, 4);
+            BitConverter.GetBytes(ps.Length).CopyTo(header, 8);
+            BitConverter.GetBytes(30 + ps.Length).CopyTo(header, 20);
+            BitConverter.GetBytes(tiff.Length).CopyTo(header, 24);
+            var picture = Assert.IsType<PostScriptPicture>(Pictures.Load([.. header, .. ps, .. tiff]));
+            Assert.Contains("colour preview", picture.How);
+            Assert.Equal((8, 4), (picture.Shown!.PixelSize.Width, picture.Shown.PixelSize.Height));
+            Assert.Equal((80.0, 40.0), (picture.Size.Width, picture.Size.Height)); // sized by its bounding box, not the preview
+        }
+        finally
+        {
+            Pictures.Ghostscript = was;
+        }
+    }
 }

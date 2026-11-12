@@ -17,4 +17,8 @@
     <Using Include="Xunit" />
     <ProjectReference Include="..\..\src\AVAPageStream\AVAPageStream.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Sample TIFFs made by ImageMagick, one picture in each encoding the EPS preview reader takes. -->
+    <None Include="Core\Samples\*.tif" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
