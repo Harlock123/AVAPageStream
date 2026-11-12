@@ -65,7 +65,7 @@ public partial class WindowTests
     {
         var dir = Folder();
         var file = Path.Combine(dir, "logo.eps");
-        File.WriteAllBytes(file, Core.EpsTests.Sample());
+        File.WriteAllBytes(file, Core.EpsTests.Sample(text: true));
         var before = Pictures.Ghostscript;
         Pictures.Ghostscript = _ => null; // as on a computer without Ghostscript
         try

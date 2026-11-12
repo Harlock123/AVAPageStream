@@ -98,7 +98,7 @@ public partial class WindowTests
         Pictures.Ghostscript = _ => null; // as on a computer without it
         try
         {
-            var ps = System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 80 40\n");
+            var ps = System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 80 40\n/Times-Roman findfont 12 scalefont setfont (text) show\n"); // text: not drawn by AVAPageStream yet
             var tiff = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Core", "Samples", "rgb-lzw.tif"));
             var header = new byte[30];
             (header[0], header[1], header[2], header[3]) = (0xC5, 0xD0, 0xD3, 0xC6);

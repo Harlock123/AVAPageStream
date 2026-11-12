@@ -20,5 +20,7 @@
   <ItemGroup>
     <!-- Sample TIFFs made by ImageMagick, one picture in each encoding the EPS preview reader takes. -->
     <None Include="Core\Samples\*.tif" CopyToOutputDirectory="PreserveNewest" />
+    <!-- EPS files from real producers, each with the PNG its producer draws of the same picture to compare with. -->
+    <None Include="Core\Samples\eps\*.eps;Core\Samples\eps\*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

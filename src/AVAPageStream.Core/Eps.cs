@@ -24,6 +24,25 @@ public static class Eps
         return eps[offset..(offset + length)];
     }
 
+    /// <summary>
+    /// Draws an EPS with AVAPageStream's own PostScript interpreter: what it paints, in its own points, or null (with
+    /// why) if it uses something the interpreter doesn't do or stops with an error, so the caller can fall back.
+    /// </summary>
+    public static PostScript.PsDrawing? Draw(byte[] eps, out string? why)
+    {
+        why = null;
+        if (BoundingBox(eps) is not { W: > 0, H: > 0 } box) { why = "it has no bounding box"; return null; }
+        var ps = PostScript(eps);
+        var interpreter = new PostScript.Interpreter { BoundingBox = box };
+        // What an EPS may count on finding when it is placed in a page: an empty userdict to define into.
+        if (interpreter.Run(ps) is { } error)
+        {
+            why = error.Name == "unsupported" ? $"it uses {error.Message.Replace("unsupported in ", "")}, which AVAPageStream doesn't draw yet" : $"its PostScript stopped with {error.Message}";
+            return null;
+        }
+        return new PostScript.PsDrawing(box, interpreter.Ops);
+    }
+
     /// <summary>The colour preview in a DOS binary EPS's TIFF section, if it has one that can be read.</summary>
     public static ColourImage? TiffPreview(byte[] eps)
     {

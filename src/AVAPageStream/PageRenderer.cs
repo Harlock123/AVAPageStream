@@ -368,7 +368,7 @@ internal sealed class PageRenderer
     /// <summary>How a picture's image was shown: for the status bar.</summary>
     public string? Describe(Document doc, string key) => PictureOf(doc, key) switch
     {
-        VectorPicture => "an SVG drawing, kept as vector",
+        VectorPicture v => v.What + ", kept as vector",
         PostScriptPicture eps => "an EPS picture, shown by " + eps.How,
         RasterPicture r => $"a picture of {r.Bitmap.PixelSize.Width} × {r.Bitmap.PixelSize.Height} pixels",
         _ => null,
