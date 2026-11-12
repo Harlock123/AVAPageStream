@@ -10,13 +10,17 @@ public static class Contents
     /// The paragraphs on the pages (not the masters) in <paramref name="styles"/>, the first style level 0, in page
     /// order and then reading order, each with the page it starts on, as the stories are set now.
     /// </summary>
-    public static List<ContentsEntry> Find(Document doc, IReadOnlyList<string> styles, ITextMeasurer measurer)
+    public static List<ContentsEntry> Find(Document doc, IReadOnlyList<string> styles, ITextMeasurer measurer) =>
+        Placed(doc, styles, measurer).Select(p => p.Entry).ToList();
+
+    /// <summary>The entries, each with how far down its page its first line's top is.</summary>
+    public static List<(ContentsEntry Entry, double Y)> Placed(Document doc, IReadOnlyList<string> styles, ITextMeasurer measurer)
     {
         var order = Search.StoryOrder(doc);
         var pageOf = new Dictionary<string, int>();
         for (var i = 0; i < doc.Pages.Count; i++)
             foreach (var o in doc.Pages[i].All.Where(o => o is TextFrame or TableObject)) pageOf[o.Id] = i + 1;
-        var found = new List<(ContentsEntry Entry, int Story, int Start)>();
+        var found = new List<(ContentsEntry Entry, int Story, int Start, double Y)>();
         for (var k = 0; k < order.Count; k++)
         {
             var story = doc.Stories[order[k]];
@@ -33,10 +37,11 @@ public static class Contents
                 if (text.Length == 0) continue;
                 var line = layout.LineOf(start);
                 int? page = line >= 0 && pageOf.TryGetValue(Chains.ObjectOf(layout.Areas[layout.Lines[line].Area].FrameId), out var n) ? n : null;
-                found.Add((new ContentsEntry(text, level, page, page is { } n2 ? doc.PageLabel(n2 - 1) : null), k, start));
+                var y = line >= 0 ? layout.Lines[line].Baseline - layout.Lines[line].Ascent : 0;
+                found.Add((new ContentsEntry(text, level, page, page is { } n2 ? doc.PageLabel(n2 - 1) : null), k, start, y));
             }
         }
-        return found.OrderBy(f => f.Entry.Page ?? int.MaxValue).ThenBy(f => f.Story).ThenBy(f => f.Start).Select(f => f.Entry).ToList();
+        return found.OrderBy(f => f.Entry.Page ?? int.MaxValue).ThenBy(f => f.Story).ThenBy(f => f.Start).Select(f => (f.Entry, f.Y)).ToList();
     }
 
     private static int IndexOf(IReadOnlyList<string> styles, string style)

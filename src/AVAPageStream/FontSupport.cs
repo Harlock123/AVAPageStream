@@ -35,6 +35,52 @@ internal static class FontSupport
         return [.. Fonts.Bundled, .. installed];
     }
 
+    /// <summary>Whether a font is in the program, installed (and may be put in a PDF), missing, or not to be embedded.</summary>
+    public static FontState State(string name)
+    {
+        if (Fonts.Bundled.Contains(name)) return FontState.Bundled;
+        if (!FontManager.Current.SystemFonts.Any(f => string.Equals(f.Name, name, StringComparison.OrdinalIgnoreCase))) return FontState.Missing;
+        using var typeface = SkiaSharp.SKTypeface.FromFamilyName(name);
+        // The OS/2 table's fsType: 2 in its low bits means "restricted licence embedding": not to be put in a document.
+        const uint os2 = ('O' << 24) | ('S' << 16) | ('/' << 8) | '2';
+        if (typeface?.TryGetTableData(os2, out var table) == true && table.Length >= 10 && ((table[8] << 8 | table[9]) & 0x000F) == 0x0002) return FontState.NoEmbedding;
+        return FontState.Installed;
+    }
+
+    private static Dictionary<string, List<string>>? _files;
+
+    /// <summary>The files a font family is in on this computer, from its usual font folders (looked through once).</summary>
+    public static IReadOnlyList<string> Files(string family)
+    {
+        if (_files is null)
+        {
+            _files = new(StringComparer.OrdinalIgnoreCase);
+            var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            string[] folders = OperatingSystem.IsWindows()
+                ? [Environment.GetFolderPath(Environment.SpecialFolder.Fonts), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Windows", "Fonts")]
+                : OperatingSystem.IsMacOS()
+                    ? ["/System/Library/Fonts", "/Library/Fonts", Path.Combine(home, "Library", "Fonts")]
+                    : ["/usr/share/fonts", "/usr/local/share/fonts", Path.Combine(home, ".local", "share", "fonts"), Path.Combine(home, ".fonts")];
+            foreach (var folder in folders.Where(Directory.Exists))
+                foreach (var file in Directory.EnumerateFiles(folder, "*.*", SearchOption.AllDirectories)
+                             .Where(f => f.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".otf", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".ttc", StringComparison.OrdinalIgnoreCase)))
+                {
+                    try
+                    {
+                        using var t = SkiaSharp.SKTypeface.FromFile(file);
+                        if (t?.FamilyName is not { Length: > 0 } name) continue;
+                        if (!_files.TryGetValue(name, out var list)) _files[name] = list = [];
+                        list.Add(file);
+                    }
+                    catch (Exception)
+                    {
+                        // a damaged font file is no font
+                    }
+                }
+        }
+        return _files.TryGetValue(family, out var found) ? found : [];
+    }
+
     public static FormattedText Format(string text, CharFormat f, IBrush? brush) =>
         new(text, CultureInfo.InvariantCulture, FlowDirection.LeftToRight, Typeface(f), f.Size, brush);
 }

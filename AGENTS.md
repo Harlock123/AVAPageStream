@@ -38,7 +38,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     frame in its chain, with the wrap boxes it keeps out of) as `Line`s of `Piece`s; `TextLayout` answers caret
     positions, hit tests and selection boxes. `Fields` and `FieldContext`: the page-number and page-count characters.
   - `Footnotes.cs` (numbering, room at the foot, `Tidy`), `PathText.cs` (text along a path), `PrintMarks.cs` (crop
-    marks), `Links.cs` (linked pictures), `Recovery.cs` (autosave copies).
+    marks), `Links.cs` (linked pictures), `Recovery.cs` (autosave copies), `Preflight.cs` (with `Fitting`), `Package.cs`, `PdfExtras.cs` (bookmarks, links,
+    and the update that adds the outline and boxes to a PDF).
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
     `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
@@ -53,7 +54,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   - `PageView.cs`: the pasteboard, rulers, tools, selection, handles, guides, snapping, cropping and in-place text
     editing; `PageScroller.cs` puts scroll bars round it.
   - `StoryEditor.cs`: a story as plain text in a window of its own, kept in step with the page both ways.
-  - `SpellingWindow.cs`: the spelling check, word by word. `Pictures.cs`: pictures loaded once as a bitmap, an SVG
+  - `SpellingWindow.cs`: the spelling check, word by word. `PreflightWindow.cs`: the list of problems.
+  - `Pictures.cs`: pictures loaded once as a bitmap, an SVG
     (a Skia picture, drawn by `SvgDraw` straight onto the canvas so it stays vector) or an EPS.
   - `Panels.cs` (`SidePanel`: the Object, Text, Pages and Document tabs), `MainWindow.cs` (menus, tool bar, toolbox,
     status bar, files, clipboard, keys), `Export.cs` (PDF and booklets through SkiaSharp, PNG), `Printing.cs` (lp, or Windows' Print action), `FontSupport.cs` (the bundled
@@ -141,6 +143,13 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   `Source` or beside the document, and `Editor.UpdateLinks` brings them up to date as one undo step.
 - **Autosave** copies go in `Recovery/` beside the settings file, one per window (`MainWindow.RecoveryId`), and go
   when the document is saved, closed or replaced.
+- **Preflight is Core** (`Preflight.Check`), given what only the program knows: pictures' pixels
+  (`PageRenderer.PixelsOf`) and fonts' states (`FontSupport.State`, which reads embedding rights from the OS/2
+  table). `Package.Make` works on a clone, so the document open is never relinked.
+- **A PDF's extras**: `PdfExtras.Bookmarks` (the heading styles, `OutlineStyles`) and `Links` are drawn as SkiaSharp
+  annotations while each page is written; then `PdfExtras.Finish` appends an update to the file with the outline and
+  the trim and bleed boxes. It relies on SkiaSharp's plain layout (a classic xref table, no object streams) and leaves
+  the file alone if it doesn't find it.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever

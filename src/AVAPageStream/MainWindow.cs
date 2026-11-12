@@ -101,6 +101,68 @@ public sealed class MainWindow : Window
     }
 
     /// <summary>Opens the spelling window, which goes from the caret through the document.</summary>
+    /// <summary>What would go wrong in print, as the document is now.</summary>
+    public IReadOnlyList<Issue> Preflight()
+    {
+        var pictures = new PageRenderer(View.Layouts);
+        var doc = Editor.Doc;
+        return Core.Preflight.Check(doc, new PreflightOptions(FontMeasurer.Shared, key => pictures.PixelsOf(doc, key), FontSupport.State, DocumentFolder));
+    }
+
+    public PreflightWindow OpenPreflight()
+    {
+        var w = new PreflightWindow(this);
+        w.Show(this);
+        return w;
+    }
+
+    /// <summary>Shows what a preflight entry is about: its page, with the object selected, or the caret where its text is.</summary>
+    public void ShowIssue(Issue issue)
+    {
+        if (issue.StoryId is { } story && View.Reveal(story, Math.Min(issue.At, Editor.Doc.Stories.GetValueOrDefault(story)?.Length ?? 0), 0)) { Say(issue.Message); return; }
+        if (issue.Sheet is { } sheet) ShowSheet(sheet);
+        View.StopEditing();
+        View.Select([issue.ObjectId]);
+        Say(issue.Message);
+    }
+
+    /// <summary>A word on preflight after exporting or printing, if it found anything that will show.</summary>
+    private string PreflightNote()
+    {
+        var serious = Preflight().Count(i => i.Serious);
+        return serious == 0 ? "" : $" Preflight found {serious} problem{(serious == 1 ? "" : "s")} that will show: File › Preflight lists {(serious == 1 ? "it" : "them")}.";
+    }
+
+    /// <summary>Asks for a folder to put a package in; tests answer it themselves.</summary>
+    public Func<Task<string?>> PickFolder { get; set; }
+
+    /// <summary>Gathers the document, its linked pictures and its fonts into a new folder, with a report.</summary>
+    public async Task<PackageResult?> MakePackage()
+    {
+        if (await PickFolder() is not { } parent) return null;
+        var name = FilePath is null ? "Untitled" : Path.GetFileNameWithoutExtension(FilePath);
+        var folder = Path.Combine(parent, name + " package");
+        for (var n = 2; Directory.Exists(folder); n++) folder = Path.Combine(parent, $"{name} package {n}");
+        try
+        {
+            var result = Package.Make(Editor.Doc, name, DocumentFolder, folder, FontSupport.Files, Preflight());
+            Say($"Packaged {name} in {Path.GetFileName(folder)}: {result.Pictures} linked picture{(result.Pictures == 1 ? "" : "s")} and {result.Fonts} font file{(result.Fonts == 1 ? "" : "s")}" +
+                (result.Missing.Count > 0 ? $"; {result.Missing.Count} couldn't be found (see Report.txt)." : ", with Report.txt."));
+            return result;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't make the package: {e.Message}");
+            return null;
+        }
+    }
+
+    private async Task<string?> PickFolderDialog()
+    {
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { Title = "Where to put the package", AllowMultiple = false });
+        return folders.Count > 0 ? folders[0].TryGetLocalPath() : null;
+    }
+
     public SpellingWindow OpenSpelling()
     {
         var w = new SpellingWindow(this);
@@ -137,6 +199,7 @@ public sealed class MainWindow : Window
         Ask = (title, message, buttons) => AskDialog.Show(this, title, message, buttons);
         PickOpen = PickOpenFile;
         PickSave = PickSaveFile;
+        PickFolder = PickFolderDialog;
 
         Width = 1360;
         Height = 880;
@@ -268,6 +331,9 @@ public sealed class MainWindow : Window
                         Item("Export _PDF…", () => _ = ExportPdf(), "Ctrl+E"),
                         Item("Export P_NG…", () => _ = ExportPng()),
                         Item("P_rint…", () => _ = Print(), "Ctrl+P"),
+                        new Separator(),
+                        Item("Pre_flight…", () => OpenPreflight()),
+                        Item("Pac_kage…", () => _ = MakePackage()),
                         new Separator(),
                         Item("_Quit", Close, "Ctrl+Q"),
                     },
@@ -1082,9 +1148,9 @@ public sealed class MainWindow : Window
         {
             if (choice.Booklet) await Export.Booklet(Editor.Doc, path, choice.Pages, BaseName);
             else await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName, choice.Marks);
-            Say(choice.Booklet
+            Say((choice.Booklet
                 ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
-                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.");
+                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.") + PreflightNote());
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -1132,7 +1198,7 @@ public sealed class MainWindow : Window
             return;
         }
         var why = await SendToPrinter(pdf);
-        Say(why ?? (choice.Booklet ? "Sent the booklet to the printer: print it on both sides, flipping on the short edge." : $"Sent {Pages(choice.Pages.Count)} to the printer."));
+        Say(why ?? (choice.Booklet ? "Sent the booklet to the printer: print it on both sides, flipping on the short edge." : $"Sent {Pages(choice.Pages.Count)} to the printer.") + (why is null ? PreflightNote() : ""));
     }
 
     /// <summary>Puts a table of contents of the chosen styles at the caret, or at the end of the selected frame's story.</summary>

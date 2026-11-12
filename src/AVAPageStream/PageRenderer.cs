@@ -413,20 +413,17 @@ internal sealed class PageRenderer
     /// <summary>Where an image of <paramref name="size"/> goes in its frame for a fit.</summary>
     public static Rect Placement(Fit fit, Size size, Rect frame)
     {
-        if (size.Width <= 0 || size.Height <= 0) return frame;
-        switch (fit)
-        {
-            case Fit.Stretch: return frame;
-            case Fit.Actual: return new Rect(frame.X, frame.Y, size.Width, size.Height);
-            default:
-                var sx = frame.Width / size.Width;
-                var sy = frame.Height / size.Height;
-                var s = fit == Fit.Fill ? Math.Max(sx, sy) : Math.Min(sx, sy);
-                var w = size.Width * s;
-                var h = size.Height * s;
-                return new Rect(frame.X + (frame.Width - w) / 2, frame.Y + (frame.Height - h) / 2, w, h);
-        }
+        var b = Fitting.Place(fit, size.Width, size.Height, new Box(frame.X, frame.Y, frame.Width, frame.Height));
+        return new Rect(b.X, b.Y, b.W, b.H);
     }
+
+    /// <summary>A bitmap picture's pixels and its size in points (null for a drawing, which prints sharp at any size).</summary>
+    public Core.PictureSize? PixelsOf(Document doc, string key) => PictureOf(doc, key) switch
+    {
+        RasterPicture r => new Core.PictureSize(r.Bitmap.PixelSize.Width, r.Bitmap.PixelSize.Height, r.Size.Width, r.Size.Height),
+        PostScriptPicture { Shown: null } => null,
+        _ => null,
+    };
 
     private PictureSource? PictureOf(Document doc, string key)
     {

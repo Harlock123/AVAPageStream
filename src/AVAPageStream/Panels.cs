@@ -219,6 +219,8 @@ public sealed class SidePanel : TabControl
     public CheckBox LinkedBox { get; } = new() { Content = "Linked to its file, not kept in the document", FontSize = 12 };
     public TextBlock LinkInfo { get; } = new() { Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap };
     public TextBox BleedBox { get; } = Ui.Box("0, or such as 9pt");
+    public TextBox DocTitleBox { get; } = Ui.Box("the file's name");
+    public TextBox AuthorBox { get; } = Ui.Box("for the PDF");
     public TextBox BaselineBox { get; } = Ui.Box("none, or such as 14pt");
     public TextBox BaselineFromBox { get; } = Ui.Box("the top margin");
     public CheckBox OnGridBox { get; } = new() { Content = "Align to the baseline grid", FontSize = 12 };
@@ -1068,6 +1070,8 @@ public sealed class SidePanel : TabControl
             if (_refreshing) return;
             (PageWidthBox.Text, PageHeightBox.Text) = (PageHeightBox.Text, PageWidthBox.Text);
         };
+        Commit(DocTitleBox, text => { if ((text ?? "").Trim() is var v && v != Doc.Title) Editor.Change("Title", d => d.Title = v); });
+        Commit(AuthorBox, text => { if ((text ?? "").Trim() is var v && v != Doc.Author) Editor.Change("Author", d => d.Author = v); });
         Commit(GridBox, text =>
         {
             if (!Units.TryParse(text, Unit, out var v) || v < 1 || v > 720)
@@ -1145,6 +1149,9 @@ public sealed class SidePanel : TabControl
                 Ui.Buttons(
                     Ui.Button("Show grid", () => _window.SetGrid(!View.ShowGrid, View.SnapGrid)),
                     Ui.Button("Snap to grid", () => _window.SetGrid(View.ShowGrid || !View.SnapGrid, !View.SnapGrid))),
+                Ui.Heading("PDF"),
+                Ui.Row(("Title", DocTitleBox)),
+                Ui.Row(("Author", AuthorBox)),
                 Ui.Heading("Swatches"),
                 SwatchList,
                 Ui.Row(("Name", SwatchNameBox)),
@@ -1493,6 +1500,8 @@ public sealed class SidePanel : TabControl
         Set(PageGutterBox, Units.Format(s.Gutter, Unit));
         Set(GridBox, Units.Format(s.Grid, Unit));
         Set(BleedBox, s.Bleed > 0 ? Units.Format(s.Bleed, Unit) : "");
+        Set(DocTitleBox, Doc.Title);
+        Set(AuthorBox, Doc.Author);
         Set(BaselineBox, s.BaselineGrid > 0 ? Units.Format(s.BaselineGrid, Unit) : "");
         Set(BaselineFromBox, s.BaselineFrom is { } bf ? Units.Format(bf, Unit) : "");
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);

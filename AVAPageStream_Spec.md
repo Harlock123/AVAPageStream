@@ -587,4 +587,7 @@ Making what is there dependable on its way to a printer or a reader, before addi
   of a table of contents that go to their pages, web addresses that open, and the document's title and author.
   Where SkiaSharp can't write something (trim and bleed boxes), see whether a pass over the finished file can add it.
 
-**Status (12 November 2026):** started. Done: footnotes and text on paths found, checked and edited on the page.
+**Status (12 November 2026):** done. The trim and bleed boxes and the outline of bookmarks are added by an update
+appended to the PDF SkiaSharp writes (`PdfExtras.Finish`); links and destinations are SkiaSharp's own annotations.
+Preflight warns after exporting and printing, in the status bar, rather than stopping them. A font's licence is read
+from its OS/2 table; one installed but not found by name in the usual font folders can't be packaged.

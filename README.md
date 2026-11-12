@@ -42,7 +42,10 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   with their header rows repeated; and a baseline grid for lines to line up on across columns.
 - **Text on a path**: type set along any curve or polyline, turned to follow it.
 - **Linked pictures**, read from their files and updated when the files change, or kept in the document.
-- **Printing to the edge**: a bleed, and PDFs with crop marks.
+- **Printing to the edge**: a bleed, and PDFs with crop marks and trim and bleed boxes.
+- **Preflight and packaging**: a list of what would go wrong in print (overset text, missing or low-resolution
+  pictures, artwork short of the bleed, missing fonts), each a click from the problem; and a package folder of the
+  document, its linked pictures and fonts, with a report.
 - **Autosave**: unsaved work is copied every two minutes and offered back after a crash.
 - **Colour swatches.** Pick colours by name from the document's swatches, at any tint; change a swatch and
   everything in it changes. Swatches can be CMYK, and spot inks, and the Document tab lists the inks a job needs.
@@ -63,8 +66,9 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   centre, the guides, and (if you like) a document grid.
 - **Measures in any unit.** Every box takes `54`, `0.75in`, `4p6`, `20mm` or a sum like `1in + 6pt`.
 - **Undo** for every change, all the way back. A run of typing or nudging is one step.
-- **PDF and PNG.** Export all the pages, this page or a range (`1-3, 5`) as a vector PDF with its fonts embedded, or
-  as PNGs at 72 to 600 dpi. They are drawn
+- **PDF and PNG.** Export all the pages, this page or a range (`1-3, 5`) as a vector PDF with its fonts embedded,
+  bookmarks from the headings, links from the contents and web addresses, and its title and author, or as PNGs at
+  72 to 600 dpi. They are drawn
   by the same code as the screen, so line breaks and positions match exactly.
 - **Print and booklets.** Print straight from the program (through the system's printing), and print or export a
   booklet: pages paired on each sheet in the order that folds into a stapled booklet.

@@ -369,4 +369,32 @@ public partial class WindowTests
         Assert.Contains(Tables.Place(w.Editor.Doc, next)!.Rows, r => r.Frame == 1);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_preflight()
+    {
+        var w = GuideWindow();
+        w.Editor.Change("Setup", d => d.Setup = d.Setup with { Bleed = 9 });
+        var f = w.Editor.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 120, W = 220, H = 60 });
+        w.Editor.ReplaceText(f.StoryId, 0, 0, Prose);
+        w.Editor.Add(SheetRef.PageAt(0), new RectangleObject { X = 0, Y = 0, W = 612, H = 90, Fill = "@Blue", Stroke = null });
+        w.Editor.Add(SheetRef.PageAt(0), new PictureObject { X = 320, Y = 120, W = 220, H = 160 });
+        // A small photograph, 120 by 90 pixels, printed 4 inches wide.
+        byte[] photo;
+        using (var bitmap = new Avalonia.Media.Imaging.WriteableBitmap(new Avalonia.PixelSize(120, 90), new Avalonia.Vector(96, 96), Avalonia.Platform.PixelFormat.Bgra8888, Avalonia.Platform.AlphaFormat.Opaque))
+        using (var ms = new MemoryStream())
+        {
+            bitmap.Save(ms, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+            photo = ms.ToArray();
+        }
+        var key = w.Editor.Doc.Images.Add(photo);
+        w.Editor.Add(SheetRef.PageAt(0), new PictureObject { X = 72, Y = 320, W = 288, H = 216, Image = key, Source = "/photos/quay.png" });
+        var pre = w.OpenPreflight();
+        pre.Width = 600;
+        Pump();
+        Guide(pre, "preflight");
+        Assert.Equal(4, pre.Issues.Count);
+        pre.Close();
+        Done(w);
+    }
 }

@@ -62,6 +62,7 @@ A new document is one Letter page with half-inch margins and one column. Change 
   from the top of the page (the top margin, if left empty). Paragraphs set to align to it sit their lines on it, so
   lines in neighbouring columns line up. It is drawn in faint blue with the guides.
 - **Apply** puts the size, bleed, margins, columns and baseline grid into effect, as one step you can undo.
+- **Title** and **Author**, under PDF, go into the document's PDFs (the title is the file's name if left empty).
 
 Tick **Facing pages** for anything that will be printed both sides and bound: a booklet, a magazine, a book. Odd
 pages are then right-hand pages and even pages left-hand ones, page 1 on its own on the right, the way a printed
@@ -496,7 +497,15 @@ closing asks first. File › Open recent lists the last ten documents. Undo (Ctr
 back to when the document was opened.
 
 **PDF.** File › Export PDF… (Ctrl+E) writes the pages as a PDF, with its fonts inside it, ready to send to a printer
-or post online. Choose all the pages, the one shown, or a range such as `1-3, 7`.
+or post online. Choose all the pages, the one shown, or a range such as `1-3, 7`. The PDF also has:
+
+- the document's **title and author** (Document tab);
+- a **bookmark** for each heading, so a reader can jump about: paragraphs in Heading, and under them in
+  Subheading (and in any styles of your own named "Heading 2", "Heading 3" and so on), open beside the pages;
+- **links** from each entry of a table of contents to its heading's page, and from every web address in the text
+  (`https://…` or `www.…`) to the web.
+
+After exporting or printing, the status bar says if preflight would find anything that will show in print.
 
 **PNG.** File › Export PNG… writes each page as a picture, at a resolution from 72 to 600 dots an inch. Several pages
 go to numbered files: `leaflet-1.png`, `leaflet-2.png`.
@@ -508,13 +517,40 @@ and macOS, the `lp` command).
 is printed on bigger paper and cut down. Give the document a **Bleed** (Document tab), let pictures and boxes that
 should reach the edge run out past it to the red dashed line, and tick **Crop marks and bleed** when exporting the
 PDF. Each page is then set on a sheet with room round it, its artwork out to the bleed, and short **crop marks** at
-the corners showing where to cut. (The PDF doesn't carry separate trim and bleed boxes; a print shop works from the
-marks.)
+the corners showing where to cut. The PDF also says where the trim and bleed are (its trim and bleed boxes), which a
+print shop's software reads.
 
 **Booklets.** Tick **As a booklet** when exporting a PDF or printing, and the pages are arranged two to a sheet in the
 order that folds into a stapled booklet. Page 8 goes beside page 1, page 2 beside page 7, and so on, with blank pages
 added to make a multiple of four. Print both sides of the paper, flipping on the short edge, fold the stack in half
 and staple it on the fold.
+
+## Preflight and packaging
+
+![Preflight, with text that doesn't fit, a box short of the bleed, an empty picture frame and a small photograph](docs/images/guide/preflight.png)
+
+**Preflight** (File › Preflight…) checks the document for what would go wrong in print, and lists it, the problems
+that will certainly show in red:
+
+- text that doesn't all fit its frames, a table's cell, or its path, and table rows with no frame to go in;
+- picture frames with no picture, and linked pictures whose files are missing or have changed;
+- pictures with too few pixels for the size they are printed at: under 150 dots an inch, a photograph looks soft or
+  blocky (a drawing, SVG or EPS, prints sharp at any size);
+- filled shapes and pictures that reach the edge of the page but not out to the bleed (or, with no bleed set, that
+  run to the edge at all);
+- fonts that aren't on this computer (their text is set in Liberation Serif), and fonts whose licence doesn't allow
+  them to be put in a PDF.
+
+Click an entry to go to it: its page is shown and the object selected, or the caret put where the text stops fitting.
+**Check again** looks again after you have put things right. Layers that are hidden or don't print aren't checked.
+
+**Package** (File › Package…) gathers everything the document needs into one new folder, named after it, in the
+folder you pick, ready to hand to a printer or take to another computer:
+
+- a copy of the document, its linked pictures copied into **Links** and the copy linked to them there;
+- the font files of the fonts it uses, in **Fonts** (the Liberation fonts are inside AVAPageStream, so they aren't);
+- **Report.txt**: the page size and bleed, the pictures, the fonts and where they came from, the inks it prints
+  with, what preflight found, and anything that couldn't be found.
 
 ## Footnotes
 

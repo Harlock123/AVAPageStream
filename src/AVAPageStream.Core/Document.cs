@@ -80,6 +80,10 @@ public sealed class Document
     public List<MasterPage> Masters { get; set; } = [];
     public List<Page> Pages { get; set; } = [];
 
+    /// <summary>The document's title and author, for its PDFs (the title is the file's name when empty).</summary>
+    public string Title { get; set; } = "";
+    public string Author { get; set; } = "";
+
     /// <summary>The language spelling is checked in ("en-US", "en-GB").</summary>
     public string Language { get; set; } = "en-US";
 
