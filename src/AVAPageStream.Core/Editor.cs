@@ -436,6 +436,15 @@ public sealed class Editor
         }, merge);
     }
 
+    /// <summary>Pastes a styled stretch of text over a selection. Returns where the caret goes: after it.</summary>
+    public int PasteFragment(string storyId, int start, int length, Fragment fragment) => Change("Paste", d =>
+    {
+        var story = d.Stories[storyId];
+        story.Delete(start, length);
+        story.InsertFragment(start, fragment);
+        return start + fragment.Text.Length;
+    });
+
     /// <summary>Replaces every match of a search in one step, each replacement in the format of the text it replaces. Returns how many.</summary>
     public int ReplaceAll(string query, string replacement, FindOptions options)
     {

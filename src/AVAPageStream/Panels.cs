@@ -161,6 +161,9 @@ public sealed class SidePanel : TabControl
     public NumericUpDown DropLinesBox { get; } = new() { Minimum = 0, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public NumericUpDown DropCharsBox { get; } = new() { Minimum = 1, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public CheckBox HyphenateBox { get; } = new() { Content = "Hyphenate", FontSize = 12 };
+    public CheckBox ArrowStartBox { get; } = new() { Content = "At its start", FontSize = 12 };
+    public CheckBox ArrowEndBox { get; } = new() { Content = "At its end", FontSize = 12 };
+    private readonly StackPanel _arrowRows = new();
     public CheckBox WrapShapeBox { get; } = new() { Content = "Follow its shape, not its frame", FontSize = 12 };
     public TextBlock TextTarget { get; } = new() { Foreground = Look.Heading, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _textBody = new();
@@ -326,6 +329,9 @@ public sealed class SidePanel : TabControl
 
         _cornerRow.Children.Add(Ui.Row(("Corners", CornerBox)));
         _rotationRow.Children.Add(Ui.Row(("Rotation", RotationBox)));
+        _arrowRows.Children.AddRange([Ui.Heading("Arrowheads"), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ArrowStartBox, ArrowEndBox } }]);
+        ArrowStartBox.IsCheckedChanged += (_, _) => { if (!_refreshing) ChangeSelected("Arrowhead", o => { if (o is LineObject l) l.ArrowStart = ArrowStartBox.IsChecked == true; }); };
+        ArrowEndBox.IsCheckedChanged += (_, _) => { if (!_refreshing) ChangeSelected("Arrowhead", o => { if (o is LineObject l) l.ArrowEnd = ArrowEndBox.IsChecked == true; }); };
         _frameRows.Children.AddRange([
             Ui.Heading("Text frame"),
             Ui.Row(("Columns", ColumnsBox)),
@@ -361,6 +367,7 @@ public sealed class SidePanel : TabControl
             _cornerRow,
             _frameRows,
             _pictureRows,
+            _arrowRows,
             Ui.Heading("Text wrap"),
             WrapBox,
             WrapShapeBox,
@@ -995,6 +1002,9 @@ public sealed class SidePanel : TabControl
             Set(InsetBox, Units.Format(f.Inset, Unit));
         }
         _pictureRows.IsVisible = one is PictureObject;
+        _arrowRows.IsVisible = selected.All(o => o is LineObject);
+        ArrowStartBox.IsChecked = selected.All(o => o is LineObject { ArrowStart: true });
+        ArrowEndBox.IsChecked = selected.All(o => o is LineObject { ArrowEnd: true });
         if (one is PictureObject p)
         {
             FitChoice.SelectedIndex = (int)p.Fit;

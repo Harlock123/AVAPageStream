@@ -21,6 +21,8 @@ public sealed class MainWindow : Window
     private readonly string _settingsPath;
     private bool _closing;
     private (Document Doc, List<string> Ids)? _clipboard;
+    private (Fragment Fragment, string Plain)? _textClipboard; // text copied here, with its formats
+    private readonly List<StoryEditor> _storyEditors = [];
     private int _pasteCount;
 
     public AppSettings Settings { get; }
@@ -248,6 +250,8 @@ public sealed class MainWindow : Window
                         Item("_Bold", () => View.ToggleChar(f => f.Bold, (f, v) => f with { Bold = v }, "Bold"), "Ctrl+B"),
                         Item("_Italic", () => View.ToggleChar(f => f.Italic, (f, v) => f with { Italic = v }, "Italic"), "Ctrl+I"),
                         Item("_Underline", () => View.ToggleChar(f => f.Underline, (f, v) => f with { Underline = v }, "Underline"), "Ctrl+U"),
+                        new Separator(),
+                        Item("_Story editor…", () => OpenStoryEditor(), "Ctrl+Shift+E"),
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
                         Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
@@ -611,6 +615,19 @@ public sealed class MainWindow : Window
         Editor.Change(locked ? "Lock" : "Unlock", d => { foreach (var id in ids) if (d.Find(id) is { } o) o.Locked = locked; });
     }
 
+    /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>
+    public StoryEditor? OpenStoryEditor()
+    {
+        var storyId = View.Editing?.StoryId ?? (View.Selected is [TextFrame f] ? f.StoryId : null);
+        if (storyId is null) { Say("Select a text frame, or put the caret in one, to open its story."); return null; }
+        if (_storyEditors.FirstOrDefault(se => se.StoryId == storyId) is { } open) { open.Activate(); return open; }
+        var editor = new StoryEditor(this, storyId);
+        _storyEditors.Add(editor);
+        editor.Closed += (_, _) => _storyEditors.Remove(editor);
+        editor.Show(this);
+        return editor;
+    }
+
     public void GroupSelected()
     {
         if (View.Editing is not null) return;
@@ -687,9 +704,12 @@ public sealed class MainWindow : Window
 
     public async Task Copy()
     {
-        if (View.Editing is not null)
+        if (View.Editing is { } t)
         {
-            if (View.SelectedText() is { } text && Clipboard is { } c) await c.SetTextAsync(text.Replace("\n", Environment.NewLine));
+            if (View.SelectedText() is not { } text || !Editor.Doc.Stories.TryGetValue(t.StoryId, out var story)) return;
+            // Kept here with its formats, so pasting it in this program keeps them; other programs get the plain text.
+            _textClipboard = (story.Extract(t.Start, t.Length), text);
+            if (Clipboard is { } c) await c.SetTextAsync(text.Replace("\n", Environment.NewLine));
             return;
         }
         var ids = View.Selected.Select(o => o.Id).ToList();
@@ -708,9 +728,16 @@ public sealed class MainWindow : Window
 
     public async Task Paste()
     {
-        if (View.Editing is not null)
+        if (View.Editing is { } t)
         {
-            if (Clipboard is { } c && await c.TryGetTextAsync() is { Length: > 0 } text) View.Type(text);
+            var text = Clipboard is { } c ? await c.TryGetTextAsync() : null;
+            if (_textClipboard is { } styled && (text is null || text.Replace("\r\n", "\n") == styled.Plain))
+            {
+                t.Caret = t.Anchor = Editor.PasteFragment(t.StoryId, t.Start, t.Length, styled.Fragment);
+                View.Reveal(t.StoryId, t.Caret, 0);
+                return;
+            }
+            if (text is { Length: > 0 }) View.Type(text);
             return;
         }
         if (_clipboard is not { } clip) return;
@@ -736,6 +763,7 @@ public sealed class MainWindow : Window
 
     private void Use(Editor editor, string? path)
     {
+        foreach (var se in _storyEditors.ToList()) se.Close();
         Editor.Changed -= OnChanged;
         Editor = editor;
         Editor.Changed += OnChanged;
@@ -924,6 +952,7 @@ public sealed class MainWindow : Window
             case Key.O: _ = OpenWithPicker(); break;
             case Key.S when shift: _ = SaveAs(); break;
             case Key.S: _ = Save(); break;
+            case Key.E when shift: OpenStoryEditor(); break;
             case Key.E: _ = ExportPdf(); break;
             case Key.Q: Close(); break;
             case Key.Z when inBox: return;

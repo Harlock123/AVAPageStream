@@ -34,6 +34,12 @@ public sealed record ParagraphStyle(string Name, CharFormat Char, ParaFormat Par
 /// <summary>A stretch of a story's characters in one format.</summary>
 public sealed record Run(int Length, CharFormat Format);
 
+/// <summary>
+/// A stretch of a story copied with its formats: the text, runs covering exactly that text, and the format of each
+/// paragraph it touches (the first for the paragraph it starts in).
+/// </summary>
+public sealed record Fragment(string Text, IReadOnlyList<Run> Runs, IReadOnlyList<ParaFormat> Paras);
+
 /// <summary>The fonts that ship with the program.</summary>
 public static class Fonts
 {
@@ -192,6 +198,44 @@ public sealed class Story
             var (start, end) = ParagraphRange(p);
             FormatChars(start, end - start + 1, f => style.Char with { Bold = f.Bold, Italic = f.Italic, Underline = f.Underline });
         }
+    }
+
+    /// <summary>A stretch of the story with its formats, for styled copying.</summary>
+    public Fragment Extract(int index, int length)
+    {
+        index = Math.Clamp(index, 0, Text.Length);
+        length = Math.Clamp(length, 0, Text.Length - index);
+        var runs = new List<Run>();
+        var at = 0;
+        foreach (var run in Runs)
+        {
+            var s = Math.Max(at, index);
+            var e = Math.Min(at + run.Length, index + length);
+            if (e > s) runs.Add(new Run(e - s, run.Format));
+            at += run.Length;
+        }
+        var first = ParagraphAt(index);
+        var breaks = Text.Substring(index, length).Count(c => c == '\n');
+        return new Fragment(Text.Substring(index, length), runs, Paras.GetRange(first, breaks + 1));
+    }
+
+    /// <summary>
+    /// Puts in a copied stretch with its formats. The paragraph it is pasted into keeps its own format; each new
+    /// paragraph it makes takes the one it had.
+    /// </summary>
+    public void InsertFragment(int index, Fragment fragment)
+    {
+        if (fragment.Text.Length == 0) return;
+        index = Math.Clamp(index, 0, Text.Length);
+        var p = ParagraphAt(index);
+        Insert(index, fragment.Text, fragment.Runs.Count > 0 ? fragment.Runs[0].Format : null);
+        var at = index;
+        foreach (var run in fragment.Runs)
+        {
+            FormatChars(at, run.Length, _ => run.Format);
+            at += run.Length;
+        }
+        for (var k = 1; k < fragment.Paras.Count && p + k < Paras.Count; k++) Paras[p + k] = fragment.Paras[k];
     }
 
     /// <summary>Splits the runs so one starts at <paramref name="index"/>, and returns its position (or the count, at the end).</summary>

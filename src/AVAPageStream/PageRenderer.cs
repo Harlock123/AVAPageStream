@@ -97,6 +97,8 @@ internal sealed class PageRenderer
                 {
                     var (a, b) = line.Ends;
                     dc.DrawLine(new Pen(pen.Brush, pen.Thickness, lineCap: PenLineCap.Round), new Point(a.X, a.Y), new Point(b.X, b.Y));
+                    if (line.ArrowEnd) Arrowhead(dc, pen, a, b);
+                    if (line.ArrowStart) Arrowhead(dc, pen, b, a);
                 }
                 break;
             case TextFrame frame:
@@ -158,6 +160,26 @@ internal sealed class PageRenderer
                 }
             }
         }
+    }
+
+    /// <summary>A filled arrowhead at <paramref name="tip"/>, pointing away from <paramref name="from"/>, sized to the stroke.</summary>
+    private static void Arrowhead(DrawingContext dc, IPen pen, Pt from, Pt tip)
+    {
+        var (dx, dy) = (tip.X - from.X, tip.Y - from.Y);
+        var len = Math.Sqrt(dx * dx + dy * dy);
+        if (len == 0) return;
+        var size = Math.Max(5, pen.Thickness * 4);
+        var (ux, uy) = (dx / len, dy / len);
+        var back = new Point(tip.X - ux * size, tip.Y - uy * size);
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            c.BeginFigure(new Point(tip.X, tip.Y), true);
+            c.LineTo(new Point(back.X - uy * size * 0.45, back.Y + ux * size * 0.45));
+            c.LineTo(new Point(back.X + uy * size * 0.45, back.Y - ux * size * 0.45));
+            c.EndFigure(true);
+        }
+        dc.DrawGeometry(pen.Brush, null, g);
     }
 
     /// <summary>A tab's leader: its character repeated across the gap, on an even grid so leaders above each other line up.</summary>

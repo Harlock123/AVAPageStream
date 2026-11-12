@@ -160,18 +160,20 @@ unit; plain numbers are in the current unit. Simple sums (`72+18`, `2in-0.25in`)
 
 ## 5. Objects
 
-Every object has an id, a frame (X, Y, width, height), a fill, a stroke (colour and width), a name, and *locked*
-(locked objects can be selected but not moved, resized or deleted).
+Every object has an id, a frame (X, Y, width, height), a rotation (degrees clockwise about the frame's centre), a
+fill, a stroke (colour and width), a name, text wrap (on or off, a standoff, and by frame or by shape), and *locked*
+(locked objects can be selected but not moved, resized or deleted). Every move and resize goes through the frame, so
+a group moves and scales what it holds and a path its points.
 
 | Kind | Extra settings | Notes |
 | --- | --- | --- |
 | **Rectangle** | corner radius | |
 | **Ellipse** | | Fills its frame. |
-| **Line** | which diagonal (down or up), arrowheads (milestone 2) | Drawn corner to corner across its frame; a frame may have zero width or height. |
+| **Line** | which diagonal (down or up), arrowheads at either end | Drawn corner to corner across its frame; a frame may have zero width or height. |
 | **Text frame** | story id, columns, gutter, inset | Shows its part of the story; empty frames show their columns as faint guides. |
 | **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | A missing picture shows a crossed box. |
-| **Group** (milestone 2) | children | Moves and resizes as one. |
-| **Polygon / Bézier path** (milestone 2) | points | |
+| **Group** | children | Moves, resizes (scaling what it holds), arranges, copies and deletes as one. Its frame is the box round what it holds. Double-click a text frame in a group to type in it. Groups don't rotate (what is in them can). |
+| **Polygon / Bézier path** | points, each with optional handles in and out; closed or open | Its frame is the box round its points and handles. Only a closed path is filled. |
 
 Fills and strokes are a colour or *none*. A stroke is centred on the frame's edge.
 
@@ -264,10 +266,39 @@ moves through the whole story, across frames.
   or a number and a hanging indent. Quotes are indented and in italic. **Bold** and *italic* carry over. `Code` and
   [links](…) keep their text; pictures are left out.
 
-### Milestone 2 and later
+### Type (milestone 2)
 
-Text wrap by shape, tabs and tab leaders, drop caps, hyphenation, kerning, small caps,
-super- and subscript, a *story editor* window showing a story as plain text with its styles, and spelling.
+- **Tabs**: each paragraph has tab stops (Text tab › Tabs, typed as "1in, 4in right ., 2.5in decimal"): left,
+  right, centre and decimal, each with an optional leader character drawn across the gap. Past the last stop, tabs
+  fall every half inch; a hanging indent's left indent is a stop too, so a bullet and a tab line list text up.
+  Lines with tabs aren't justified.
+- **Drop caps**: Text tab › Drop cap, so many lines deep and so many letters wide. The capital stands from the last
+  line's baseline up to the top of the first line's capitals; the lines beside it are indented by its width.
+- **Hyphenation**: per paragraph (Text tab › Hyphenate), by Liang's algorithm with the American English patterns
+  and exceptions of the hyph-utf8 package (bundled in Core/Hyphenation with their copyright notice). At least two
+  letters stay before a break and three after it. A hyphen is shown, not put in the text.
+- **Kerning**: a pair split only by colour or underline keeps the font's kerning; Alt+Left and Alt+Right in the text
+  tighten and loosen the space after the character before the caret (or after each selected character) by 10
+  thousandths of an em, 50 with Shift. It is tracking on those characters.
+- **Wrap by shape**: an ellipse or a closed path set to follow its shape keeps text out of its outline (pushed out by
+  the standoff) rather than its frame; a turned object wraps by its turned frame.
+
+### The story editor (milestone 2)
+
+Text › Story editor (Ctrl+Shift+E) shows the story of the frame selected (or being typed in) as plain text in a
+window of its own, with its word, paragraph and frame counts and how much is overset. Typing there replaces only the
+stretch that changed, so the formats round it stay; changes on the page show there at once; the paragraph style of
+the caret's paragraph is shown and can be set. Deleting the story's last frame closes it.
+
+### Styled copy and paste (milestone 2)
+
+Text copied while typing is kept with its formats as well as put on the clipboard as plain text. Pasted back here
+(while the clipboard still holds that text), it keeps its formats; the paragraph it lands in keeps its own format,
+and each new paragraph it makes takes the one it had. Text from other programs is pasted plain.
+
+### Later
+
+Small caps, super- and subscript, and spelling (milestone 3).
 
 ---
 
@@ -283,10 +314,15 @@ super- and subscript, a *story editor* window showing a story as plain text with
 | Picture | P | Drag a frame, then pick an image file for it; clicking an existing picture replaces its image. |
 | Link | K | Click a text frame, then another: the second joins the first's chain just after it. Clicking an empty frame with the story's last frame picked adds it to the end. Alt+click a frame takes it out of its chain. |
 | Hand | H (or hold Space) | Drag to scroll. |
+| Pen | B | Click for corner points, drag for smooth Bézier points (the handle where the mouse lets go), Shift for 45° steps. Click the first point again to close the shape; double-click or Enter ends it open; Escape gives it up. Double-click a path with Select to drag its points and handles; Delete takes out the last point dragged. |
 
 - A new object is drawn with the last fill and stroke used for its kind.
-- **Object menu**: bring to front, bring forward, send backward, send to back; lock and unlock; delete; duplicate
-  (Ctrl+D, offset 12 pt); align left, centre, right, top, middle, bottom (milestone 2: distribute; group, ungroup).
+- **Object menu**: bring to front, bring forward, send backward, send to back; group (Ctrl+G) and ungroup
+  (Ctrl+Shift+G); lock and unlock; delete; duplicate (Ctrl+D, offset 12 pt); align left, centre, right, top, middle,
+  bottom, and space across or down (Object tab), by the box each object covers once turned.
+- **Rotation**: a round handle above a selected object's top turns it about its centre (Shift: 15° steps), or type
+  the angle in the Object tab. Turned objects are hit, resized (in their own frame, the opposite edge staying put),
+  outlined and wrapped where they really are; a turned text frame is typed into and clicked in its own frame.
 - Text frames show their chain: with a linked frame selected, arrows from the bottom-right of each frame to the
   top-left of the next show the flow.
 - Clicking a text frame's overset mark with Select starts the Link tool from that frame.
@@ -299,9 +335,13 @@ super- and subscript, a *story editor* window showing a story as plain text with
 - Pages can be added before or after the current one, deleted (never the last), and moved.
 - Each page uses one master, or none. A master's objects are drawn under the page's objects and cannot be selected on
   the page; edit them by opening the master in the Pages tab, where the page view shows the master itself.
-- Margins and columns are shown as guides (magenta and violet); they are the document's for every page in milestone 1,
-  per master in milestone 2.
-- Text frames on a master that hold a page-number field show each page's own number (milestone 2).
+- Margins and columns are shown as guides (magenta and violet): the document's, or a master's own (Pages tab ›
+  This master's guides), for every page that uses it.
+- Text frames on a master that hold a page-number field show each page's own number.
+- **Facing pages** (Document tab): odd pages are right-hand pages and even pages left-hand, page 1 alone on the
+  right. The left and right margins become inside and outside, mirrored on left pages. The view shows a spread, both
+  pages side by side with the spine between, and clicking the other page works on it. Each master has a left side,
+  drawn under left pages, shown beside its right side when the master is edited.
 
 ---
 
@@ -320,10 +360,11 @@ super- and subscript, a *story editor* window showing a story as plain text with
 
 ## 10. Colour
 
-- Colours are sRGB with alpha, stored as `#RRGGBB` or `#AARRGGBB`.
-- The document keeps named swatches: None, Black, White, Paper, Registration-free basics (Red, Green, Blue, Cyan,
-  Magenta, Yellow) and any you add. Objects and text refer to a colour by value in milestone 1, by swatch name
-  (so changing the swatch changes them all) in milestone 2.
+- Colours are sRGB with alpha, stored as `#RRGGBB` or `#AARRGGBB`, or as `@Name` for a swatch.
+- The document keeps named swatches: Black, White, Grey, Light grey, Red, Green, Blue, Cyan, Magenta, Yellow and any
+  you add (Document tab › Swatches). A colour picked by a swatch's name (typed, or with a swatch button) refers to
+  the swatch, so changing the swatch's colour changes every fill, stroke, piece of text and style using it. Renaming
+  a swatch renames its references; deleting one leaves what used it with its colour as a plain value.
 - CMYK swatches for print and spot colours: milestone 3.
 
 ---
@@ -371,7 +412,12 @@ change partly wrong. The title shows `•` while there are changes not saved.
 | Ctrl+0, Ctrl+1, Ctrl+=, Ctrl+- | Fit page, actual size, zoom in, zoom out |
 | Page Up / Page Down | Previous, next page (when not editing text) |
 | Ctrl+] / Ctrl+[ , Ctrl+Shift+] / Ctrl+Shift+[ | Bring forward, send backward; to front, to back |
-| V T R E L P K H | Tools (when not editing text) |
+| V T R E L P K H B | Tools (when not editing text) |
+| Ctrl+G, Ctrl+Shift+G | Group, ungroup |
+| Ctrl+F, F3, Shift+F3 | Find and replace; find the next, the one before |
+| Ctrl+Shift+3 | Insert a page number (when editing text) |
+| Ctrl+Shift+E | Story editor |
+| Alt+Left, Alt+Right | Kern tighter, looser (Shift: more) |
 | Escape | Stop editing text; then clear the selection; cancels a drag |
 
 ---
@@ -448,13 +494,9 @@ Facing pages and spreads; per-master margins and columns; page number fields; gr
 and Bézier paths; rotation; text wrap; tabs; drop caps; hyphenation; kerning; named swatches that update their users;
 the story editor; find and replace; importing text and Markdown; styled copy and paste; a document grid.
 
-**Status (11 November 2026):** started. Done and tested: text wrap round frames, page number and page count fields,
-find and replace, placing plain text and Markdown, spacing objects evenly across or down (Object tab › Space
-across, Space down), and the document grid. Still to do: facing pages and spreads; per-master margins and columns;
-groups; polygons and Bézier paths; rotation; wrap by shape; tabs; drop caps; hyphenation; kerning between formats;
-named swatches; the story editor; styled copy and paste.
+**Status (11 November 2026):** done. Everything above is built and tested, with line arrowheads.
 
 ### Milestone 3: print
 
-Printing; CMYK and spot colours; SVG and EPS pictures; spelling; tables; a table of contents from paragraph styles;
-templates; booklet printing.
+Printing; CMYK and spot colours; SVG and EPS pictures; spelling; small caps, super- and subscript; tables; a table of
+contents from paragraph styles; templates; booklet printing.

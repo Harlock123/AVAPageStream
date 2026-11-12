@@ -25,8 +25,11 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 
 - `src/AVAPageStream.Core/`: everything but the window, with no Avalonia in it.
   - `Units.cs` (points, picas, inches, mm, cm; reading typed measures), `Colours.cs`, `Box.cs` (`Pt`, `Box`).
-  - `Model.cs`: `Setup`, `Sheet` (a `Page` or `MasterPage`), `SheetRef`, `Guide`, and the objects: `PageObject` and
-    `RectangleObject`, `EllipseObject`, `LineObject`, `TextFrame`, `PictureObject` (JSON-polymorphic by `kind`).
+  - `Model.cs`: `Setup`, `Sheet` (a `Page`, a `MasterPage`, or a master's left `MasterSide`), `SheetRef`, `Guide`,
+    and the objects: `PageObject` and `RectangleObject`, `EllipseObject`, `LineObject`, `TextFrame`, `PictureObject`,
+    `PathObject` (with `PathNode`s) and `GroupObject` (JSON-polymorphic by `kind`).
+  - `Shapes.cs`: rotation (`ToLocal`, `ToPage`, `Corners`, `Extent`), walking groups (`Flatten`, `ContainerOf`,
+    `GroupsAround`), a path flattened to points, and the `Keep` (box or outline) a wrapping object makes.
   - `Document.cs`: `Document` (setup, styles, swatches, stories, masters, pages) and `ImageStore` (pictures by SHA-256,
     shared by every undo state).
   - `Story.cs`: `Story` with its `CharFormat` runs and `ParaFormat` per paragraph, and `ParagraphStyle`.
@@ -36,12 +39,14 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
     `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
-    (plain text and Markdown to placed paragraphs), `AppSettings.cs`.
+    (plain text and Markdown to placed paragraphs), `Tabs.cs` (tab stops), `Hyphenator.cs` (Liang's algorithm over
+    the patterns embedded from `Hyphenation/`), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
   - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),
     `PageRenderer` (draws a page and its master in points) and `PageVisual` (one page as a control, for export).
   - `PageView.cs`: the pasteboard, rulers, tools, selection, handles, guides, snapping, cropping and in-place text
     editing; `PageScroller.cs` puts scroll bars round it.
+  - `StoryEditor.cs`: a story as plain text in a window of its own, kept in step with the page both ways.
   - `Panels.cs` (`SidePanel`: the Object, Text, Pages and Document tabs), `MainWindow.cs` (menus, tool bar, toolbox,
     status bar, files, clipboard, keys), `Export.cs` (PDF through SkiaSharp, PNG), `FontSupport.cs` (the bundled
     fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs` (`AskDialog`, `ExportDialog`).
@@ -56,6 +61,19 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **Every change goes through `Editor`.** `Change` makes one undo step (consecutive changes with the same `merge` key,
   such as typing in one story, make one between them); `TryChange` for changes that may refuse; `Begin`, `Preview`
   and `Commit` (or `Cancel`) for drags. Never change `Editor.Doc` outside those, or undo will miss it.
+- **Move and resize through `Bounds`.** Setting it calls the virtual `SetBounds`, which a group overrides to carry
+  its children and a path its points; setting `X`, `Y`, `W` or `H` directly leaves them behind. After changing
+  something inside a group, `Document.Refit(id)` brings the groups round it back to size.
+- **Walk objects with `Sheet.All` (or `Shapes.Flatten`)**, never `Sheet.Objects` alone, unless you mean only the top
+  level (the selection and hit tests do): frames inside groups are frames too.
+- **Turned objects work in their own frame.** Hit tests, resizing, text clicks and text overlays turn page points
+  with `Shapes.ToLocal`/`ToPage`; anything that needs where an object really is uses `Shapes.Extent`.
+- **In a facing document, a sheet's guides come from `Document.GuidesFor(sheet)`** (its master's own margins and
+  columns, mirrored on left-hand sheets), and a page's master from `Document.MasterFor(page)` (a left page gets the
+  master's left side). `PageView` draws a spread through `_drawOffset`; `ToView`/`ToPage` are relative to the page
+  being worked on.
+- **Colours may be swatch references (`@Name`).** Draw and show them through `Colours.Resolve`; never compare a
+  stored colour with a value.
 - **Hold ids and `SheetRef`s, not objects.** Undo swaps in another copy of the document, so a `PageObject` or `Sheet`
   held across a change may be stale. Look them up again with `Doc.Find(id)` or `SheetRef.Resolve`.
 - **Stories stay well formed.** Runs cover every character plus one for the story's end, never empty, never two equal

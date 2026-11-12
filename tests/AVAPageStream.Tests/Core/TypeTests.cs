@@ -173,3 +173,34 @@ public class TypeTests
         Assert.True(tip.Right - tip.Left < 10, $"{tip}");
     }
 }
+
+public class FragmentTests
+{
+    private static Story Make(string text)
+    {
+        var s = Story.Create("s", Document.DefaultStyles()[0]);
+        s.Insert(0, text);
+        return s;
+    }
+
+    [Fact]
+    public void A_copied_stretch_keeps_its_formats_and_paragraphs()
+    {
+        var s = Make("Title\nSome bold words");
+        s.ApplyStyle(0, 0, Document.DefaultStyles()[1]);
+        s.FormatChars(11, 4, f => f with { Bold = true });
+        var copy = s.Extract(3, 13); // "le\nSome bold "
+        Assert.Equal("le\nSome bold ", copy.Text);
+        Assert.Equal(13, copy.Runs.Sum(r => r.Length));
+        Assert.Equal(["Heading", "Body"], copy.Paras.Select(p => p.Style));
+
+        var into = Make("start end");
+        into.InsertFragment(6, copy);
+        Assert.Equal("start le\nSome bold end", into.Text);
+        Assert.Equal(24, into.FormatAt(6).Size);     // "le" as it was, a heading's size
+        Assert.True(into.FormatAt(14).Bold);         // "bold"
+        Assert.Equal("Body", into.Paras[0].Style);   // the paragraph pasted into keeps its own
+        Assert.Equal("Body", into.Paras[1].Style);   // the new one takes the copied paragraph's
+        Assert.True(into.IsWellFormed());
+    }
+}

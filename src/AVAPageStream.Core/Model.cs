@@ -201,6 +201,10 @@ public sealed class EllipseObject : PageObject
 public sealed class LineObject : PageObject
 {
     public bool Rising { get; set; }
+
+    /// <summary>Arrowheads at the line's start and end.</summary>
+    public bool ArrowStart { get; set; }
+    public bool ArrowEnd { get; set; }
     public override string Kind => "Line";
 
     public (Pt From, Pt To) Ends => Rising ? (new Pt(X, Y + H), new Pt(X + W, Y)) : (new Pt(X, Y), new Pt(X + W, Y + H));
