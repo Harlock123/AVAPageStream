@@ -625,7 +625,15 @@ public sealed class PdfReader
                 case "ASCII85Decode" or "A85": data = Filters.Ascii85(data); break;
                 case "RunLengthDecode" or "RL": data = Filters.RunLength(data); break;
                 case "Crypt": break;
-                case "DCTDecode" or "DCT" or "JPXDecode" or "JBIG2Decode" or "CCITTFaxDecode" or "CCF":
+                case "CCITTFaxDecode" or "CCF":
+                {
+                    int I(string key, int otherwise) => p?.Get(key) is int v ? v : otherwise;
+                    bool B(string key, bool otherwise) => p?.Get(key) is bool v ? v : otherwise;
+                    var rows = I("Rows", d.Get("Height") is int h ? h : 0);
+                    data = Ccitt.Decode(data, I("K", 0), I("Columns", 1728), rows, B("EncodedByteAlign", false), B("BlackIs1", false), B("EndOfBlock", true));
+                    break;
+                }
+                case "DCTDecode" or "DCT" or "JPXDecode" or "JBIG2Decode":
                     left = (filters[k], p);
                     return data;
                 default:

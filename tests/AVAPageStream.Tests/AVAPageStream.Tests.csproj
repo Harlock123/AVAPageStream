@@ -23,5 +23,7 @@
     <!-- EPS files from real producers, each with the PNG its producer draws of the same picture to compare with. -->
     <None Include="Core\Samples\eps\*.eps;Core\Samples\eps\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Include="Core\Samples\pdf\*.pdf" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Scanned pictures made by ImageMagick from fax.png: CCITT Group 4 in a PDF, Group 3 in a TIFF. -->
+    <None Include="Core\Samples\scans\*.*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
