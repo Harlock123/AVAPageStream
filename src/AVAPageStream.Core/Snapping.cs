@@ -12,16 +12,25 @@ public sealed class SnapTargets
     /// <summary>The grid's spacing to snap to as well, or 0 for none.</summary>
     public double Grid { get; init; }
 
-    public static SnapTargets For(Setup setup, Sheet? sheet, Sheet? master = null, bool guides = true, bool grid = false)
+    public static SnapTargets For(Setup setup, Sheet? sheet, Sheet? master = null, bool guides = true, bool grid = false) =>
+        Make(setup, setup.Live, setup.ColumnBoxes(), sheet, master, guides, grid);
+
+    /// <summary>The targets on a sheet of a document: its own margins and columns (its master's, or mirrored on a left page).</summary>
+    public static SnapTargets For(Document doc, Sheet sheet, bool guides = true, bool grid = false)
+    {
+        var (live, columns) = doc.GuidesFor(sheet);
+        return Make(doc.Setup, live, columns, sheet, sheet is Page p ? doc.MasterFor(p) : null, guides, grid);
+    }
+
+    private static SnapTargets Make(Setup setup, Box live, IReadOnlyList<Box> columns, Sheet? sheet, Sheet? master, bool guides, bool grid)
     {
         var t = new SnapTargets { Grid = grid ? setup.Grid : 0 };
         if (!guides) return t;
         t.Xs.AddRange([0, setup.PageWidth, setup.PageWidth / 2]);
         t.Ys.AddRange([0, setup.PageHeight, setup.PageHeight / 2]);
-        var live = setup.Live;
         t.Xs.AddRange([live.X, live.Right]);
         t.Ys.AddRange([live.Y, live.Bottom]);
-        foreach (var c in setup.ColumnBoxes()) t.Xs.AddRange([c.X, c.Right]);
+        foreach (var c in columns) t.Xs.AddRange([c.X, c.Right]);
         foreach (var g in (sheet?.Guides ?? []).Concat(master?.Guides ?? []))
             (g.Vertical ? t.Xs : t.Ys).Add(g.Position);
         return t;

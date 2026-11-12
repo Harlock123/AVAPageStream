@@ -402,7 +402,7 @@ public sealed class Editor
         string name;
         do name = $"{(char)('A' + n++ % 26)}{(n > 26 ? (n / 26).ToString() : "")}-Master";
         while (Doc.Masters.Any(m => m.Name == name));
-        Change("Add master page", d => d.Masters.Add(new MasterPage { Name = name }));
+        Change("Add master page", d => d.Masters.Add(new MasterPage { Name = name, Left = d.Setup.Facing ? new MasterSide() : null }));
         return name;
     }
 
@@ -512,6 +512,20 @@ public sealed class Editor
         if (i >= 0) d.Styles[i] = style;
         else d.Styles.Add(style);
         foreach (var story in d.Stories.Values) story.Restyle(style);
+    });
+
+    /// <summary>Makes the document facing or single-sided; a facing document's masters each get a left side.</summary>
+    public void SetFacing(bool facing) => Change(facing ? "Facing pages" : "Single pages", d =>
+    {
+        d.Setup = d.Setup with { Facing = facing };
+        if (facing) d.EnsureSides();
+    });
+
+    /// <summary>Gives a master margins and columns of its own (or, with null, back to the document's).</summary>
+    public void SetMasterGuides(int master, Margins? margins, int? columns, double? gutter) => Change("Master margins", d =>
+    {
+        var m = d.Masters[master];
+        (m.Margins, m.Columns, m.Gutter) = (margins, columns, gutter);
     });
 
     /// <summary>Renames a style, and every paragraph using it follows.</summary>

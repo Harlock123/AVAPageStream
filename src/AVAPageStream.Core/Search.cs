@@ -14,7 +14,7 @@ public static class Search
     {
         var order = new List<string>();
         var seen = new HashSet<string>();
-        foreach (var sheet in doc.Pages.Cast<Sheet>().Concat(doc.Masters))
+        foreach (var sheet in doc.Pages.Cast<Sheet>().Concat(doc.Sheets.Where(s => s is not Page)))
             foreach (var frame in sheet.All.OfType<TextFrame>())
                 if (doc.Stories.ContainsKey(frame.StoryId) && seen.Add(frame.StoryId)) order.Add(frame.StoryId);
         return order;

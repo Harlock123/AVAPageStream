@@ -68,7 +68,7 @@ internal sealed class PageRenderer
         dc.FillRectangle(Look.Paper, new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight));
         using (dc.PushClip(new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight)))
         {
-            if (sheet is Page page && doc.Master(page.Master) is { } master)
+            if (sheet is Page page && doc.MasterFor(page) is { } master)
             {
                 var number = doc.Pages.IndexOf(page) + 1;
                 foreach (var o in master.Objects) DrawObject(dc, doc, o, number);

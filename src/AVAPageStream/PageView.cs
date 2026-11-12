@@ -217,9 +217,45 @@ public sealed class PageView : Control
     // ---- Coordinates and zoom -------------------------------------------------------------------------------
 
     /// <summary>A point in the view on the page, to a hundredth of a point (finer means nothing on paper).</summary>
-    public Pt ToPage(Point p) => new(Math.Round((p.X - Origin.X) / Scale, 2), Math.Round((p.Y - Origin.Y) / Scale, 2));
+    public Pt ToPage(Point p) => new(Math.Round((p.X - Origin.X) / Scale - Offset, 2), Math.Round((p.Y - Origin.Y) / Scale, 2));
 
-    public Point ToView(Pt p) => new(Origin.X + p.X * Scale, Origin.Y + p.Y * Scale);
+    public Point ToView(Pt p) => new(Origin.X + (Offset + p.X) * Scale, Origin.Y + p.Y * Scale);
+
+    // ---- Spreads ----------------------------------------------------------------------------------------------
+
+    /// <summary>
+    /// The pages shown together, each with how far across the spread it starts (in points). A facing document shows a
+    /// left (even) page and a right (odd) page side by side, page 1 alone on the right; a master shows its left and
+    /// right sides. Otherwise it is the one page.
+    /// </summary>
+    public IReadOnlyList<(SheetRef Ref, double X)> Spread()
+    {
+        var w = Doc.Setup.PageWidth;
+        if (!Doc.Setup.Facing) return [(_sheet, 0)];
+        if (_sheet.IsMaster) return [(_sheet with { Left = true }, 0), (_sheet with { Left = false }, w)];
+        var i = _sheet.Index;
+        if ((i + 1) % 2 == 0)
+            return i + 1 < Doc.Pages.Count ? [(SheetRef.PageAt(i), 0), (SheetRef.PageAt(i + 1), w)] : [(SheetRef.PageAt(i), 0)];
+        return i > 0 ? [(SheetRef.PageAt(i - 1), 0), (SheetRef.PageAt(i), w)] : [(SheetRef.PageAt(i), w)];
+    }
+
+    /// <summary>How wide a spread is: two pages in a facing document.</summary>
+    public double SpreadWidth => Doc.Setup.Facing ? 2 * Doc.Setup.PageWidth : Doc.Setup.PageWidth;
+
+    private double? _drawOffset;
+
+    /// <summary>How far across the spread the page being drawn (or worked on) starts, in points.</summary>
+    private double Offset => _drawOffset ?? Spread().FirstOrDefault(s => s.Ref == _sheet).X;
+
+    /// <summary>The page of the spread under a point in the view, if it isn't the one being worked on.</summary>
+    private SheetRef? OtherPageAt(Point screen)
+    {
+        if (!Doc.Setup.Facing) return null;
+        var x = (screen.X - Origin.X) / Scale;
+        foreach (var (r, at) in Spread())
+            if (x >= at && x < at + Doc.Setup.PageWidth && r != _sheet) return r;
+        return null;
+    }
 
     private Rect ToView(Box b) => new(ToView(new Pt(b.X, b.Y)), ToView(new Pt(b.Right, b.Bottom)));
 
@@ -240,7 +276,7 @@ public sealed class PageView : Control
     {
         var w = Math.Max(100, Bounds.Width - RulerSize - 48);
         var h = Math.Max(100, Bounds.Height - RulerSize - 48);
-        Zoom = Math.Clamp(Math.Min(w / Doc.Setup.PageWidth, h / Doc.Setup.PageHeight) * 72 / 96, 0.1, 16);
+        Zoom = Math.Clamp(Math.Min(w / SpreadWidth, h / Doc.Setup.PageHeight) * 72 / 96, 0.1, 16);
         CentrePage();
         _fitted = true;
     }
@@ -253,7 +289,7 @@ public sealed class PageView : Control
 
     private void CentrePage()
     {
-        var pw = Doc.Setup.PageWidth * Scale;
+        var pw = SpreadWidth * Scale;
         var ph = Doc.Setup.PageHeight * Scale;
         Origin = new Point(RulerSize + Math.Max(24, (Bounds.Width - RulerSize - pw) / 2), RulerSize + Math.Max(24, (Bounds.Height - RulerSize - ph) / 2));
         ViewChanged?.Invoke();
@@ -396,7 +432,10 @@ public sealed class PageView : Control
         for (var i = 0; i < Doc.Pages.Count; i++)
             if (Doc.Pages[i].All.Any(o => o.Id == objectId)) return SheetRef.PageAt(i);
         for (var i = 0; i < Doc.Masters.Count; i++)
+        {
             if (Doc.Masters[i].All.Any(o => o.Id == objectId)) return SheetRef.MasterAt(i);
+            if (Doc.Masters[i].Left?.All.Any(o => o.Id == objectId) == true) return SheetRef.MasterAt(i, left: true);
+        }
         return null;
     }
 
@@ -731,7 +770,7 @@ public sealed class PageView : Control
     private Pt Snapped(Pt p) => Snapping ? Targets().Snap(p, Tolerance) : p;
 
     private SnapTargets Targets() =>
-        SnapTargets.For(Doc.Setup, CurrentSheet, CurrentSheet is Page pg ? Doc.Master(pg.Master) : null, guides: Snap, grid: SnapGrid);
+        SnapTargets.For(Doc, CurrentSheet, guides: Snap, grid: SnapGrid);
 
     /// <summary>
     /// The top-most object of the sheet under a point. A group is hit where anything in it is; looking for a kind
@@ -897,6 +936,13 @@ public sealed class PageView : Control
             }
             EditingPoints = null; // a click anywhere else leaves the points
             InvalidateVisual();
+        }
+
+        if (OtherPageAt(screen) is { } other && _pen is null)
+        {
+            ShowSheet?.Invoke(other);
+            p = ToPage(screen);
+            _dragStart = _dragNow = p;
         }
 
         switch (_tool)
@@ -1502,16 +1548,29 @@ public sealed class PageView : Control
         var bounds = new Rect(Bounds.Size);
         dc.FillRectangle(Look.Pasteboard, bounds);
         var doc = Doc;
-        var sheet = CurrentSheet;
-        var page = ToView(doc.Setup.Page);
 
-        dc.FillRectangle(Look.PageShadow, page.Translate(new Vector(4, 4)));
-        using (dc.PushTransform(Matrix.CreateScale(Scale, Scale) * Matrix.CreateTranslation(Origin.X, Origin.Y)))
-            _renderer.Draw(dc, doc, sheet);
-
-        if (ShowGrid) DrawGrid(dc, doc);
-        if (ShowGuides) DrawGuides(dc, doc, sheet);
-        DrawFrames(dc, sheet);
+        // Every page of the spread, with its guides and frame edges; the one worked on last, so its guides run on top.
+        var spread = Spread().OrderBy(s => s.Ref == _sheet).ToList();
+        foreach (var (r, x) in spread)
+        {
+            _drawOffset = x;
+            var sheet = r.Resolve(doc);
+            var page = ToView(doc.Setup.Page);
+            dc.FillRectangle(Look.PageShadow, page.Translate(new Vector(4, 4)));
+            var corner = ToView(new Pt(0, 0));
+            using (dc.PushTransform(Matrix.CreateScale(Scale, Scale) * Matrix.CreateTranslation(corner.X, corner.Y)))
+                _renderer.Draw(dc, doc, sheet);
+            if (ShowGrid) DrawGrid(dc, doc);
+            if (ShowGuides) DrawGuides(dc, doc, sheet, r == _sheet ? null : page);
+            DrawFrames(dc, sheet);
+        }
+        _drawOffset = null;
+        if (spread.Count > 1)
+        {
+            // The spine between the two pages.
+            var spine = Math.Round(Origin.X + doc.Setup.PageWidth * Scale) + 0.5;
+            dc.DrawLine(new Pen(Look.Faint, 1), new Point(spine, ToView(new Pt(0, 0)).Y), new Point(spine, ToView(new Pt(0, doc.Setup.PageHeight)).Y));
+        }
         DrawSelection(dc);
         DrawText(dc);
         DrawPen(dc);
@@ -1538,36 +1597,39 @@ public sealed class PageView : Control
         }
     }
 
-    private void DrawGuides(DrawingContext dc, Document doc, Sheet sheet)
+    /// <summary>A sheet's margins, columns and ruler guides (kept to <paramref name="within"/> for a page not being worked on).</summary>
+    private void DrawGuides(DrawingContext dc, Document doc, Sheet sheet, Rect? within = null)
     {
-        var live = ToView(doc.Setup.Live);
+        var (liveBox, columns) = doc.GuidesFor(sheet);
+        var live = ToView(liveBox);
         dc.DrawRectangle(null, Look.MarginGuide, Crisp(live));
-        foreach (var c in doc.Setup.ColumnBoxes().Skip(1))
+        foreach (var c in columns.Skip(1))
         {
             var x = Math.Round(ToView(new Pt(c.X, 0)).X) + 0.5;
             dc.DrawLine(Look.ColumnGuide, new Point(x, live.Top), new Point(x, live.Bottom));
         }
-        foreach (var c in doc.Setup.ColumnBoxes().SkipLast(1))
+        foreach (var c in columns.SkipLast(1))
         {
             var x = Math.Round(ToView(new Pt(c.Right, 0)).X) + 0.5;
             dc.DrawLine(Look.ColumnGuide, new Point(x, live.Top), new Point(x, live.Bottom));
         }
         var guides = sheet.Guides.AsEnumerable();
-        if (sheet is Page p && doc.Master(p.Master) is { } m) guides = guides.Concat(m.Guides);
-        foreach (var g in guides) DrawGuide(dc, g.Vertical, g.Position, Look.RulerGuide);
+        if (sheet is Page p && doc.MasterFor(p) is { } m) guides = guides.Concat(m.Guides);
+        foreach (var g in guides) DrawGuide(dc, g.Vertical, g.Position, Look.RulerGuide, within);
     }
 
-    private void DrawGuide(DrawingContext dc, bool vertical, double position, IPen pen)
+    private void DrawGuide(DrawingContext dc, bool vertical, double position, IPen pen, Rect? within = null)
     {
+        var area = within ?? new Rect(RulerSize, RulerSize, Bounds.Width, Bounds.Height);
         if (vertical)
         {
             var x = Math.Round(ToView(new Pt(position, 0)).X) + 0.5;
-            dc.DrawLine(pen, new Point(x, RulerSize), new Point(x, Bounds.Height));
+            dc.DrawLine(pen, new Point(x, area.Top), new Point(x, area.Bottom));
         }
         else
         {
             var y = Math.Round(ToView(new Pt(0, position)).Y) + 0.5;
-            dc.DrawLine(pen, new Point(RulerSize, y), new Point(Bounds.Width, y));
+            dc.DrawLine(pen, new Point(area.Left, y), new Point(area.Right, y));
         }
     }
 

@@ -176,6 +176,21 @@ public sealed class SidePanel : TabControl
     public NumericUpDown PageColumnsBox { get; } = new() { Minimum = 1, Maximum = 12, Increment = 1, FormatString = "0", FontSize = 12 };
     public TextBox PageGutterBox { get; } = Ui.Box();
     public TextBox GridBox { get; } = Ui.Box();
+    public CheckBox FacingBox { get; } = new() { Content = "Facing pages: left and right, in spreads", FontSize = 12 };
+    public TextBlock MarginLeftLabel { get; } = Ui.Label("Left", 52);
+    private readonly TextBlock _marginRightLabel = Ui.Label("Right", 52);
+
+    // A master's own margins and columns
+    public CheckBox OwnGuidesBox { get; } = new() { Content = "Its own margins and columns", FontSize = 12 };
+    public TextBox MasterTopBox { get; } = Ui.Box();
+    public TextBox MasterBottomBox { get; } = Ui.Box();
+    public TextBox MasterInsideBox { get; } = Ui.Box();
+    public TextBox MasterOutsideBox { get; } = Ui.Box();
+    public NumericUpDown MasterColumnsBox { get; } = new() { Minimum = 1, Maximum = 12, Increment = 1, FormatString = "0", FontSize = 12 };
+    public TextBox MasterGutterBox { get; } = Ui.Box();
+    private readonly StackPanel _masterGuides = new();
+    private readonly StackPanel _masterGuideBoxes = new();
+
     public ComboBox UnitChoice { get; } = new() { ItemsSource = Units.All.Select(Units.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
 
     // Drawn with the tab control's own template: themes look a control's template up by its exact type.
@@ -617,6 +632,7 @@ public sealed class SidePanel : TabControl
             if (_refreshing || MasterList.SelectedIndex < 0) return;
             _window.ShowSheet(SheetRef.MasterAt(MasterList.SelectedIndex));
         };
+        BuildMasterGuides();
         MasterChoice.SelectionChanged += (_, _) =>
         {
             if (_refreshing || MasterChoice.SelectedIndex < 0 || View.Sheet.IsMaster) return;
@@ -640,6 +656,7 @@ public sealed class SidePanel : TabControl
                 Ui.Heading("Master pages"),
                 MasterList,
                 Ui.Row(("Name", MasterNameBox)),
+                _masterGuides,
                 Ui.Buttons(
                     Ui.Button("Rename", RenameMaster),
                     Ui.Button("Add master", () => { var name = Editor.AddMaster(); _window.ShowSheet(SheetRef.MasterAt(Doc.Masters.FindIndex(m => m.Name == name))); }),
@@ -669,6 +686,39 @@ public sealed class SidePanel : TabControl
         Editor.MovePage(from, to);
         _window.ShowSheet(SheetRef.PageAt(to));
         _window.Say($"Moved page {from + 1} to page {to + 1}.");
+    }
+
+    private void BuildMasterGuides()
+    {
+        _masterGuideBoxes.Children.AddRange([
+            Ui.Row(("Top", MasterTopBox), ("Bot", MasterBottomBox)),
+            Ui.Row(("In", MasterInsideBox), ("Out", MasterOutsideBox)),
+            Ui.Row(("Columns", MasterColumnsBox)),
+            Ui.Row(("Gutter", MasterGutterBox)),
+            Ui.Buttons(Ui.Button("Apply", ApplyMasterGuides, "Use these margins and columns on every page with this master")),
+        ]);
+        OwnGuidesBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing || !View.Sheet.IsMaster) return;
+            if (OwnGuidesBox.IsChecked == true) ApplyMasterGuides();
+            else Editor.SetMasterGuides(View.Sheet.Index, null, null, null);
+        };
+        _masterGuides.Children.AddRange([Ui.Heading("This master's guides"), OwnGuidesBox, _masterGuideBoxes]);
+    }
+
+    public void ApplyMasterGuides()
+    {
+        if (!View.Sheet.IsMaster) return;
+        bool Read(TextBox b, out double v) => Units.TryParse(b.Text, Unit, out v) && v >= 0;
+        if (!Read(MasterTopBox, out var top) || !Read(MasterBottomBox, out var bottom) || !Read(MasterInsideBox, out var inside) ||
+            !Read(MasterOutsideBox, out var outside) || !Read(MasterGutterBox, out var gutter))
+        {
+            _window.Say("Each margin and the gutter is a measure, such as 36, 0.5in or 12mm.");
+            return;
+        }
+        if (inside + outside >= Doc.Setup.PageWidth || top + bottom >= Doc.Setup.PageHeight) { _window.Say("Those margins leave no room on the page."); return; }
+        Editor.SetMasterGuides(View.Sheet.Index, new Margins(top, bottom, inside, outside), (int)(MasterColumnsBox.Value ?? 1), gutter);
+        _window.Say("The pages using this master have its margins and columns now.");
     }
 
     private void MovePage(int delta)
@@ -716,6 +766,15 @@ public sealed class SidePanel : TabControl
             if (Math.Abs(v - Doc.Setup.Grid) > 0.001) Editor.Change("Grid spacing", d => d.Setup = d.Setup with { Grid = v });
             View.InvalidateVisual();
         });
+        FacingBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing) return;
+            Editor.SetFacing(FacingBox.IsChecked == true);
+            View.FitPage();
+            _window.Say(FacingBox.IsChecked == true
+                ? "Facing pages: even pages on the left, odd on the right. Left and right margins are inside and outside now."
+                : "Single pages.");
+        };
         UnitChoice.SelectionChanged += (_, _) =>
         {
             if (_refreshing || UnitChoice.SelectedIndex < 0) return;
@@ -732,9 +791,10 @@ public sealed class SidePanel : TabControl
                 Ui.Row(("Size", PaperChoice)),
                 Ui.Row(("Orientation", OrientationChoice)),
                 Ui.Row(("W", PageWidthBox), ("H", PageHeightBox)),
+                FacingBox,
                 Ui.Heading("Margins"),
                 Ui.Row(("Top", MarginTopBox), ("Bot", MarginBottomBox)),
-                Ui.Row(("Left", MarginLeftBox), ("Right", MarginRightBox)),
+                SideRow(MarginLeftLabel, MarginLeftBox, _marginRightLabel, MarginRightBox),
                 Ui.Heading("Columns"),
                 Ui.Row(("Columns", PageColumnsBox)),
                 Ui.Row(("Gutter", PageGutterBox)),
@@ -753,6 +813,18 @@ public sealed class SidePanel : TabControl
                 },
             },
         };
+    }
+
+    /// <summary>A row of two labelled boxes whose labels change (left/right, or inside/outside).</summary>
+    private static Grid SideRow(TextBlock a, Control boxA, TextBlock b, Control boxB)
+    {
+        var g = new Grid { Margin = new Thickness(0, 2), ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,*") };
+        b.Margin = new Thickness(10, 0, 0, 0);
+        Grid.SetColumn(boxA, 1);
+        Grid.SetColumn(b, 2);
+        Grid.SetColumn(boxB, 3);
+        g.Children.AddRange([a, boxA, b, boxB]);
+        return g;
     }
 
     private void ApplySetup()
@@ -927,6 +999,20 @@ public sealed class SidePanel : TabControl
             MasterChoice.SelectedIndex = master is null ? 0 : Doc.Masters.FindIndex(m => m.Name == master) + 1;
         }
         else Set(MasterNameBox, Doc.Masters[View.Sheet.Index].Name);
+        _masterGuides.IsVisible = View.Sheet.IsMaster;
+        if (View.Sheet.IsMaster)
+        {
+            var m = Doc.Masters[View.Sheet.Index];
+            OwnGuidesBox.IsChecked = m.Margins is not null;
+            _masterGuideBoxes.IsEnabled = m.Margins is not null;
+            var margin = m.Margins ?? Doc.Setup.Margin;
+            Set(MasterTopBox, Units.Format(margin.Top, Unit));
+            Set(MasterBottomBox, Units.Format(margin.Bottom, Unit));
+            Set(MasterInsideBox, Units.Format(margin.Left, Unit));
+            Set(MasterOutsideBox, Units.Format(margin.Right, Unit));
+            MasterColumnsBox.Value = m.Columns ?? Doc.Setup.Columns;
+            Set(MasterGutterBox, Units.Format(m.Gutter ?? Doc.Setup.Gutter, Unit));
+        }
     }
 
     private void RefreshDocument()
@@ -945,5 +1031,8 @@ public sealed class SidePanel : TabControl
         Set(PageGutterBox, Units.Format(s.Gutter, Unit));
         Set(GridBox, Units.Format(s.Grid, Unit));
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
+        FacingBox.IsChecked = s.Facing;
+        MarginLeftLabel.Text = s.Facing ? "Inside" : "Left";
+        _marginRightLabel.Text = s.Facing ? "Outside" : "Right";
     }
 }

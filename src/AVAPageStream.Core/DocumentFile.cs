@@ -107,6 +107,8 @@ public static class DocumentFile
     private static void Repair(Document doc)
     {
         if (doc.Pages.Count == 0) doc.Pages.Add(new Page());
+        if (doc.Masters.Count == 0) doc.Masters.Add(new MasterPage());
+        if (doc.Setup.Facing) doc.EnsureSides();
         if (doc.Styles.Count == 0) doc.Styles = Document.DefaultStyles();
         if (doc.Swatches.Count == 0) doc.Swatches = Colours.DefaultSwatches();
         var highest = 0;

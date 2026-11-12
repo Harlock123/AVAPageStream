@@ -87,9 +87,53 @@ public sealed class Document
     public MasterPage? Master(string? name) => name is null ? null : Masters.FirstOrDefault(m => m.Name == name);
 
     /// <summary>The master sheet drawn under a page (in a facing document, a left page's master's left side).</summary>
-    public Sheet? MasterFor(Page page) => Master(page.Master);
+    public Sheet? MasterFor(Page page) =>
+        Master(page.Master) is { } m ? (IsLeft(page) && m.Left is { } side ? side : m) : null;
 
-    public IEnumerable<Sheet> Sheets => Masters.Cast<Sheet>().Concat(Pages);
+    /// <summary>Whether a page is a left-hand page: in a facing document, every even page (page 1 is on the right).</summary>
+    public bool IsLeft(Page page) => Setup.Facing && (Pages.IndexOf(page) + 1) % 2 == 0;
+
+    /// <summary>Whether a sheet is on the left of its spread: an even page, or a master's left side.</summary>
+    public bool IsLeft(Sheet sheet) => Setup.Facing && sheet switch
+    {
+        Page p => IsLeft(p),
+        MasterSide => true,
+        _ => false,
+    };
+
+    /// <summary>The master a sheet takes its margins and columns from: a page's master, or the master itself (either side).</summary>
+    public MasterPage? MasterOf(Sheet sheet) => sheet switch
+    {
+        Page p => Master(p.Master),
+        MasterPage m => m,
+        MasterSide side => Masters.FirstOrDefault(m => m.Left == side),
+        _ => null,
+    };
+
+    /// <summary>
+    /// A sheet's margins and column guides: its master's own, or the document's. In a facing document the left and
+    /// right margins are the inside and outside ones, so a left-hand page has them the other way round.
+    /// </summary>
+    public (Box Live, IReadOnlyList<Box> Columns) GuidesFor(Sheet sheet)
+    {
+        var master = MasterOf(sheet);
+        var m = master?.Margins ?? Setup.Margin;
+        var columns = Math.Max(1, master?.Columns ?? Setup.Columns);
+        var gutter = master?.Gutter ?? Setup.Gutter;
+        var (left, right) = IsLeft(sheet) ? (m.Right, m.Left) : (m.Left, m.Right);
+        var live = new Box(left, m.Top, Setup.PageWidth - left - right, Setup.PageHeight - m.Top - m.Bottom);
+        var w = (live.W - gutter * (columns - 1)) / columns;
+        return (live, Enumerable.Range(0, columns).Select(i => new Box(live.X + i * (w + gutter), live.Y, w, live.H)).ToList());
+    }
+
+    /// <summary>Gives every master a left side, as a facing document needs.</summary>
+    public void EnsureSides()
+    {
+        foreach (var m in Masters) m.Left ??= new MasterSide();
+    }
+
+    /// <summary>Every sheet: the masters (with their left sides) and the pages.</summary>
+    public IEnumerable<Sheet> Sheets => Masters.SelectMany(m => m.Left is { } side ? new Sheet[] { side, m } : [m]).Concat(Pages);
 
     /// <summary>Every object, those inside groups too.</summary>
     public IEnumerable<PageObject> AllObjects => Sheets.SelectMany(s => s.All);

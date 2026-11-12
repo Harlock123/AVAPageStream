@@ -37,7 +37,8 @@ public sealed record Setup(
     int Columns = 1,
     double Gutter = 18,
     Unit Unit = Unit.Point,
-    double Grid = 18)  // the document grid's spacing, in points
+    double Grid = 18,      // the document grid's spacing, in points
+    bool Facing = false)   // pages in spreads: odd pages on the right, margins inside and outside
 {
     public Margins Margin => Margins ?? Margins.Half;
 
@@ -74,20 +75,40 @@ public abstract class Sheet
 /// Which page or master is meant, by position, so it can be found again in whichever copy of the document undo has
 /// made current.
 /// </summary>
-public readonly record struct SheetRef(bool IsMaster, int Index)
+public readonly record struct SheetRef(bool IsMaster, int Index, bool Left = false)
 {
     public static SheetRef PageAt(int index) => new(false, index);
-    public static SheetRef MasterAt(int index) => new(true, index);
+    public static SheetRef MasterAt(int index, bool left = false) => new(true, index, left);
 
-    public Sheet Resolve(Document d) => IsMaster
-        ? d.Masters[Math.Clamp(Index, 0, d.Masters.Count - 1)]
-        : d.Pages[Math.Clamp(Index, 0, d.Pages.Count - 1)];
+    /// <summary>The page, or the master (its left side, for a left-hand master that has one).</summary>
+    public Sheet Resolve(Document d)
+    {
+        if (!IsMaster) return d.Pages[Math.Clamp(Index, 0, d.Pages.Count - 1)];
+        var m = d.Masters[Math.Clamp(Index, 0, d.Masters.Count - 1)];
+        return Left && m.Left is { } side ? side : m;
+    }
 }
 
-/// <summary>A page of objects drawn under every page that uses it.</summary>
+/// <summary>
+/// A page of objects drawn under every page that uses it. In a facing document it has a left side too, drawn under
+/// the left-hand (even) pages; it may set its own margins and columns in place of the document's.
+/// </summary>
 public sealed class MasterPage : Sheet
 {
     public string Name { get; set; } = "A-Master";
+
+    /// <summary>The master's left-hand side, for facing documents.</summary>
+    public MasterSide? Left { get; set; }
+
+    /// <summary>Margins, columns and gutter of its own for the pages using it, or null for the document's.</summary>
+    public Margins? Margins { get; set; }
+    public int? Columns { get; set; }
+    public double? Gutter { get; set; }
+}
+
+/// <summary>The left-hand side of a master page.</summary>
+public sealed class MasterSide : Sheet
+{
 }
 
 public sealed class Page : Sheet

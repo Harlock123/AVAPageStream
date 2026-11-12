@@ -512,7 +512,7 @@ public sealed class MainWindow : Window
         foreach (var (tool, b) in ToolButtons) b.IsChecked = View.Tool == tool;
         var doc = Editor.Doc;
         PageInfo.Text = View.Sheet.IsMaster
-            ? doc.Masters[View.Sheet.Index].Name
+            ? doc.Masters[View.Sheet.Index].Name + (doc.Setup.Facing ? View.Sheet.Left ? " (left)" : " (right)" : "")
             : $"Page {View.Sheet.Index + 1} of {doc.Pages.Count}";
         ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";
         SelectionInfo.Text = Describe();
@@ -570,13 +570,14 @@ public sealed class MainWindow : Window
         Say($"Deleted page {index + 1}.");
     }
 
-    private void EditMaster()
+    public void EditMaster()
     {
         if (View.Sheet.IsMaster) { ShowSheet(SheetRef.PageAt(0)); return; }
-        var name = Editor.Doc.Pages[View.Sheet.Index].Master;
-        var index = Editor.Doc.Masters.FindIndex(m => m.Name == name);
+        var page = Editor.Doc.Pages[View.Sheet.Index];
+        var index = Editor.Doc.Masters.FindIndex(m => m.Name == page.Master);
         if (index < 0) { Say("This page has no master page."); return; }
-        ShowSheet(SheetRef.MasterAt(index));
+        var name = page.Master;
+        ShowSheet(SheetRef.MasterAt(index, left: Editor.Doc.IsLeft(page)));
         Say($"Editing {name}: what is drawn here appears under every page that uses it.");
     }
 

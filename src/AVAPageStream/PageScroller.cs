@@ -45,7 +45,7 @@ public sealed class PageScroller : Grid
         try
         {
             // In view pixels from the page's top-left corner: the left (top) edge of what is in view.
-            Set(Horizontal, PageView.RulerSize - _view.Origin.X, doc.PageWidth * _view.Scale, w);
+            Set(Horizontal, PageView.RulerSize - _view.Origin.X, _view.SpreadWidth * _view.Scale, w);
             Set(Vertical, PageView.RulerSize - _view.Origin.Y, doc.PageHeight * _view.Scale, h);
         }
         finally
