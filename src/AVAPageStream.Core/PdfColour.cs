@@ -30,9 +30,7 @@ public static class PdfColour
     public static Dictionary<(int R, int G, int B), Ink> InksOf(Document doc)
     {
         var inks = new Dictionary<(int, int, int), Ink>();
-        var used = new List<string?>();
-        foreach (var o in doc.AllObjects) used.AddRange([o.Fill, o.Stroke, (o as TableObject)?.HeaderFill]);
-        foreach (var s in doc.Stories.Values) used.AddRange(s.Runs.Select(r => r.Format.Colour));
+        var used = Colours.Used(doc);
         foreach (var c in used.Where(Colours.IsRef).Distinct())
         {
             var (name, tint) = Colours.Parse(c!);

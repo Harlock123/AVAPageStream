@@ -108,9 +108,7 @@ public static class Colours
     /// </summary>
     public static (bool Process, List<string> Spots) Inks(Document doc)
     {
-        var used = new List<string?>();
-        foreach (var o in doc.AllObjects) used.AddRange([o.Fill, o.Stroke]);
-        foreach (var story in doc.Stories.Values) used.AddRange(story.Runs.Select(r => r.Format.Colour));
+        var used = Used(doc);
         var spots = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
         var process = false;
         foreach (var c in used.Where(c => c is not null).Distinct())
@@ -119,6 +117,26 @@ public static class Colours
             else if (Resolve(c, doc.Swatches) is { } v && TryParse(v, out var rgba) && rgba.A > 0) process = true;
         }
         return (process, [.. spots]);
+    }
+
+    /// <summary>
+    /// Every colour a document uses: objects' fills, strokes, gradients and shadows, tables' headers, text, and
+    /// paragraphs' rules (in the text and in its styles).
+    /// </summary>
+    public static List<string?> Used(Document doc)
+    {
+        var used = new List<string?>();
+        foreach (var o in doc.AllObjects)
+        {
+            used.AddRange([o.Fill, o.Stroke, (o as TableObject)?.HeaderFill, o.Shadow?.Colour]);
+            if (o.Gradient is { } g) used.AddRange(g.Stops.Select(s => s.Colour));
+        }
+        foreach (var story in doc.Stories.Values)
+        {
+            used.AddRange(story.Runs.Select(r => r.Format.Colour));
+            used.AddRange(story.Paras.SelectMany(p => new[] { p.RuleAbove?.Colour, p.RuleBelow?.Colour }));
+        }
+        return used;
     }
 
     public static bool TryParse(string? text, out Rgba colour)

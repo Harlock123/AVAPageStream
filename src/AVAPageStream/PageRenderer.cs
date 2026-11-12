@@ -219,6 +219,31 @@ internal sealed class PageRenderer
         foreach (var (_, y, _) in rows.Skip(1)) dc.DrawLine(pen, new Point(frame.X, frame.Y + y), new Point(frame.X + frame.W, frame.Y + y));
     }
 
+    /// <summary>A paragraph's rules: above its first line and below its last, in the area the line is in.</summary>
+    private void DrawRules(DrawingContext dc, Document doc, TextLayout layout, Line line)
+    {
+        var story = layout.Story;
+        var para = story.Paras[line.Paragraph];
+        if (para.RuleAbove is null && para.RuleBelow is null) return;
+        var area = layout.Areas[line.Area].Box;
+        var (start, _) = story.ParagraphRange(line.Paragraph);
+        void Rule(ParaRule r, double y)
+        {
+            if (r.Weight <= 0 || BrushOf(doc, r.Colour) is not { } brush) return;
+            var left = area.X + para.LeftIndent;
+            var right = r.Length switch
+            {
+                RuleLength.Text => line.Pieces.Count > 0 ? line.Pieces.Max(p => p.X + p.Width) : left,
+                RuleLength.Width => left + r.Width,
+                _ => area.Right - para.RightIndent,
+            };
+            if (r.Length == RuleLength.Text && line.Pieces.Count > 0) left = line.Pieces.Min(p => p.X);
+            dc.DrawLine(new Pen(brush, r.Weight), new Point(left, y), new Point(Math.Max(left, right), y));
+        }
+        if (para.RuleAbove is { } above && line.Start == start) Rule(above, line.Baseline - line.Ascent - above.Offset - above.Weight / 2);
+        if (para.RuleBelow is { } below && line.LastOfParagraph) Rule(below, line.Baseline + line.Descent + below.Offset + below.Weight / 2);
+    }
+
     /// <summary>The lines of a story that are set in the areas <paramref name="inArea"/> picks (a frame, or a table's cell).</summary>
     private void DrawStory(DrawingContext dc, Document doc, string storyId, Func<string, bool> inArea, int? page)
     {
@@ -226,6 +251,7 @@ internal sealed class PageRenderer
         foreach (var line in layout.Lines)
         {
             if (!inArea(layout.Areas[line.Area].FrameId)) continue;
+            DrawRules(dc, doc, layout, line);
             foreach (var piece in line.Pieces)
             {
                 var given = piece.Format;

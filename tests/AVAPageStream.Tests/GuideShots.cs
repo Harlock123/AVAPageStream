@@ -426,4 +426,31 @@ public partial class WindowTests
         Assert.NotNull(w.Editor.Doc.Find(card.Id)!.Gradient);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_rules()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 320, H = 420 });
+        e.ReplaceText(f.StoryId, 0, 0, "Tide Tables\nHigh water at the harbour mouth is about forty minutes before it reaches the town quay, so allow for it when you plan a crossing.\nWeather\nThe harbour master posts the shipping forecast on the board by the lifeboat station each morning at seven.");
+        e.ApplyStyle(f.StoryId, 0, 0, "Heading");
+        var rules = new Func<ParaFormat, ParaFormat>(p => p with
+        {
+            RuleAbove = new ParaRule(3, "@Blue", RuleLength.Column, Offset: 6),
+            RuleBelow = new ParaRule(1, "@Blue", RuleLength.Text, Offset: 3),
+            SpaceBefore = 14, SpaceAfter = 8,
+        });
+        e.FormatParas(f.StoryId, 0, 0, rules);
+        var weather = e.Doc.Stories[f.StoryId].Text.IndexOf("Weather", StringComparison.Ordinal);
+        e.ApplyStyle(f.StoryId, weather, 0, "Heading");
+        e.FormatParas(f.StoryId, weather, 0, rules);
+        w.View.StartEditing((TextFrame)e.Doc.Find(f.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = weather + 2;
+        w.View.FitPage();
+        ShowTab(w, 1, 1250);
+        w.Refresh();
+        Guide(w, "rules");
+        Done(w);
+    }
 }

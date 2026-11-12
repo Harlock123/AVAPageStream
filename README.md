@@ -42,7 +42,7 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   with their header rows repeated; and a baseline grid for lines to line up on across columns.
 - **Text on a path**: type set along any curve or polyline, turned to follow it.
 - **Effects**: linear and radial gradients of any number of colours, opacity and blend modes, drop shadows and
-  glows, and rounded or cut corners, on anything on the page.
+  glows, and rounded or cut corners, on anything on the page; and rules above and below paragraphs, in their styles.
 - **Linked pictures**, read from their files and updated when the files change, or kept in the document.
 - **Printing to the edge**: a bleed, and PDFs with crop marks and trim and bleed boxes.
 - **Preflight and packaging**: a list of what would go wrong in print (overset text, missing or low-resolution

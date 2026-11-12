@@ -898,18 +898,34 @@ public sealed class Editor
         return null;
     }
 
-    /// <summary>Changes colours everywhere: objects' fills and strokes, text, and styles.</summary>
+    /// <summary>
+    /// Changes colours everywhere: objects' fills, strokes, gradients and shadows, tables' headers, text, paragraphs'
+    /// rules, and styles.
+    /// </summary>
     private static void Recolour(Document d, Func<string?, string?> change)
     {
+        string Must(string c) => change(c) ?? c;
+        ParaRule? Rule(ParaRule? r) => r is null ? null : r with { Colour = Must(r.Colour) };
+        ParaFormat Para(ParaFormat p) => p.RuleAbove is null && p.RuleBelow is null ? p : p with { RuleAbove = Rule(p.RuleAbove), RuleBelow = Rule(p.RuleBelow) };
         foreach (var o in d.AllObjects)
         {
             o.Fill = change(o.Fill);
             o.Stroke = change(o.Stroke);
+            if (o is TableObject t) t.HeaderFill = change(t.HeaderFill);
+            if (o.Shadow is { } s) o.Shadow = s with { Colour = Must(s.Colour) };
+            if (o.Gradient is { } g) o.Gradient = g with { Stops = g.Stops.Select(st => st with { Colour = Must(st.Colour) }).ToList() };
         }
         foreach (var story in d.Stories.Values)
+        {
             story.FormatChars(0, story.Length + 1, f => change(f.Colour) is { } c && c != f.Colour ? f with { Colour = c } : f);
+            for (var k = 0; k < story.Paras.Count; k++) story.Paras[k] = Para(story.Paras[k]);
+        }
         for (var k = 0; k < d.Styles.Count; k++)
-            if (change(d.Styles[k].Char.Colour) is { } c && c != d.Styles[k].Char.Colour) d.Styles[k] = d.Styles[k] with { Char = d.Styles[k].Char with { Colour = c } };
+        {
+            var style = d.Styles[k];
+            if (change(style.Char.Colour) is { } c && c != style.Char.Colour) style = style with { Char = style.Char with { Colour = c } };
+            d.Styles[k] = style with { Para = Para(style.Para) };
+        }
     }
 
     /// <summary>Makes the document facing or single-sided; a facing document's masters each get a left side.</summary>

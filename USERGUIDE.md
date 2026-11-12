@@ -262,6 +262,23 @@ is in (or for a paragraph style, by redefining it):
 
 A paragraph already at the top of a column, or too long for any column, is never moved, so text can't vanish.
 
+### Paragraph rules
+
+![Headings with a heavy rule above, the width of the column, and a thin one below, as long as the heading](docs/images/guide/rules.png)
+
+**Rules**, at the foot of the Text tab, draws a line above a paragraph's first line, below its last, or both. Pick
+how long it is from **Above** or **Below**:
+
+- **Column**: across the column, less the paragraph's indents.
+- **Text**: as long as the line's text, so a short heading gets a short rule.
+- **Width**: a set length, typed in **Width**, from the left indent.
+
+**Weight** is how thick it is, **Colour** a swatch's name or a value, and **Offset** how far it stands off the top of
+the first line (or the foot of the last). A rule takes no room of its own, so give the paragraph space before or after
+to make room for it; at the top of a frame, where space before is dropped, a rule above sits just over the frame.
+Rules are part of the paragraph's settings, so a style made or redefined from a ruled paragraph carries them: rule
+the Heading style once, and every heading has them.
+
 ## Tabs, drop caps and hyphenation
 
 ![A drop cap with justified, hyphenated text, and a list of contents with dot leaders](docs/images/guide/type.png)

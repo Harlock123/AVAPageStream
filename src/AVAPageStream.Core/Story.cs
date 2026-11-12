@@ -38,7 +38,18 @@ public sealed record ParaFormat(
     bool KeepTogether = false, // all its lines in one column
     int Orphans = 1,         // at least this many of its lines at the foot of a column it starts in
     int Widows = 1,          // at least this many at the top of a column it runs on into
-    bool OnGrid = false);    // its baselines on the document's baseline grid
+    bool OnGrid = false,     // its baselines on the document's baseline grid
+    ParaRule? RuleAbove = null, // a line above the first line
+    ParaRule? RuleBelow = null); // and below the last
+
+/// <summary>How long a paragraph's rule is: as long as its line's text, the column (less its indents), or a set width.</summary>
+public enum RuleLength { Column, Text, Width }
+
+/// <summary>
+/// A rule above or below a paragraph: its weight, colour and length, and how far it sits above the top of the
+/// paragraph's first line (or below the foot of its last).
+/// </summary>
+public sealed record ParaRule(double Weight = 1, string Colour = Colours.Black, RuleLength Length = RuleLength.Column, double Width = 72, double Offset = 3);
 
 /// <summary>A named set of character and paragraph settings.</summary>
 public sealed record ParagraphStyle(string Name, CharFormat Char, ParaFormat Para);

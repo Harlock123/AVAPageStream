@@ -182,6 +182,19 @@ public sealed class SidePanel : TabControl
     public NumericUpDown DropLinesBox { get; } = new() { Minimum = 0, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public NumericUpDown DropCharsBox { get; } = new() { Minimum = 1, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
     public CheckBox HyphenateBox { get; } = new() { Content = "Hyphenate", FontSize = 12 };
+    public RuleControls RuleAboveControls { get; } = new();
+    public RuleControls RuleBelowControls { get; } = new();
+
+    /// <summary>The boxes for one of a paragraph's rules: none or its length, then its weight, colour, offset and width.</summary>
+    public sealed class RuleControls
+    {
+        public ComboBox Choice { get; } = new() { ItemsSource = new[] { "None", "Column", "Text", "Width" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+        public TextBox Weight { get; } = Ui.Box("1pt");
+        public TextBox Colour { get; } = Ui.Box("Black");
+        public TextBox Offset { get; } = Ui.Box("3pt");
+        public TextBox Width { get; } = Ui.Box("1in");
+        public IEnumerable<TextBox> Boxes => [Weight, Colour, Offset, Width];
+    }
     public CheckBox KeepWithNextBox { get; } = new() { Content = "Keep with the next paragraph", FontSize = 12 };
     public CheckBox KeepTogetherBox { get; } = new() { Content = "Keep its lines together", FontSize = 12 };
     public NumericUpDown OrphansBox { get; } = new() { Minimum = 1, Maximum = 9, Increment = 1, FormatString = "0", FontSize = 12 };
@@ -823,6 +836,25 @@ public sealed class SidePanel : TabControl
         OrphansBox.ValueChanged += (_, _) => { if (!_refreshing && OrphansBox.Value is { } v) View.ApplyPara(p => p with { Orphans = (int)v }, "Orphan control"); };
         WidowsBox.ValueChanged += (_, _) => { if (!_refreshing && WidowsBox.Value is { } v) View.ApplyPara(p => p with { Widows = (int)v }, "Widow control"); };
         OnGridBox.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyPara(p => p with { OnGrid = OnGridBox.IsChecked == true }, "Baseline grid"); };
+        void RuleChanged(RuleControls rc, bool above)
+        {
+            if (_refreshing) return;
+            ParaRule? rule = null;
+            if (rc.Choice.SelectedIndex > 0)
+            {
+                if (!Colours.TryRead(rc.Colour.Text, Doc.Swatches, out var colour) || colour is null) { _window.Say("Type the rule's colour: a swatch's name or a value."); return; }
+                double Measure(TextBox b, double otherwise) => Units.TryParse(b.Text, Unit, out var v) ? v : otherwise;
+                var length = rc.Choice.SelectedIndex switch { 2 => RuleLength.Text, 3 => RuleLength.Width, _ => RuleLength.Column };
+                rule = new ParaRule(Math.Max(0.1, Measure(rc.Weight, 1)), colour, length, Math.Max(1, Measure(rc.Width, 72)), Measure(rc.Offset, 3));
+            }
+            View.ApplyPara(p => above ? p with { RuleAbove = rule } : p with { RuleBelow = rule }, above ? "Rule above" : "Rule below");
+            Refresh();
+        }
+        foreach (var (rc, above) in new[] { (RuleAboveControls, true), (RuleBelowControls, false) })
+        {
+            rc.Choice.SelectionChanged += (_, _) => RuleChanged(rc, above);
+            foreach (var b in rc.Boxes) Commit(b, _ => RuleChanged(rc, above));
+        }
         HyphenateBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -871,9 +903,16 @@ public sealed class SidePanel : TabControl
             KeepTogetherBox,
             Ui.Row(("Orphans", OrphansBox)),
             Ui.Row(("Widows", WidowsBox)),
+            Ui.Heading("Rules"),
+            Ui.Row(("Above", RuleAboveControls.Choice)),
+            Ui.Row(("Weight", RuleAboveControls.Weight), ("Colour", RuleAboveControls.Colour)),
+            Ui.Row(("Offset", RuleAboveControls.Offset), ("Width", RuleAboveControls.Width)),
+            Ui.Row(("Below", RuleBelowControls.Choice)),
+            Ui.Row(("Weight", RuleBelowControls.Weight), ("Colour", RuleBelowControls.Colour)),
+            Ui.Row(("Offset", RuleBelowControls.Offset), ("Width", RuleBelowControls.Width)),
             new TextBlock
             {
-                Text = "Tabs: a measure, then left, right, centre or decimal, then a leader, such as 4in right . — Kern: Alt+Left and Alt+Right in the text.",
+                Text = "Tabs: a measure, then left, right, centre or decimal, then a leader, such as 4in right . — Rules: the offset is from the top of the first line, or the foot of the last; leave room with space before or after. — Kern: Alt+Left and Alt+Right in the text.",
                 Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4),
             },
         ]);
@@ -936,7 +975,7 @@ public sealed class SidePanel : TabControl
         _window.Say(Editor.DeleteCharStyle(name) ?? $"Deleted {name}; its text has its paragraph's style again.");
     }
 
-    private void NewStyle()
+    internal void NewStyle()
     {
         var name = StyleNameBox.Text?.Trim() ?? "";
         if (name.Length == 0) { _window.Say("Type the new style's name first."); return; }
@@ -1548,6 +1587,17 @@ public sealed class SidePanel : TabControl
         DropCharsBox.Value = Math.Max(1, p.DropChars);
         HyphenateBox.IsChecked = p.Hyphenate;
         OnGridBox.IsChecked = p.OnGrid;
+        foreach (var (rc, rule) in new[] { (RuleAboveControls, p.RuleAbove), (RuleBelowControls, p.RuleBelow) })
+        {
+            rc.Choice.SelectedIndex = rule is null ? 0 : rule.Length switch { RuleLength.Text => 2, RuleLength.Width => 3, _ => 1 };
+            var r = rule ?? new ParaRule();
+            Set(rc.Weight, Units.Format(r.Weight, Unit));
+            Set(rc.Colour, Colours.Describe(r.Colour, Doc.Swatches));
+            Set(rc.Offset, Units.Format(r.Offset, Unit));
+            Set(rc.Width, Units.Format(r.Width, Unit));
+            foreach (var b in rc.Boxes) b.IsEnabled = rule is not null;
+            rc.Width.IsEnabled = rule?.Length == RuleLength.Width;
+        }
         KeepWithNextBox.IsChecked = p.KeepWithNext;
         KeepTogetherBox.IsChecked = p.KeepTogether;
         OrphansBox.Value = Math.Max(1, p.Orphans);

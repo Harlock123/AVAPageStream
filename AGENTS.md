@@ -172,6 +172,9 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   draw operations, one doing `SaveLayer` (opacity, blend, shadow filter) and one `Restore`, around Avalonia's own
   drawing of it. Their bounds are huge on purpose: one culled without the other would leave the canvas's layers
   unmatched. Gradients are Avalonia brushes in the object's own coordinates.
+- **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
+  headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
+  holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever
