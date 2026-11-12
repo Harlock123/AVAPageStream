@@ -675,6 +675,6 @@ What a designer laying out a page reaches for, on the program's own shapes, fram
 rounded and cut corners, paragraph rules (column, text or set length; they take no room, so space before and
 after makes room for them), and object styles (an object keeps its style's name when changed by hand, shown as
 changed; redefining puts every object in the style back to its look), and text to outlines (paths can now have
-several parts and fill by the non-zero rule; a selection's letters stay in the text, clear). Gradients are set in the Object tab (dragging them on the page is still to come); an object
+several parts and fill by the non-zero rule; a selection's letters stay in the text, clear). Gradients are set in the Object tab, or dragged on the page with the Gradient tool (D); an object
 with opacity, a blend mode or a shadow is drawn as a Skia layer of its own, opened and closed round Avalonia's own
 drawing of it, so its text and pictures are in it too.
