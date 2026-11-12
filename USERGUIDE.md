@@ -55,7 +55,13 @@ A new document is one Letter page with half-inch margins and one column. Change 
 - **Size**: Letter, Legal, Tabloid, A3, A4, A5, B5, or type your own width and height. **Orientation** turns it.
 - **Margins** and **Columns** (with the **Gutter** between them) are the guides drawn on every page: margins in
   magenta, columns in violet. They are only guides, for snapping to; text frames are what text flows in.
-- **Apply** puts the size, margins and columns into effect, as one step you can undo.
+- **Bleed** is how far artwork may run off the edge of the page, for printing to the edge: 9 pt (an eighth of an
+  inch) or 3 mm is usual. It is drawn as a red dashed line round the page, and anything reaching past the page's
+  edge shows out to it. See *Printing to the edge* below.
+- **Baseline grid**: a **Spacing** (usually the body text's leading, such as 14pt) and the **First line**, down
+  from the top of the page (the top margin, if left empty). Paragraphs set to align to it sit their lines on it, so
+  lines in neighbouring columns line up. It is drawn in faint blue with the guides.
+- **Apply** puts the size, bleed, margins, columns and baseline grid into effect, as one step you can undo.
 
 Tick **Facing pages** for anything that will be printed both sides and bound: a booklet, a magazine, a book. Odd
 pages are then right-hand pages and even pages left-hand ones, page 1 on its own on the right, the way a printed
@@ -237,6 +243,11 @@ keeps it.
 
 Placed Markdown uses Strong for `**bold**` and Emphasis for `*italic*`.
 
+**Align to the baseline grid** (at the foot of the Text tab) puts the paragraph's lines on the document's baseline
+grid (set in the Document tab): each line drops to the next grid line at or below where it would be. Tick it in the
+Body style and redefine, and every column's lines line up across the page, however the headings between them are
+spaced.
+
 ### Keeping text together
 
 Four settings at the foot of the Text tab stop awkward breaks between columns and pages, for the paragraph the caret
@@ -290,6 +301,14 @@ Click a picture with the Picture tool to replace it. Pictures can be:
 
 The picture is stored inside the document, so moving or deleting the original file does no harm.
 
+**Linked pictures.** Tick **Linked to its file** in the Object tab and the picture is read from the file it was
+placed from instead: the document stays small, and when the file changes (a photograph retouched, a logo redrawn),
+the picture follows it the next time you come back to the window, or at once with **Update links**. Underneath, the
+tab says whether the link is up to date. A linked file is looked for where it was placed from, and then beside the
+document, so a folder holding a document and its pictures can be moved as a whole. If a linked file can't be found,
+opening the document says so, and the picture keeps its place until you find the file or replace the picture.
+Untick the box to keep a copy in the document again.
+
 **Fit** (Object tab) decides how a picture fills its frame: **Fit** shows all of it, **Fill** fills the frame and
 crops what spills over, **Stretch** fills it out of shape, and **Actual** is the picture's own size. To crop a
 different part into view, Alt+drag the picture with Select, or type an **Offset**.
@@ -321,6 +340,21 @@ The **Pen** (B) draws shapes of your own, point by point:
 Double-click a path with Select to change it: drag its points (squares) and their handles (dots). Delete takes out
 the last point you dragged. Escape, or a click elsewhere, finishes.
 
+### Text on a path
+
+![Text set along a curve, and a footnote at the foot of the column](docs/images/guide/pathtext.png)
+
+Select a path or polyline and choose Object › **Text on path**: "Text on a path" is set along it, and the story
+editor opens to write your own. Each letter sits on the path, turned to follow it. With the path selected:
+
+- The **Text** tab sets the type: font, size, colour and the rest. Its **Align** puts the text at the path's
+  start (left), in its middle (centre) or at its end (right).
+- **Start**, in the Object tab, moves the text along the path from there.
+- **Edit text…** (or Ctrl+Shift+E) opens it in the story editor, and **Remove text** takes it off.
+
+Draw the path with no stroke to show the text alone. Text that runs past the path's end isn't shown: the story
+editor counts how much. Find and the spelling check don't look in text on paths.
+
 ## Tables
 
 ![A table of tide times with a shaded header row, and the table's settings in the Object tab](docs/images/guide/tables.png)
@@ -337,6 +371,22 @@ and the caret in the first cell. Each cell holds its own text, formatted like an
 - Rows keep the height they have. A cell whose text doesn't fit gets a red mark in its corner: **Fit rows to text**
   makes each row as tall as its fullest cell needs.
 - The table's stroke draws the rules between and round the cells. Resizing the table scales its rows and columns.
+
+### Tables that run on
+
+![A table run on to a second page, its header row repeated at the top](docs/images/guide/runon.png)
+
+A long table can run on from page to page. Select it (or put the caret in it) and choose Object › Table › **Run on
+to the next page**, or click the button of that name in the Object tab. The table stops at the foot of its page's
+live area, and a new frame for it is put on the next page (a page is added if there isn't one): the rows that didn't
+fit go on there, under the **header rows, drawn again**. Do it again if they still don't all fit.
+
+- Type in a cell in whichever frame shows it. Tab goes on from the last cell of one frame to the first of the next.
+- Each frame holds as many rows as fit its height: resize or move a frame and rows move between them. Rows added at
+  the end flow on into the last frame; when no frame has room for them, a red mark shows at its foot.
+- The table's settings are the same in all its frames; select any of them to change them.
+- Deleting a frame it runs on into brings its rows back into the frames before. Deleting the first frame deletes
+  the whole table, and copying any frame copies the whole table.
 
 ## Colour and swatches
 
@@ -451,10 +501,40 @@ go to numbered files: `leaflet-1.png`, `leaflet-2.png`.
 **Printing.** File › Print… (Ctrl+P) sends the pages to your printer through the computer's own printing (on Linux
 and macOS, the `lp` command).
 
+**Printing to the edge.** A printer can't print right to the edge of the paper, so artwork meant to run off the edge
+is printed on bigger paper and cut down. Give the document a **Bleed** (Document tab), let pictures and boxes that
+should reach the edge run out past it to the red dashed line, and tick **Crop marks and bleed** when exporting the
+PDF. Each page is then set on a sheet with room round it, its artwork out to the bleed, and short **crop marks** at
+the corners showing where to cut. (The PDF doesn't carry separate trim and bleed boxes; a print shop works from the
+marks.)
+
 **Booklets.** Tick **As a booklet** when exporting a PDF or printing, and the pages are arranged two to a sheet in the
 order that folds into a stapled booklet. Page 8 goes beside page 1, page 2 beside page 7, and so on, with blank pages
 added to make a multiple of four. Print both sides of the paper, flipping on the short edge, fold the stack in half
 and staple it on the fold.
+
+## Footnotes
+
+Put the caret where a footnote's number goes and choose Text › **Insert footnote** (Ctrl+Alt+F). A small raised
+number goes in the text, and the story editor opens for the note itself, which starts with the same number. Notes
+are numbered from 1 through their story, in the order their numbers come, and renumber themselves as notes are put in
+or taken out.
+
+Each note is set at the **foot of the column** its number is in, under a short rule, and the column's text stops
+above it. If a line's note won't fit under it, the line goes on to the next column with its note. Footnotes are in
+the **Footnote** paragraph style (9 pt to start with), which you can change like any other.
+
+- To change a note, double-click it at the foot of the column, or put the caret beside its number and choose
+  Text › **Edit footnote**.
+- Deleting a note's number deletes the note. Copying text or frames with numbers in them copies their notes too.
+- Find and the spelling check don't look in footnotes.
+
+## Autosave and recovery
+
+Every two minutes, a document with changes not yet saved is copied to the Recovery folder (see *Where things are
+kept*). Saving or closing it removes the copy. If the program stops without saving (a crash, a power cut), the next
+time it starts it offers the work it saved: **Recover** opens it, as a document with changes still to save under its
+own name; **Discard** throws the copy away; **Not now** keeps it to be offered next time.
 
 ## Keyboard
 
@@ -475,6 +555,7 @@ and staple it on the fold.
 | Ctrl+B, Ctrl+I, Ctrl+U | Bold, italic, underline |
 | Alt+Left, Alt+Right | Kern tighter, looser |
 | Ctrl+Shift+3 | Insert a page number |
+| Ctrl+Alt+F | Insert a footnote |
 | Ctrl+F, F3, Shift+F3 | Find and replace, find the next, the one before |
 | F7 | Check spelling |
 | Ctrl+Shift+E | The story editor |
@@ -486,5 +567,5 @@ Help › Keys and tools has the short version.
 
 ## Where things are kept
 
-Your settings, your own dictionary (`words.txt`) and your templates are kept in the AVAPageStream folder of your
+Your settings, your own dictionary (`words.txt`), your templates and the Recovery folder of autosaved work are kept in the AVAPageStream folder of your
 user settings: `~/.config/AVAPageStream` on Linux and macOS, and `%APPDATA%\AVAPageStream` on Windows.

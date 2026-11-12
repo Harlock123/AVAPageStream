@@ -311,4 +311,62 @@ public partial class WindowTests
         Assert.Equal("Page 3 (1) of 6", w.PageInfo.Text);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_text_on_a_path_and_footnotes()
+    {
+        var w = GuideWindow();
+        var curve = new PathObject
+        {
+            Nodes = [new PathNode(110, 210, OutX: 180, OutY: 90), new PathNode(500, 210, InX: 430, InY: 90)],
+            Stroke = null,
+        };
+        curve.Fit();
+        var arc = w.Editor.Add(SheetRef.PageAt(0), curve);
+        w.Editor.PutTextOnPath(arc.Id, "The Harbour Lamps Festival");
+        var onPath = ((PathObject)w.Editor.Doc.Find(arc.Id)!).StoryId!;
+        w.Editor.FormatChars(onPath, 0, w.Editor.Doc.Stories[onPath].Length, c => c with { Font = Fonts.Sans, Size = 28, Bold = true, Colour = "@Blue" });
+        w.Editor.FormatParas(onPath, 0, 0, p => p with { Align = Align.Centre });
+        var f = w.Editor.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 240, W = 468, H = 300, Columns = 2 });
+        w.Editor.ReplaceText(f.StoryId, 0, 0, Prose + "\n" + Prose);
+        var at = w.Editor.Doc.Stories[f.StoryId].Text.IndexOf("budget", StringComparison.Ordinal) + 6;
+        var note = w.Editor.InsertFootnote(f.StoryId, at, "The council's figures, published in March.")!;
+        var at2 = w.Editor.Doc.Stories[f.StoryId].Text.LastIndexOf("lamps", StringComparison.Ordinal) + 5;
+        w.Editor.InsertFootnote(f.StoryId, at2, "Forty of them, made in the town.");
+        w.View.Select([arc.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0);
+        w.Refresh();
+        Guide(w, "pathtext");
+        Assert.Equal(2, w.View.Layouts.Of(w.Editor.Doc, f.StoryId)!.Notes.Count);
+        Assert.NotNull(w.Editor.Doc.Stories[note]);
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Guide_a_table_running_on()
+    {
+        var w = GuideWindow();
+        var t = w.Editor.AddTable(SheetRef.PageAt(0), new Box(72, 560, 468, 300), 14, 3);
+        string[] head = ["Date", "High water", "Low water"];
+        for (var c = 0; c < 3; c++) w.Editor.ReplaceText(t.Cells[c], 0, 0, head[c]);
+        for (var r = 1; r < 14; r++)
+        {
+            w.Editor.ReplaceText(t.Cells[r * 3], 0, 0, $"{r} June");
+            w.Editor.ReplaceText(t.Cells[r * 3 + 1], 0, 0, $"{5 + r % 7:00}:{(r * 13) % 60:00}");
+            w.Editor.ReplaceText(t.Cells[r * 3 + 2], 0, 0, $"{11 + r % 7:00}:{(r * 29) % 60:00}");
+        }
+        w.Editor.ChangeTable(t.Id, "Fit rows", (d, table) => Tables.FitRows(d, table, FontMeasurer.Shared));
+        w.View.Select([t.Id]);
+        w.RunOnTable();
+        var next = (TableObject)w.Editor.Doc.Pages[1].Objects.Single();
+        w.ShowSheet(SheetRef.PageAt(1));
+        w.View.Select([next.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0, 300);
+        w.Refresh();
+        Guide(w, "runon");
+        Assert.Contains(Tables.Place(w.Editor.Doc, next)!.Rows, r => r.Frame == 1);
+        Done(w);
+    }
 }

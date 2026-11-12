@@ -37,6 +37,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   - `TextFlow.cs`: `ITextMeasurer`, and `TextFlow.Layout`, which sets a story through its `Area`s (each column of each
     frame in its chain, with the wrap boxes it keeps out of) as `Line`s of `Piece`s; `TextLayout` answers caret
     positions, hit tests and selection boxes. `Fields` and `FieldContext`: the page-number and page-count characters.
+  - `Footnotes.cs` (numbering, room at the foot, `Tidy`), `PathText.cs` (text along a path), `PrintMarks.cs` (crop
+    marks), `Links.cs` (linked pictures), `Recovery.cs` (autosave copies).
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
     `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
@@ -121,6 +123,21 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **Keeping text together sets paragraphs again.** `TextFlow.Layout` snapshots its state before each paragraph and,
   when one breaks a keep rule, puts the state back and sets it again with a plan (start in the next area, or break
   after so many lines), at most twice per paragraph so it always ends.
+- **Footnotes are a reference character and a story.** The reference (`Fields.Footnote`) is a run of its own whose
+  `CharFormat.Note` names the note's story, which has `NoteOf` set and starts with `Fields.NoteNumber`. `TextFlow.Layout`
+  numbers them and, given note heights, keeps room for each at the foot of its reference's area (`TextLayout.Notes`);
+  `Layouts.Of` sets a note in that box. `Footnotes.Tidy` runs after every `Editor.Change` to keep references and notes
+  matched: never fix them up by hand.
+- **A table that runs on keeps everything in its first frame.** The frames after it (`Continues` set, linked by
+  `Next`) have no rows or cells of their own; `Tables.Place` says which frame shows each row and where. A cell's area
+  id names the frame showing it, so `Chains.ObjectOf` finds the right frame; repeated header rows are drawn from
+  their cells in the first frame, moved. Change a table through its first frame (`Tables.Head`).
+- **Text on a path** is a story with `OnPath` set and no frames, set by `PathText.Place`, not `TextFlow`. Stories with
+  no frames (paths, footnotes) are not in `Search.StoryOrder`.
+- **Linked pictures** (`PictureObject.Linked`) aren't written into the `.avps`; `DocumentFile.Read` reads them from
+  `Source` or beside the document, and `Editor.UpdateLinks` brings them up to date as one undo step.
+- **Autosave** copies go in `Recovery/` beside the settings file, one per window (`MainWindow.RecoveryId`), and go
+  when the document is saved, closed or replaced.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever

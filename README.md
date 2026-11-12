@@ -37,8 +37,13 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   your own) that update every paragraph using them when you redefine or rename one. Character styles (Emphasis,
   Strong, Small caps and your own) lay their settings over the paragraph's.
 - **Long documents.** Keep a heading with the next paragraph, keep a paragraph's lines together, and widow and orphan
-  control; sections of page numbering (i, ii, iii, then 1, 2, 3, or A-1 with a prefix); and layers, each shown or
-  hidden, locked, and printed or not.
+  control; sections of page numbering (i, ii, iii, then 1, 2, 3, or A-1 with a prefix); layers, each shown or
+  hidden, locked, and printed or not; footnotes at the foot of the column; tables that run on from page to page
+  with their header rows repeated; and a baseline grid for lines to line up on across columns.
+- **Text on a path**: type set along any curve or polyline, turned to follow it.
+- **Linked pictures**, read from their files and updated when the files change, or kept in the document.
+- **Printing to the edge**: a bleed, and PDFs with crop marks.
+- **Autosave**: unsaved work is copied every two minutes and offered back after a crash.
 - **Colour swatches.** Pick colours by name from the document's swatches, at any tint; change a swatch and
   everything in it changes. Swatches can be CMYK, and spot inks, and the Document tab lists the inks a job needs.
 - **Tables** of rows and columns, each cell with text of its own: Tab from cell to cell, a shaded header row, rows

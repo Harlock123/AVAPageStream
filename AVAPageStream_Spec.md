@@ -565,5 +565,6 @@ What books, magazines and reports need beyond milestone 3:
 - **Text on a path.**
 - **Footnotes**, numbered and set at the foot of the column.
 
-**Status (11 November 2026):** started. Done: character styles, keeping text together, page-number sections and
-layers. Still to come: the rest of the list.
+**Status (12 November 2026):** done. Limits: PDFs carry no separate trim and bleed boxes (SkiaSharp can't write
+them), so a print shop works from the crop marks; find and spelling don't look in footnotes or text on paths; and
+text on a path is edited in the story editor, not on the page.

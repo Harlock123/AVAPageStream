@@ -276,10 +276,16 @@ internal sealed class PageRenderer
             var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
             using (dc.PushTransform(Matrix.CreateRotation(g.Angle * Math.PI / 180) * Matrix.CreateTranslation(g.At.X, g.At.Y)))
             {
-                foreach (var (part, pf, offset) in TextFlow.SmallCapsPieces(g.Text, f))
+                if (f.SmallCaps)
+                    foreach (var (part, pf, offset) in TextFlow.SmallCapsPieces(g.Text, f))
+                    {
+                        var ft = FontSupport.Format(part, pf, brush);
+                        dc.DrawText(ft, new Point(TextFlow.Measure(Layouts.Measurer, g.Text[..offset], f), -f.Shift - ft.Baseline));
+                    }
+                else
                 {
-                    var ft = FontSupport.Format(part, pf, brush);
-                    dc.DrawText(ft, new Point(TextFlow.Measure(Layouts.Measurer, g.Text[..offset], f), -f.Shift - ft.Baseline));
+                    var ft = FontSupport.Format(g.Text, f, brush);
+                    dc.DrawText(ft, new Point(0, -f.Shift - ft.Baseline));
                 }
                 if (f.Underline) dc.DrawLine(new Pen(brush, Math.Max(0.5, f.Size * 0.06)), new Point(0, f.Size * 0.12), new Point(g.Width, f.Size * 0.12));
             }
