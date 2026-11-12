@@ -128,6 +128,7 @@ public enum Fit { Stretch, Fit, Fill, Actual }
 [JsonDerivedType(typeof(PictureObject), "picture")]
 [JsonDerivedType(typeof(PathObject), "path")]
 [JsonDerivedType(typeof(GroupObject), "group")]
+[JsonDerivedType(typeof(TableObject), "table")]
 public abstract class PageObject
 {
     public string Id { get; set; } = "";
@@ -331,6 +332,74 @@ public sealed class GroupObject : PageObject
             var br = Map(new Pt(cb.Right, cb.Bottom), from, b);
             c.Bounds = new Box(tl.X, tl.Y, br.X - tl.X, br.Y - tl.Y);
         }
+        base.SetBounds(b);
+    }
+}
+
+/// <summary>
+/// A table: rows and columns of cells, each holding a story of its own (set in the cell, less its inset), with rules
+/// between them in the stroke's colour and width, and header rows shaded. Row heights are kept as set: a cell whose
+/// text doesn't fit shows it is overset until its row is made taller (or fitted to its text).
+/// </summary>
+public sealed class TableObject : PageObject
+{
+    public List<double> ColumnWidths { get; set; } = [];
+    public List<double> RowHeights { get; set; } = [];
+
+    /// <summary>The cells' story ids, row by row.</summary>
+    public List<string> Cells { get; set; } = [];
+
+    public int HeaderRows { get; set; } = 1;
+    public string? HeaderFill { get; set; } = "@Light grey";
+    public double CellInset { get; set; } = 4;
+
+    [JsonIgnore] public int Rows => RowHeights.Count;
+    [JsonIgnore] public int Columns => ColumnWidths.Count;
+
+    public override string Kind => "Table";
+
+    public TableObject()
+    {
+        Stroke = Colours.Black;
+        StrokeWidth = 0.5;
+    }
+
+    /// <summary>The id of a cell as an area of text: the table's id, '#', the cell's number counting row by row.</summary>
+    public string CellId(int index) => $"{Id}#{index}";
+
+    /// <summary>A cell's box on the page.</summary>
+    public Box CellBox(int row, int column)
+    {
+        var x = X + ColumnWidths.Take(column).Sum();
+        var y = Y + RowHeights.Take(row).Sum();
+        return new Box(x, y, ColumnWidths[column], RowHeights[row]);
+    }
+
+    public Box CellBox(int index) => CellBox(index / Math.Max(1, Columns), index % Math.Max(1, Columns));
+
+    /// <summary>The cell under a point on the page, or -1.</summary>
+    public int CellAt(Pt p)
+    {
+        if (!Bounds.Contains(p)) return -1;
+        var c = 0;
+        for (var x = X + ColumnWidths[0]; c < Columns - 1 && p.X > x; x += ColumnWidths[++c]) { }
+        var r = 0;
+        for (var y = Y + RowHeights[0]; r < Rows - 1 && p.Y > y; y += RowHeights[++r]) { }
+        return r * Columns + c;
+    }
+
+    /// <summary>Makes the frame match the columns and rows.</summary>
+    public void Fit()
+    {
+        W = ColumnWidths.Sum();
+        H = RowHeights.Sum();
+    }
+
+    protected override void SetBounds(Box b)
+    {
+        // Resizing scales the columns and rows.
+        if (W > 0) ColumnWidths = ColumnWidths.Select(w => w * b.W / W).ToList();
+        if (H > 0) RowHeights = RowHeights.Select(h => h * b.H / H).ToList();
         base.SetBounds(b);
     }
 }

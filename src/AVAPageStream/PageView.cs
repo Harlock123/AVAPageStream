@@ -9,7 +9,7 @@ using Page = AVAPageStream.Core.Page;
 
 namespace AVAPageStream;
 
-public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand, Pen }
+public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand, Pen, Table }
 
 /// <summary>The caret and selection in a story being edited, and a format waiting to be typed.</summary>
 public sealed class TextEdit
@@ -370,6 +370,38 @@ public sealed class PageView : Control
         CurrentSheet.All.OfType<TextFrame>().Where(f => f.StoryId == storyId);
 
     /// <summary>Puts the caret in a text frame's story, at a point in it (or at its start).</summary>
+    /// <summary>Text under a point: a text frame's story, or a table cell's; and the area of the story it is in.</summary>
+    public sealed record TextSpot(PageObject Object, string Area, string StoryId);
+
+    /// <summary>The text frame or table cell under a point (inside groups too), of one story if given.</summary>
+    public TextSpot? TextAt(Pt p, string? storyId = null)
+    {
+        switch (HitObject(p, o => o is TextFrame or TableObject))
+        {
+            case TextFrame f when storyId is null || f.StoryId == storyId:
+                return new TextSpot(f, f.Id, f.StoryId);
+            case TableObject t when t.CellAt(Shapes.ToLocal(t, p)) is var cell and >= 0 && (storyId is null || t.Cells[cell] == storyId):
+                return new TextSpot(t, t.CellId(cell), t.Cells[cell]);
+        }
+        return null;
+    }
+
+    /// <summary>Puts the caret in a frame's or a cell's text, at a point in it (or at its start).</summary>
+    public void StartEditing(TextSpot spot, Pt? at = null)
+    {
+        var index = 0;
+        if (LayoutOf(spot.StoryId) is { } layout)
+            index = at is { } p ? layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) ?? FirstIndexIn(layout, spot.Area) : FirstIndexIn(layout, spot.Area);
+        Editing = new TextEdit { StoryId = spot.StoryId, Caret = index, Anchor = index };
+        _selection.Clear();
+        _selection.Add(spot.Object.Id);
+        _editor.Break();
+        CaretMoved();
+    }
+
+    /// <summary>Puts the caret in a table's cell, at its start.</summary>
+    public void StartEditing(TableObject table, int cell) => StartEditing(new TextSpot(table, table.CellId(cell), table.Cells[cell]));
+
     public void StartEditing(TextFrame frame, Pt? at = null)
     {
         var index = 0;
@@ -398,7 +430,7 @@ public sealed class PageView : Control
         if (!Doc.Stories.TryGetValue(storyId, out var story) || story.Frames.Count == 0) return false;
         var layout = LayoutOf(storyId);
         var line = layout?.LineOf(start) ?? -1;
-        var frameId = line >= 0 ? layout!.Areas[layout.Lines[line].Area].FrameId : story.Frames[^1];
+        var frameId = line >= 0 ? Chains.ObjectOf(layout!.Areas[layout.Lines[line].Area].FrameId) : story.Frames[^1];
         if (SheetWith(frameId) is not { } sheet) return false;
         if (sheet != _sheet) ShowSheet?.Invoke(sheet);
         Editing = new TextEdit { StoryId = storyId, Anchor = start, Caret = start + length };
@@ -430,8 +462,8 @@ public sealed class PageView : Control
     {
         if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout) return null;
         var line = layout.LineOf(t.Caret);
-        if (line >= 0) return layout.Areas[layout.Lines[line].Area].FrameId;
-        return layout.Areas.LastOrDefault()?.FrameId ?? Doc.Stories.GetValueOrDefault(t.StoryId)?.Frames.FirstOrDefault();
+        if (line >= 0) return Chains.ObjectOf(layout.Areas[layout.Lines[line].Area].FrameId);
+        return layout.Areas.LastOrDefault() is { } last ? Chains.ObjectOf(last.FrameId) : Doc.Stories.GetValueOrDefault(t.StoryId)?.Frames.FirstOrDefault();
     }
 
     private void CaretMoved()
@@ -487,6 +519,29 @@ public sealed class PageView : Control
         }
         Type(field.ToString());
     }
+
+    /// <summary>Moves to the next cell of a table (or back), and from the last cell on into a new row.</summary>
+    private void NextCell(string tableId, string storyId, int delta)
+    {
+        if (Doc.Find(tableId) is not TableObject t) return;
+        var i = t.Cells.IndexOf(storyId) + delta;
+        if (i < 0) return;
+        if (i >= t.Cells.Count)
+        {
+            _editor.ChangeTable(tableId, "Add row", (d, table) => Tables.InsertRow(d, table, table.Rows));
+            t = (TableObject)Doc.Find(tableId)!;
+        }
+        StartEditing(t, i);
+        Editing!.Caret = Doc.Stories[t.Cells[i]].Length; // the whole cell selected, as in a spreadsheet
+        Editing.Anchor = 0;
+        Notify();
+        InvalidateVisual();
+    }
+
+    /// <summary>The table and cell the caret is in, if it is in one.</summary>
+    public (TableObject Table, int Cell)? CurrentCell() =>
+        Editing is { } t && Doc.Stories.GetValueOrDefault(t.StoryId)?.Table is { } id && Doc.Find(id) is TableObject table
+            ? (table, table.Cells.IndexOf(t.StoryId)) : null;
 
     private void Erase(bool forward, bool word)
     {
@@ -680,6 +735,7 @@ public sealed class PageView : Control
                 case Key.Back: Erase(false, command); break;
                 case Key.Delete: Erase(true, command); break;
                 case Key.Enter: Type("\n"); break;
+                case Key.Tab when story.Table is { } tableId: NextCell(tableId, story.Id, shift ? -1 : 1); break;
                 case Key.Tab: Type("\t"); break;
                 case Key.Escape: StopEditing(); break;
                 case Key.B when command: ToggleChar(f => f.Bold, (f, v) => f with { Bold = v }, "Bold"); break;
@@ -730,6 +786,7 @@ public sealed class PageView : Control
             case Key.K: Tool = Tool.Link; break;
             case Key.H: Tool = Tool.Hand; break;
             case Key.B: Tool = Tool.Pen; break;
+            case Key.G: Tool = Tool.Table; break;
             default: return;
         }
         e.Handled = true;
@@ -884,7 +941,7 @@ public sealed class PageView : Control
     }
 
     /// <summary>Lines and groups turn no other way than they are drawn: everything else has a rotate handle.</summary>
-    private static bool CanRotate(PageObject o) => o is not (LineObject or GroupObject);
+    private static bool CanRotate(PageObject o) => o is not (LineObject or GroupObject or TableObject);
 
     /// <summary>The rotate handle, a little above the middle of the frame's top edge.</summary>
     private Pt RotateHandleAt(PageObject o) => Shapes.ToPage(o, new Pt(o.X + o.W / 2, o.Y - 24 / Scale));
@@ -958,9 +1015,15 @@ public sealed class PageView : Control
         // Clicking in the story being edited moves the caret, whatever the tool.
         if (Editing is { } t)
         {
-            if (HitObject(p, o => o is TextFrame f && f.StoryId == t.StoryId) is TextFrame inStory && LayoutOf(t.StoryId) is { } layout)
+            if (TextAt(p, t.StoryId) is { } inStory && LayoutOf(t.StoryId) is { } layout)
             {
                 ClickInText(layout, inStory, p, e.ClickCount, _shift);
+                Begin(Drag.Text, e);
+                return;
+            }
+            if (Doc.Stories.GetValueOrDefault(t.StoryId)?.Table is { } tableId && TextAt(p) is { Object: TableObject table } cell && table.Id == tableId)
+            {
+                StartEditing(cell, p); // another cell of the same table
                 Begin(Drag.Text, e);
                 return;
             }
@@ -1021,9 +1084,9 @@ public sealed class PageView : Control
                 }
                 if (HitObject(p) is { } hit)
                 {
-                    if (e.ClickCount >= 2 && HitObject(p, o => o is TextFrame) is TextFrame frame)
+                    if (e.ClickCount >= 2 && TextAt(p) is { } frame)
                     {
-                        StartEditing(frame, p); // into a frame inside a group, too
+                        StartEditing(frame, p); // into a frame inside a group, or a table's cell, too
                         Begin(Drag.Text, e);
                         return;
                     }
@@ -1060,7 +1123,7 @@ public sealed class PageView : Control
                 return;
 
             case Tool.Text:
-                if (HitObject(p, o => o is TextFrame) is TextFrame target)
+                if (TextAt(p) is { } target)
                 {
                     StartEditing(target, p);
                     Begin(Drag.Text, e);
@@ -1109,10 +1172,10 @@ public sealed class PageView : Control
         }
     }
 
-    private void ClickInText(TextLayout layout, TextFrame frame, Pt p, int clicks, bool extend)
+    private void ClickInText(TextLayout layout, TextSpot spot, Pt p, int clicks, bool extend)
     {
         if (Editing is not { } t) return;
-        var index = layout.IndexAt(frame.Id, Shapes.ToLocal(frame, p)) ?? t.Caret;
+        var index = layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) ?? t.Caret;
         var text = layout.Story.Text;
         if (clicks == 2)
         {
@@ -1334,9 +1397,8 @@ public sealed class PageView : Control
                                                 : (Snap ? SnapTargets.Snap(p.Y, Targets().Ys.Where(y => y != _guide?.Position), Tolerance) : p.Y);
                 break;
             case Drag.Text:
-                if (Editing is { } t && LayoutOf(t.StoryId) is { } layout &&
-                    HitObject(p, o => o is TextFrame f && f.StoryId == t.StoryId) is TextFrame frame &&
-                    layout.IndexAt(frame.Id, Shapes.ToLocal(frame, p)) is { } index && index != t.Caret)
+                if (Editing is { } t && LayoutOf(t.StoryId) is { } layout && TextAt(p, t.StoryId) is { } spot &&
+                    layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) is { } index && index != t.Caret)
                 {
                     t.Caret = index;
                     CaretMoved();
@@ -1522,6 +1584,15 @@ public sealed class PageView : Control
 
     private void FinishCreate()
     {
+        if (_tool == Tool.Table)
+        {
+            var box = Box.FromCorners(_dragStart, _dragNow);
+            if (box.W * Scale < 20 || box.H * Scale < 20) return;
+            var table = _editor.AddTable(_sheet, box, 4, 3);
+            StartEditing((TableObject)Doc.Find(table.Id)!, 0);
+            Status?.Invoke("A table of 4 rows and 3 columns. Tab moves from cell to cell (and adds a row at the end); the Object tab changes its rows and columns.");
+            return;
+        }
         if (Creation() is not { } o) return;
         var tooSmall = o.W * Scale < 4 && o.H * Scale < 4;
         if (tooSmall) return;
@@ -1715,6 +1786,15 @@ public sealed class PageView : Control
                 dc.DrawLine(pen, new Point(mark.Left + 3, mark.Center.Y), new Point(mark.Right - 3, mark.Center.Y));
             }
         }
+        foreach (var table in sheet.All.OfType<TableObject>())
+            for (var i = 0; i < table.Cells.Count; i++)
+                if (LayoutOf(table.Cells[i]) is { Overset: true })
+                {
+                    // A little red mark in the corner of a cell whose text doesn't fit.
+                    var box = table.CellBox(i);
+                    var c = ToView(new Pt(box.Right, box.Bottom));
+                    dc.FillRectangle(Look.Overset, new Rect(c.X - 7, c.Y - 7, 6, 6));
+                }
         if (LinkFrom is not null && sheet.All.FirstOrDefault(o => o.Id == LinkFrom) is { } from)
             Outline(dc, from, Look.LinkFrom, new Pen(Look.Handle, 2));
 
@@ -1797,7 +1877,7 @@ public sealed class PageView : Control
     {
         if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout) return;
         var here = CurrentSheet.All.ToDictionary(o => o.Id);
-        PageObject? FrameOf(int area) => here.GetValueOrDefault(layout.Areas[area].FrameId);
+        PageObject? FrameOf(int area) => here.GetValueOrDefault(Chains.ObjectOf(layout.Areas[area].FrameId));
         if (t.Length > 0)
         {
             foreach (var (area, box) in layout.SelectionBoxes(t.Start, t.Start + t.Length))
@@ -1822,13 +1902,13 @@ public sealed class PageView : Control
     {
         var here = CurrentSheet.All.ToDictionary(o => o.Id);
         var pen = new Pen(Look.Overset, 1);
-        foreach (var storyId in here.Values.OfType<TextFrame>().Select(f => f.StoryId).Distinct())
+        foreach (var storyId in here.Values.SelectMany(o => o switch { TextFrame f => [f.StoryId], TableObject t => t.Cells, _ => Enumerable.Empty<string>() }).Distinct())
         {
             if (LayoutOf(storyId) is not { } layout) continue;
             foreach (var m in MisspeltIn(storyId))
                 foreach (var (area, box) in layout.SelectionBoxes(m.Start, m.Start + m.Length))
                 {
-                    if (!here.TryGetValue(layout.Areas[area].FrameId, out var frame)) continue;
+                    if (!here.TryGetValue(Chains.ObjectOf(layout.Areas[area].FrameId), out var frame)) continue;
                     var a = ToView(new Pt(box.X, box.Bottom));
                     var b = ToView(new Pt(box.Right, box.Bottom));
                     var g = new StreamGeometry();

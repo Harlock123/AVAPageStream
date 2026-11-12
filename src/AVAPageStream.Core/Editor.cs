@@ -147,6 +147,7 @@ public sealed class Editor
             {
                 var going = sheet.All.Where(o => doomed.Contains(o.Id)).ToList();
                 foreach (var frame in Shapes.Flatten(going).OfType<TextFrame>()) Chains.Forget(d, frame);
+                foreach (var table in Shapes.Flatten(going).OfType<TableObject>()) Chains.Forget(d, table);
                 foreach (var o in going)
                 {
                     var around = Shapes.GroupsAround(sheet.Objects, o.Id);
@@ -203,6 +204,20 @@ public sealed class Editor
                 copied.Frames = [frame.Id];
                 d.Stories[copied.Id] = copied;
                 frame.StoryId = copied.Id;
+            }
+            if (o is TableObject table && original is TableObject t)
+            {
+                // A copied table gets copies of its cells' stories.
+                for (var i = 0; i < table.Cells.Count; i++)
+                {
+                    if ((from ?? d).Stories.GetValueOrDefault(t.Cells[i]) is not { } cell) { table.Cells[i] = Tables.NewCell(d, table).Id; continue; }
+                    var copied = System.Text.Json.JsonSerializer.Deserialize<Story>(System.Text.Json.JsonSerializer.Serialize(cell, Document.Json), Document.Json)!;
+                    copied.Id = d.NewId("story");
+                    copied.Table = table.Id;
+                    copied.Frames = [table.Id];
+                    d.Stories[copied.Id] = copied;
+                    table.Cells[i] = copied.Id;
+                }
             }
         }
         return copy;
@@ -264,6 +279,20 @@ public sealed class Editor
             return freed;
         });
     }
+
+    /// <summary>Draws a table of so many rows and columns in a box on a sheet.</summary>
+    public TableObject AddTable(SheetRef sheet, Box box, int rows, int columns) => Change("New table", d =>
+    {
+        var t = Tables.Make(d, box, rows, columns);
+        sheet.Resolve(d).Objects.Add(t);
+        return t;
+    });
+
+    /// <summary>Changes a table as one step: rows and columns put in or taken out, fitted, or resized.</summary>
+    public void ChangeTable(string tableId, string label, Action<Document, TableObject> change) => Change(label, d =>
+    {
+        if (d.Find(tableId) is TableObject t) change(d, t);
+    });
 
     public enum Order { Front, Forward, Backward, Back }
 
@@ -379,6 +408,7 @@ public sealed class Editor
         {
             var page = d.Pages[index];
             foreach (var frame in page.All.OfType<TextFrame>().ToList()) Chains.Forget(d, frame);
+            foreach (var table in page.All.OfType<TableObject>().ToList()) Chains.Forget(d, table);
             d.Pages.RemoveAt(index);
         });
         return null;

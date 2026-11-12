@@ -130,5 +130,13 @@ public static class DocumentFile
         }
         foreach (var frame in doc.AllObjects.OfType<TextFrame>())
             if (!doc.Stories.ContainsKey(frame.StoryId)) Chains.NewStory(doc, frame, doc.Style("Body"));
+        foreach (var table in doc.AllObjects.OfType<TableObject>())
+        {
+            // Every cell has its story, and the table is as many cells as its rows and columns make.
+            while (table.Cells.Count < table.Rows * table.Columns) table.Cells.Add("");
+            if (table.Cells.Count > table.Rows * table.Columns) table.Cells.RemoveRange(table.Rows * table.Columns, table.Cells.Count - table.Rows * table.Columns);
+            for (var i = 0; i < table.Cells.Count; i++)
+                if (!doc.Stories.ContainsKey(table.Cells[i])) table.Cells[i] = Tables.NewCell(doc, table).Id;
+        }
     }
 }

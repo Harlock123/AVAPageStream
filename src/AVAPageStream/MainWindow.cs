@@ -308,6 +308,21 @@ public sealed class MainWindow : Window
                         Item("_Place picture…", PlacePicture),
                         Item("Place _text…", () => _ = PlaceText()),
                         Item("Unlink text _frame", UnlinkSelected),
+                        new Separator(),
+                        new MenuItem
+                        {
+                            Header = "T_able",
+                            Items =
+                            {
+                                Item("Insert row _above", () => TableEdit("Insert row", (d, t, r, _) => Tables.InsertRow(d, t, r))),
+                                Item("Insert row _below", () => TableEdit("Insert row", (d, t, r, _) => Tables.InsertRow(d, t, r + 1))),
+                                Item("Insert column _left", () => TableEdit("Insert column", (d, t, _, c) => Tables.InsertColumn(d, t, c))),
+                                Item("Insert column _right", () => TableEdit("Insert column", (d, t, _, c) => Tables.InsertColumn(d, t, c + 1))),
+                                new Separator(),
+                                Item("_Delete row", () => TableEdit("Delete row", (d, t, r, _) => Tables.DeleteRow(d, t, r))),
+                                Item("Delete _column", () => TableEdit("Delete column", (d, t, _, c) => Tables.DeleteColumn(d, t, c))),
+                            },
+                        },
                     },
                 },
                 new MenuItem
@@ -409,6 +424,7 @@ public sealed class MainWindow : Window
         (Tool.Line, "Line", "L", "M3,15.8 L15.8,3 L17,4.2 L4.2,17 Z"),
         (Tool.Picture, "Picture", "P", "F0 M2,4 H18 V16 H2 Z M3.8,5.8 V14.2 H16.2 V5.8 Z M5,13 L8.2,8.8 L10.4,11.2 L12.4,8.4 L15,13 Z"),
         (Tool.Pen, "Pen: polygons and curves", "B", "M3,17 L4.5,12.5 L13,4 L16,7 L7.5,15.5 Z M14,3 L15.5,1.5 L18.5,4.5 L17,6 Z M3,17 L5.5,16.3 L3.7,14.5 Z"),
+        (Tool.Table, "Table", "G", "F0 M2,3 H18 V17 H2 Z M3.6,4.6 V7.6 H9.2 V4.6 Z M10.8,4.6 V7.6 H16.4 V4.6 Z M3.6,9.2 V11.6 H9.2 V9.2 Z M10.8,9.2 V11.6 H16.4 V9.2 Z M3.6,13.2 V15.4 H9.2 V13.2 Z M10.8,13.2 V15.4 H16.4 V13.2 Z"),
         (Tool.Link, "Link frames", "K", "F0 M1.5,10 A4,4 0 0 1 5.5,6 H9 V8 H5.5 A2,2 0 0 0 5.5,12 H9 V14 H5.5 A4,4 0 0 1 1.5,10 Z M11,6 H14.5 A4,4 0 0 1 14.5,14 H11 V12 H14.5 A2,2 0 0 0 14.5,8 H11 Z M6.5,9 H13.5 V11 H6.5 Z"),
         (Tool.Hand, "Hand", "H", "M6,18.5 L2.8,11.6 L4.6,10.6 L7,13.2 V4.2 H9 V10 H10 V3 H12 V10 H13 V4.2 H15 V10.6 H15.6 V7 H17.6 V13 L15,18.5 Z"),
     ];
@@ -696,6 +712,17 @@ public sealed class MainWindow : Window
         editor.Closed += (_, _) => _storyEditors.Remove(editor);
         editor.Show(this);
         return editor;
+    }
+
+    /// <summary>Changes the table the caret is in, at the caret's row and column, keeping the caret in a cell.</summary>
+    public void TableEdit(string label, Action<Document, TableObject, int, int> change)
+    {
+        if (View.CurrentCell() is not var (table, cell)) { Say("Put the caret in a table's cell first."); return; }
+        var (row, column) = (cell / table.Columns, cell % table.Columns);
+        Editor.ChangeTable(table.Id, label, (d, t) => change(d, t, row, column));
+        if (Editor.Doc.Find(table.Id) is TableObject now)
+            View.StartEditing(now, Math.Clamp(Math.Min(row, now.Rows - 1) * now.Columns + Math.Min(column, now.Columns - 1), 0, now.Cells.Count - 1));
+        Refresh();
     }
 
     public void GroupSelected()

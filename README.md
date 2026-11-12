@@ -14,8 +14,9 @@ text into them, link them so a story flows from column to column and page to pag
   number (and the page count, if you like: "Page 3 of 12"). Add and delete pages from the Pages tab, and drag them to reorder.
 - **Facing pages and spreads.** Work on left and right pages side by side, with inside and outside margins, left
   and right master pages, and masters with their own margins and columns.
-- **Frames.** Text frames, pictures, rectangles (with rounded corners), ellipses, lines (with arrowheads), and
-  polygons and Bézier curves drawn with the Pen, each with a fill and a stroke. Turn any of them to any angle,
+- **Frames.** Text frames, pictures (PNG, JPEG, GIF, BMP, WebP, SVG kept as vector, and EPS), tables, rectangles
+  (with rounded corners), ellipses, lines (with arrowheads), and polygons and Bézier curves drawn with the Pen, each
+  with a fill and a stroke. Turn any of them to any angle,
   group them, and edit a path's points and handles. A picture fits its frame four ways, and can be slid inside it (Alt+drag) to crop a different part into view. Move, resize and nudge them, line them up, bring them forward or send them back, duplicate, lock, copy and
   paste, and space them evenly across or down.
 - **Text wrap.** Set any picture, box or frame to wrap, with a standoff, and the text under it flows round it,
@@ -30,8 +31,12 @@ text into them, link them so a story flows from column to column and page to pag
   (left, centre, right, justified), leading, indents, space before and after, tab stops (left, right, centre and
   decimal, with leaders), drop caps and hyphenation; and paragraph styles (Body, Heading, Subheading, Caption, and
   your own) that update every paragraph using them when you redefine or rename one.
-- **Colour swatches.** Pick colours by name from the document's swatches; change a swatch and everything in it
-  changes.
+- **Colour swatches.** Pick colours by name from the document's swatches, at any tint; change a swatch and
+  everything in it changes. Swatches can be CMYK, and spot inks, and the Document tab lists the inks a job needs.
+- **Tables** of rows and columns, each cell with text of its own: Tab from cell to cell, a shaded header row, rows
+  fitted to their text.
+- **Spelling**, in American or British English: misspelt words underlined as you type, and a spelling check with
+  suggestions, Ignore all and your own dictionary.
 - **The story editor** (Ctrl+Shift+E) shows a story as plain text in a window of its own for writing and
   correcting, changing the page as you type. Text copied and pasted within the program keeps its formats.
 - **Find and replace** through every story, page by page, with match case and whole word; Replace all is one undo.
@@ -61,6 +66,10 @@ text into them, link them so a story flows from column to column and page to pag
 
 ![A facing document's spread: a left and a right page side by side with the spine between, a rectangle selected on the right-hand page with its rotate handle above it, and the Document tab showing facing pages with inside and outside margins](docs/images/AVAPageStream-spread.png)
 
+| A table, typed into from cell to cell | Spelling checked as you type |
+| --- | --- |
+| ![A table of three columns with a shaded, bold header row of Item, Price and Notes, the caret in a cell, and the Object tab showing its rows, columns, header fill and column widths](docs/images/AVAPageStream-table.png) | ![A line of text with four misspelt words underlined in red](docs/images/AVAPageStream-spelling.png) |
+
 ![The export dialog: all pages, this page, or a range such as 1, 3, and the resolution for PNG](docs/images/AVAPageStream-export.png)
 
 ## Using it
@@ -73,6 +82,7 @@ text into them, link them so a story flows from column to column and page to pag
 | Picture | P | Drag a frame, then pick an image (PNG, JPEG, GIF, BMP or WebP). Click a picture to replace its image. |
 | Link | K | Click a text frame, then the frame its text should flow on into. Alt+click takes a frame out of its chain. |
 | Hand | H, or hold Space | Drag to scroll. |
+| Table | G | Drag a box for a table; Tab moves from cell to cell. |
 | Pen | B | Click for corners, drag for curves; click the first point to close the shape, or double-click to finish. Double-click a path with Select to move its points. |
 
 Arrows nudge by 1 pt (Shift: 10 pt). Escape leaves the text, then clears the selection. Ctrl+wheel zooms; Ctrl+0
@@ -98,15 +108,18 @@ dotnet test AVAPageStream.slnx
 dotnet run --project src/AVAPageStream
 ```
 
-The design, and what is still to come (CMYK and spot colours, SVG pictures, spelling, tables), is in
-[AVAPageStream_Spec.md](AVAPageStream_Spec.md).
+The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures are shown in full when
+[Ghostscript](https://ghostscript.com) is installed (otherwise by their preview), and PDFs are written in RGB.
 
 ## Licence
 
 MIT: see [LICENSE](LICENSE). The bundled Liberation fonts are under the SIL Open Font License; see
 [src/AVAPageStream/Assets/Fonts/LICENSE-Liberation.txt](src/AVAPageStream/Assets/Fonts/LICENSE-Liberation.txt). The
 hyphenation patterns in [src/AVAPageStream.Core/Hyphenation](src/AVAPageStream.Core/Hyphenation) are Gerard D.C.
-Kuiken's, from the hyph-utf8 package, and may be copied freely with their notice (in the files).
+Kuiken's, from the hyph-utf8 package, and may be copied freely with their notice (in the files). The spelling word
+lists in [src/AVAPageStream.Core/Spelling](src/AVAPageStream.Core/Spelling) are from Kevin Atkinson's SCOWL, under
+the notice in [SCOWL-Copyright.txt](src/AVAPageStream.Core/Spelling/SCOWL-Copyright.txt). SVG is drawn by
+[Svg.Skia](https://github.com/wieslawsoltes/Svg.Skia) (MIT).
 
 AVAPageStream is a new program written from scratch in tribute to PageStream. It is not affiliated with Soft-Logik
 Publishing or Grasshopper LLC, and it does not read PageStream documents.

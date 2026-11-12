@@ -66,8 +66,11 @@ public sealed class Story
     public List<Run> Runs { get; set; } = [];
     public List<ParaFormat> Paras { get; set; } = [];
 
-    /// <summary>The ids of the text frames the story flows through, in order.</summary>
+    /// <summary>The ids of the text frames the story flows through, in order (for a table cell's story, the table's).</summary>
     public List<string> Frames { get; set; } = [];
+
+    /// <summary>The table whose cell this story is, or null for a story in text frames.</summary>
+    public string? Table { get; set; }
 
     public static Story Create(string id, ParagraphStyle style) => new()
     {

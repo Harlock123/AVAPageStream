@@ -15,7 +15,7 @@ public static class Contents
         var order = Search.StoryOrder(doc);
         var pageOf = new Dictionary<string, int>();
         for (var i = 0; i < doc.Pages.Count; i++)
-            foreach (var f in doc.Pages[i].All.OfType<TextFrame>()) pageOf[f.Id] = i + 1;
+            foreach (var o in doc.Pages[i].All.Where(o => o is TextFrame or TableObject)) pageOf[o.Id] = i + 1;
         var found = new List<(ContentsEntry Entry, int Story, int Start)>();
         for (var k = 0; k < order.Count; k++)
         {
@@ -31,7 +31,7 @@ public static class Contents
                 var text = Fields.Expand(story.Text[start..end], fields).Replace('\t', ' ').Trim();
                 if (text.Length == 0) continue;
                 var line = layout.LineOf(start);
-                int? page = line >= 0 && pageOf.TryGetValue(layout.Areas[layout.Lines[line].Area].FrameId, out var n) ? n : null;
+                int? page = line >= 0 && pageOf.TryGetValue(Chains.ObjectOf(layout.Areas[layout.Lines[line].Area].FrameId), out var n) ? n : null;
                 found.Add((new ContentsEntry(text, level, page), k, start));
             }
         }

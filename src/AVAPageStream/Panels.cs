@@ -167,6 +167,14 @@ public sealed class SidePanel : TabControl
     public CheckBox ArrowStartBox { get; } = new() { Content = "At its start", FontSize = 12 };
     public CheckBox ArrowEndBox { get; } = new() { Content = "At its end", FontSize = 12 };
     private readonly StackPanel _arrowRows = new();
+    // Tables
+    public NumericUpDown TableRowsBox { get; } = new() { Minimum = 1, Maximum = 200, Increment = 1, FormatString = "0", FontSize = 12 };
+    public NumericUpDown TableColumnsBox { get; } = new() { Minimum = 1, Maximum = 50, Increment = 1, FormatString = "0", FontSize = 12 };
+    public NumericUpDown HeaderRowsBox { get; } = new() { Minimum = 0, Maximum = 20, Increment = 1, FormatString = "0", FontSize = 12 };
+    public TextBox HeaderFillBox { get; } = Ui.Box("none, a name or #RRGGBB");
+    public TextBox CellInsetBox { get; } = Ui.Box();
+    public TextBox ColumnWidthsBox { get; } = Ui.Box("1in, 2in, 1in");
+    private readonly StackPanel _tableRows = new();
     public CheckBox WrapShapeBox { get; } = new() { Content = "Follow its shape, not its frame", FontSize = 12 };
     public TextBlock TextTarget { get; } = new() { Foreground = Look.Heading, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _textBody = new();
@@ -336,6 +344,7 @@ public sealed class SidePanel : TabControl
 
         _cornerRow.Children.Add(Ui.Row(("Corners", CornerBox)));
         _rotationRow.Children.Add(Ui.Row(("Rotation", RotationBox)));
+        BuildTableRows();
         _arrowRows.Children.AddRange([Ui.Heading("Arrowheads"), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ArrowStartBox, ArrowEndBox } }]);
         ArrowStartBox.IsCheckedChanged += (_, _) => { if (!_refreshing) ChangeSelected("Arrowhead", o => { if (o is LineObject l) l.ArrowStart = ArrowStartBox.IsChecked == true; }); };
         ArrowEndBox.IsCheckedChanged += (_, _) => { if (!_refreshing) ChangeSelected("Arrowhead", o => { if (o is LineObject l) l.ArrowEnd = ArrowEndBox.IsChecked == true; }); };
@@ -375,6 +384,7 @@ public sealed class SidePanel : TabControl
             _frameRows,
             _pictureRows,
             _arrowRows,
+            _tableRows,
             Ui.Heading("Text wrap"),
             WrapBox,
             WrapShapeBox,
@@ -401,6 +411,72 @@ public sealed class SidePanel : TabControl
             LockedBox,
         ]);
         return new StackPanel { Children = { ObjectTitle, _objectBody } };
+    }
+
+    private void BuildTableRows()
+    {
+        void Count(NumericUpDown box, bool rows) => box.ValueChanged += (_, _) =>
+        {
+            if (_refreshing || box.Value is not { } v || View.Selected is not [TableObject t]) return;
+            var want = (int)v;
+            Editor.ChangeTable(t.Id, rows ? "Rows" : "Columns", (d, table) =>
+            {
+                // Rows and columns are put in, or taken out, at the end.
+                while ((rows ? table.Rows : table.Columns) < want)
+                    if (rows) Tables.InsertRow(d, table, table.Rows); else Tables.InsertColumn(d, table, table.Columns);
+                while ((rows ? table.Rows : table.Columns) > want)
+                    if (rows) Tables.DeleteRow(d, table, table.Rows - 1); else Tables.DeleteColumn(d, table, table.Columns - 1);
+            });
+        };
+        Count(TableRowsBox, rows: true);
+        Count(TableColumnsBox, rows: false);
+        HeaderRowsBox.ValueChanged += (_, _) =>
+        {
+            if (_refreshing || HeaderRowsBox.Value is not { } v || View.Selected is not [TableObject t]) return;
+            Editor.ChangeTable(t.Id, "Header rows", (_, table) => table.HeaderRows = Math.Min((int)v, table.Rows));
+        };
+        Commit(HeaderFillBox, text =>
+        {
+            if (View.Selected is not [TableObject t]) return;
+            if (!Colours.TryRead(text, Doc.Swatches, out var c)) { _window.Say("Type a colour's name, a value like #D0D0D0, or none."); return; }
+            Editor.ChangeTable(t.Id, "Header fill", (_, table) => table.HeaderFill = c);
+        });
+        MeasureBox(CellInsetBox, (o, v) => { if (o is TableObject t) t.CellInset = Math.Max(0, v); }, "Cell inset");
+        Commit(ColumnWidthsBox, text =>
+        {
+            if (View.Selected is not [TableObject t]) return;
+            var parts = text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+            var widths = new List<double>();
+            foreach (var part in parts)
+            {
+                if (!Units.TryParse(part, Unit, out var w) || w < 4) { _window.Say($"\"{part}\" isn't a column width. Type one for each column: 1in, 2in, 1in."); return; }
+                widths.Add(w);
+            }
+            if (widths.Count != t.Columns) { _window.Say($"The table has {t.Columns} columns: type a width for each."); return; }
+            Editor.ChangeTable(t.Id, "Column widths", (_, table) => { table.ColumnWidths = widths; table.Fit(); });
+        });
+        _tableRows.Children.AddRange([
+            Ui.Heading("Table"),
+            Ui.Row(("Rows", TableRowsBox), ("Cols", TableColumnsBox)),
+            Ui.Row(("Header rows", HeaderRowsBox)),
+            Ui.Row(("Header fill", HeaderFillBox)),
+            Ui.Row(("Cell inset", CellInsetBox)),
+            Ui.Row(("Widths", ColumnWidthsBox)),
+            Ui.Buttons(
+                Ui.Button("Fit rows to text", () =>
+                {
+                    if (View.Selected is [TableObject t]) Editor.ChangeTable(t.Id, "Fit rows", (d, table) => Tables.FitRows(d, table, FontMeasurer.Shared));
+                }, "Make each row as tall as its tallest cell's text needs"),
+                Ui.Button("Even columns", () =>
+                {
+                    if (View.Selected is [TableObject t]) Editor.ChangeTable(t.Id, "Even columns", (_, table) => table.ColumnWidths = Enumerable.Repeat(table.W / table.Columns, table.Columns).ToList());
+                })),
+            new TextBlock
+            {
+                Text = "Double-click a cell to type in it; Tab goes to the next (and adds a row after the last). Object › Table puts rows and columns in where the caret is.",
+                Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            },
+        ]);
     }
 
     private void Arrange(Editor.Order order)
@@ -1016,7 +1092,7 @@ public sealed class SidePanel : TabControl
         _strokeSwatch.Background = Brush(first.Stroke);
         Set(StrokeWidthBox, Units.Format(first.StrokeWidth, Unit));
         _cornerRow.IsVisible = one is RectangleObject;
-        _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject));
+        _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject or TableObject));
         Set(RotationBox, first.Rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
         if (one is RectangleObject r) Set(CornerBox, Units.Format(r.CornerRadius, Unit));
         _frameRows.IsVisible = one is TextFrame;
@@ -1028,6 +1104,16 @@ public sealed class SidePanel : TabControl
         }
         _pictureRows.IsVisible = one is PictureObject;
         _arrowRows.IsVisible = selected.All(o => o is LineObject);
+        _tableRows.IsVisible = one is TableObject;
+        if (one is TableObject table)
+        {
+            TableRowsBox.Value = table.Rows;
+            TableColumnsBox.Value = table.Columns;
+            HeaderRowsBox.Value = table.HeaderRows;
+            Set(HeaderFillBox, Colours.Describe(table.HeaderFill, Doc.Swatches));
+            Set(CellInsetBox, Units.Format(table.CellInset, Unit));
+            Set(ColumnWidthsBox, string.Join(", ", table.ColumnWidths.Select(w => Units.Format(w, Unit))));
+        }
         ArrowStartBox.IsChecked = selected.All(o => o is LineObject { ArrowStart: true });
         ArrowEndBox.IsChecked = selected.All(o => o is LineObject { ArrowEnd: true });
         if (one is PictureObject p)

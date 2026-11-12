@@ -103,7 +103,10 @@ internal sealed class PageRenderer
                 break;
             case TextFrame frame:
                 if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
-                DrawText(dc, doc, frame, page);
+                DrawStory(dc, doc, frame.StoryId, id => id == frame.Id, page);
+                break;
+            case TableObject table:
+                DrawTable(dc, doc, table, fill, pen, page);
                 break;
             case GroupObject group:
                 foreach (var child in group.Children) DrawObject(dc, doc, child, page);
@@ -119,12 +122,35 @@ internal sealed class PageRenderer
         }
     }
 
-    private void DrawText(DrawingContext dc, Document doc, TextFrame frame, int? page)
+    /// <summary>A table: its fill and header rows' fill, each cell's text, then the rules round and between the cells.</summary>
+    private void DrawTable(DrawingContext dc, Document doc, TableObject t, IBrush? fill, IPen? pen, int? page)
     {
-        if (Layouts.Of(doc, frame.StoryId, page) is not { } layout) return;
+        if (t.Rows == 0 || t.Columns == 0) return;
+        if (fill is not null) dc.FillRectangle(fill, new Rect(t.X, t.Y, t.W, t.H));
+        if (t.HeaderRows > 0 && BrushOf(doc, t.HeaderFill) is { } header)
+            dc.FillRectangle(header, new Rect(t.X, t.Y, t.W, t.RowHeights.Take(t.HeaderRows).Sum()));
+        for (var i = 0; i < t.Cells.Count; i++)
+        {
+            var cell = t.CellId(i);
+            var box = t.CellBox(i);
+            using (dc.PushClip(new Rect(box.X, box.Y, box.W, box.H)))
+                DrawStory(dc, doc, t.Cells[i], id => id == cell, page);
+        }
+        if (pen is null) return;
+        dc.DrawRectangle(null, pen, new Rect(t.X, t.Y, t.W, t.H));
+        var x = t.X;
+        foreach (var w in t.ColumnWidths.SkipLast(1)) { x += w; dc.DrawLine(pen, new Point(x, t.Y), new Point(x, t.Y + t.H)); }
+        var y = t.Y;
+        foreach (var h in t.RowHeights.SkipLast(1)) { y += h; dc.DrawLine(pen, new Point(t.X, y), new Point(t.X + t.W, y)); }
+    }
+
+    /// <summary>The lines of a story that are set in the areas <paramref name="inArea"/> picks (a frame, or a table's cell).</summary>
+    private void DrawStory(DrawingContext dc, Document doc, string storyId, Func<string, bool> inArea, int? page)
+    {
+        if (Layouts.Of(doc, storyId, page) is not { } layout) return;
         foreach (var line in layout.Lines)
         {
-            if (layout.Areas[line.Area].FrameId != frame.Id) continue;
+            if (!inArea(layout.Areas[line.Area].FrameId)) continue;
             foreach (var piece in line.Pieces)
             {
                 var given = piece.Format;

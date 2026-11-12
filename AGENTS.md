@@ -41,13 +41,17 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
     (plain text and Markdown to placed paragraphs), `Tabs.cs` (tab stops), `Hyphenator.cs` (Liang's algorithm over
     the patterns embedded from `Hyphenation/`), `Contents.cs` (a table of contents), `Imposition.cs` (booklet
-    order), `Templates.cs` (the built-in templates and .avpt files), `AppSettings.cs`.
+    order), `Templates.cs` (the built-in templates and .avpt files), `Speller.cs` (the SCOWL lists in `Spelling/`),
+    `Eps.cs` and `Ghostscript.cs` (EPS size, preview, and rendering when gs is there), `Tables.cs` (rows, columns,
+    fitting), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
   - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),
     `PageRenderer` (draws a page and its master in points) and `PageVisual` (one page as a control, for export).
   - `PageView.cs`: the pasteboard, rulers, tools, selection, handles, guides, snapping, cropping and in-place text
     editing; `PageScroller.cs` puts scroll bars round it.
   - `StoryEditor.cs`: a story as plain text in a window of its own, kept in step with the page both ways.
+  - `SpellingWindow.cs`: the spelling check, word by word. `Pictures.cs`: pictures loaded once as a bitmap, an SVG
+    (a Skia picture, drawn by `SvgDraw` straight onto the canvas so it stays vector) or an EPS.
   - `Panels.cs` (`SidePanel`: the Object, Text, Pages and Document tabs), `MainWindow.cs` (menus, tool bar, toolbox,
     status bar, files, clipboard, keys), `Export.cs` (PDF and booklets through SkiaSharp, PNG), `Printing.cs` (lp, or Windows' Print action), `FontSupport.cs` (the bundled
     fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs` (`AskDialog`, `ExportDialog`).
@@ -73,7 +77,13 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   columns, mirrored on left-hand sheets), and a page's master from `Document.MasterFor(page)` (a left page gets the
   master's left side). `PageView` draws a spread through `_drawOffset`; `ToView`/`ToPage` are relative to the page
   being worked on.
-- **Colours may be swatch references (`@Name`).** Draw and show them through `Colours.Resolve`; never compare a
+- **A table's cells are stories with `Table` set.** Their `Frames` is the table's id, and their area's id is
+  `table#cell`: map an area to its object with `Chains.ObjectOf`, and find text under a point with
+  `PageView.TextAt`, which knows frames and cells. Deleting or copying a table must take its cell stories with it.
+- **The word lists and hyphenation patterns are other people's work with notices** that must stay with them
+  (`Spelling/SCOWL-Copyright.txt`, the header of `Hyphenation/*.txt`). Svg.Skia must stay on a release built on the
+  same SkiaSharp as Avalonia (5.1.1 for 3.119).
+- **Colours may be swatch references (`@Name`, or `@Name 40%` for a tint).** Draw and show them through `Colours.Resolve`; never compare a
   stored colour with a value.
 - **Hold ids and `SheetRef`s, not objects.** Undo swaps in another copy of the document, so a `PageObject` or `Sheet`
   held across a change may be stale. Look them up again with `Doc.Find(id)` or `SheetRef.Resolve`.

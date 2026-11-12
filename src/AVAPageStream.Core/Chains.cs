@@ -15,6 +15,16 @@ public static class Chains
     /// </summary>
     public static List<Area> Areas(Document doc, Story story)
     {
+        if (story.Table is { } tableId)
+        {
+            // A table cell's story is set in its cell, less the inset.
+            if (doc.Find(tableId) is not TableObject table) return [];
+            var i = table.Cells.IndexOf(story.Id);
+            if (i < 0) return [];
+            var cell = table.CellBox(i);
+            var inner = new Box(cell.X + table.CellInset, cell.Y + table.CellInset, Math.Max(0, cell.W - 2 * table.CellInset), Math.Max(0, cell.H - 2 * table.CellInset));
+            return [new Area(inner, table.CellId(i), 0)];
+        }
         var own = story.Frames.ToHashSet();
         var areas = new List<Area>();
         foreach (var frame in FramesOf(doc, story))
@@ -87,6 +97,15 @@ public static class Chains
         doc.Stories[story.Id] = story;
         frame.StoryId = story.Id;
         return story;
+    }
+
+    /// <summary>The object an area of text is in: a text frame's id, or the table of a cell ("table#3").</summary>
+    public static string ObjectOf(string areaId) => areaId.IndexOf('#') is var i and > 0 ? areaId[..i] : areaId;
+
+    /// <summary>Takes a table that is being deleted away with its cells' stories.</summary>
+    public static void Forget(Document doc, TableObject table)
+    {
+        foreach (var id in table.Cells) doc.Stories.Remove(id);
     }
 
     /// <summary>Takes a frame that is being deleted out of its chain; a story left with no frames goes too.</summary>

@@ -171,8 +171,9 @@ a group moves and scales what it holds and a path its points.
 | **Ellipse** | | Fills its frame. |
 | **Line** | which diagonal (down or up), arrowheads at either end | Drawn corner to corner across its frame; a frame may have zero width or height. |
 | **Text frame** | story id, columns, gutter, inset | Shows its part of the story; empty frames show their columns as faint guides. |
-| **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | A missing picture shows a crossed box. |
+| **Picture** | image hash, fit (stretch, fit, fill, actual size), crop offset | PNG, JPEG, GIF, BMP and WebP; SVG, drawn as vector through Svg.Skia (on screen and in PDFs); EPS, sized by its bounding box and shown by Ghostscript at 300 dpi when it is installed, else by its EPSI preview, else as a labelled box. A missing picture shows a crossed box. |
 | **Group** | children | Moves, resizes (scaling what it holds), arranges, copies and deletes as one. Its frame is the box round what it holds. Double-click a text frame in a group to type in it. Groups don't rotate (what is in them can). |
+| **Table** | columns and rows (widths and heights), a story for each cell, header rows and their fill, cell inset; rules in the stroke | Each cell's story is set in its cell, less the inset; rows keep their height, a cell whose text doesn't fit shows a red mark, and Fit rows to text makes each row as tall as its tallest cell needs. Resizing scales the columns and rows. Tables don't rotate. |
 | **Polygon / Bézier path** | points, each with optional handles in and out; closed or open | Its frame is the box round its points and handles. Only a closed path is filled. |
 
 Fills and strokes are a colour or *none*. A stroke is centred on the frame's edge.
@@ -310,9 +311,17 @@ the pages (not the masters), in page order, as "text, tab, page number" (– for
 a style of its own, Contents 1, Contents 2…, indented a step a level, with a right tab and dot leader at the column's
 width; make the contents again to bring the page numbers up to date (the styles are remade).
 
-### Later
+### Spelling (milestone 3)
 
-Spelling (milestone 3).
+- The word lists are SCOWL's (size 60, the lists Hunspell's English dictionaries are made from, every inflected form
+  included), American or British English (Document tab › Spelling), bundled with SCOWL's copyright notice.
+- A word is right if the list has it, or has it in lower case and it is capitalised or in capitals; curly apostrophes
+  count as straight ones, each part of a hyphenated word is checked, and words with digits pass.
+- Misspelt words get a red wavy line on screen (View › Check spelling as you type), never on paper.
+- Text › Check spelling (F7) goes from the caret through the stories in reading order and round, showing each
+  misspelt word selected on its page, with suggestions (words one or two changes away, commonest first, swapped
+  letters first among them): Change, Change all, Ignore, Ignore all (kept in the document), and Add to dictionary
+  (the user's own words.txt, in the settings folder).
 
 ---
 
@@ -328,6 +337,7 @@ Spelling (milestone 3).
 | Picture | P | Drag a frame, then pick an image file for it; clicking an existing picture replaces its image. |
 | Link | K | Click a text frame, then another: the second joins the first's chain just after it. Clicking an empty frame with the story's last frame picked adds it to the end. Alt+click a frame takes it out of its chain. |
 | Hand | H (or hold Space) | Drag to scroll. |
+| Table | G | Drag a box for a table of 4 rows and 3 columns, its first row a header; the caret goes into its first cell. Double-click a cell (or click it with Text) to type in it. Object › Table puts rows and columns in, and takes them out, where the caret is. |
 | Pen | B | Click for corner points, drag for smooth Bézier points (the handle where the mouse lets go), Shift for 45° steps. Click the first point again to close the shape; double-click or Enter ends it open; Escape gives it up. Double-click a path with Select to drag its points and handles; Delete takes out the last point dragged. |
 
 - A new object is drawn with the last fill and stroke used for its kind.
@@ -374,12 +384,17 @@ Spelling (milestone 3).
 
 ## 10. Colour
 
-- Colours are sRGB with alpha, stored as `#RRGGBB` or `#AARRGGBB`, or as `@Name` for a swatch.
+- Colours are sRGB with alpha, stored as `#RRGGBB` or `#AARRGGBB`, or as `@Name` for a swatch (`@Name 40%` for a
+  tint of it, lightened toward white).
 - The document keeps named swatches: Black, White, Grey, Light grey, Red, Green, Blue, Cyan, Magenta, Yellow and any
   you add (Document tab › Swatches). A colour picked by a swatch's name (typed, or with a swatch button) refers to
   the swatch, so changing the swatch's colour changes every fill, stroke, piece of text and style using it. Renaming
   a swatch renames its references; deleting one leaves what used it with its colour as a plain value.
-- CMYK swatches for print and spot colours: milestone 3.
+- **CMYK and spot colours** (milestone 3): a swatch can be made of CMYK inks (typed as "0 100 100 0", "C0 M100 Y100
+  K0" or "cmyk 0,100,100,0") and marked as a spot ink. Its screen colour comes from the plain conversion (each of
+  red, green and blue is what its opposite ink and the black leave of white; no colour profile). The Document tab
+  lists the inks a document prints with: process, and each spot ink used. PDFs are written in RGB, as SkiaSharp
+  writes no CMYK, so a printer working from them gets the converted colours.
 
 ---
 
@@ -436,7 +451,9 @@ change partly wrong. The title shows `•` while there are changes not saved.
 | Ctrl+0, Ctrl+1, Ctrl+=, Ctrl+- | Fit page, actual size, zoom in, zoom out |
 | Page Up / Page Down | Previous, next page (when not editing text) |
 | Ctrl+] / Ctrl+[ , Ctrl+Shift+] / Ctrl+Shift+[ | Bring forward, send backward; to front, to back |
-| V T R E L P K H B | Tools (when not editing text) |
+| V T R E L P K H B G | Tools (when not editing text) |
+| Tab, Shift+Tab | In a table: the next cell (a new row after the last), the one before |
+| F7 | Check spelling |
 | Ctrl+G, Ctrl+Shift+G | Group, ungroup |
 | Ctrl+F, F3, Shift+F3 | Find and replace; find the next, the one before |
 | Ctrl+Shift+3 | Insert a page number (when editing text) |
@@ -525,5 +542,5 @@ the story editor; find and replace; importing text and Markdown; styled copy and
 Printing; CMYK and spot colours; SVG and EPS pictures; spelling; small caps, super- and subscript; tables; a table of
 contents from paragraph styles; templates; booklet printing.
 
-**Status (11 November 2026):** started. Done and tested: printing, booklets, templates, the table of contents, small
-caps, superscript and subscript. Still to do: CMYK and spot colours, SVG and EPS pictures, spelling, and tables.
+**Status (11 November 2026):** done. Everything above is built and tested. Two parts go as far as the libraries do:
+PDFs are RGB (CMYK colours are converted), and EPS needs Ghostscript to be shown in full.
