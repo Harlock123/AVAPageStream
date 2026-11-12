@@ -127,11 +127,11 @@ internal static class Effects
     {
         var stops = new GradientStops();
         foreach (var s in gr.Stops) stops.Add(new Avalonia.Media.GradientStop(colour(s.Colour) ?? Colors.Transparent, s.At));
+        var (from, to) = gr.Ends(new Box(r.X, r.Y, r.Width, r.Height));
         if (gr.Radial)
         {
-            var centre = new Point(r.X + r.Width * gr.X, r.Y + r.Height * gr.Y);
-            var far = new[] { r.TopLeft, r.TopRight, r.BottomLeft, r.BottomRight }.Max(p => Math.Sqrt((p.X - centre.X) * (p.X - centre.X) + (p.Y - centre.Y) * (p.Y - centre.Y)));
-            var radius = Math.Max(0.01, far * gr.Size);
+            var centre = new Point(from.X, from.Y);
+            var radius = Math.Max(0.01, Math.Sqrt((to.X - from.X) * (to.X - from.X) + (to.Y - from.Y) * (to.Y - from.Y)));
             return new RadialGradientBrush
             {
                 GradientStops = stops,
@@ -142,15 +142,11 @@ internal static class Effects
                 Opacity = opacity,
             };
         }
-        var a = gr.Angle * Math.PI / 180;
-        var (dx, dy) = (Math.Cos(a), Math.Sin(a));
-        var half = Math.Abs(r.Width / 2 * dx) + Math.Abs(r.Height / 2 * dy);
-        var mid = r.Center;
         return new LinearGradientBrush
         {
             GradientStops = stops,
-            StartPoint = new RelativePoint(mid.X - dx * half, mid.Y - dy * half, RelativeUnit.Absolute),
-            EndPoint = new RelativePoint(mid.X + dx * half, mid.Y + dy * half, RelativeUnit.Absolute),
+            StartPoint = new RelativePoint(from.X, from.Y, RelativeUnit.Absolute),
+            EndPoint = new RelativePoint(to.X, to.Y, RelativeUnit.Absolute),
             Opacity = opacity,
         };
     }

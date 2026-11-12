@@ -9,14 +9,52 @@ public enum BlendMode { Normal, Multiply, Screen, Overlay, Darken, Lighten, Colo
 public sealed record ColourStop(double At, string Colour);
 
 /// <summary>
-/// A gradient fill: linear (across the object at <see cref="Angle"/> degrees, 0 left to right, 90 top to bottom) or
-/// radial (out from its centre, <see cref="X"/> and <see cref="Y"/> across and down the object from 0 to 1, to
-/// <see cref="Size"/> times the distance to its furthest corner).
+/// A gradient fill: linear (at <see cref="Angle"/> degrees, 0 left to right, 90 top to bottom, through the point
+/// <see cref="X"/> and <see cref="Y"/> across and down the object from 0 to 1, and <see cref="Size"/> times as long as
+/// it takes to cross the object at that angle) or radial (out from <see cref="X"/>, <see cref="Y"/> to <see cref="Size"/>
+/// times the distance to the object's furthest corner; <see cref="Angle"/> is only where its handle is shown).
 /// </summary>
 public sealed record Gradient(bool Radial, IReadOnlyList<ColourStop> Stops, double Angle = 0, double X = 0.5, double Y = 0.5, double Size = 1)
 {
     public bool Equals(Gradient? other) => other is not null && Radial == other.Radial && Angle == other.Angle && X == other.X && Y == other.Y && Size == other.Size && Stops.SequenceEqual(other.Stops);
     public override int GetHashCode() => HashCode.Combine(Radial, Angle, X, Y, Size, Stops.Count);
+
+    /// <summary>
+    /// Where the gradient runs in a box: from its start to its end, for a linear one; from its centre to its edge, for a
+    /// radial one. These are the ends of the line dragged on the page to set it.
+    /// </summary>
+    public (Pt From, Pt To) Ends(Box r)
+    {
+        var mid = new Pt(r.X + r.W * X, r.Y + r.H * Y);
+        var a = Angle * Math.PI / 180;
+        var (dx, dy) = (Math.Cos(a), Math.Sin(a));
+        if (Radial)
+        {
+            var radius = Math.Max(0.01, Furthest(r, mid) * Size);
+            return (mid, new Pt(mid.X + dx * radius, mid.Y + dy * radius));
+        }
+        var half = Crossing(r, dx, dy) * Size;
+        return (new Pt(mid.X - dx * half, mid.Y - dy * half), new Pt(mid.X + dx * half, mid.Y + dy * half));
+    }
+
+    /// <summary>The gradient set by a line dragged from <paramref name="from"/> to <paramref name="to"/> in a box.</summary>
+    public Gradient Dragged(Box r, Pt from, Pt to)
+    {
+        var (dx, dy) = (to.X - from.X, to.Y - from.Y);
+        var length = Math.Sqrt(dx * dx + dy * dy);
+        if (length < 0.5 || r.W <= 0 || r.H <= 0) return this;
+        var angle = Math.Round(Math.Atan2(dy, dx) * 180 / Math.PI, 2);
+        if (Radial)
+            return this with { X = (from.X - r.X) / r.W, Y = (from.Y - r.Y) / r.H, Angle = angle, Size = length / Math.Max(0.01, Furthest(r, from)) };
+        var mid = new Pt((from.X + to.X) / 2, (from.Y + to.Y) / 2);
+        return this with { X = (mid.X - r.X) / r.W, Y = (mid.Y - r.Y) / r.H, Angle = angle, Size = length / 2 / Math.Max(0.01, Crossing(r, dx / length, dy / length)) };
+    }
+
+    /// <summary>Half the distance across a box in a direction, so a gradient of that angle just spans it.</summary>
+    private static double Crossing(Box r, double dx, double dy) => Math.Abs(r.W / 2 * dx) + Math.Abs(r.H / 2 * dy);
+
+    private static double Furthest(Box r, Pt c) =>
+        new[] { new Pt(r.X, r.Y), new Pt(r.Right, r.Y), new Pt(r.X, r.Bottom), new Pt(r.Right, r.Bottom) }.Max(p => Math.Sqrt((p.X - c.X) * (p.X - c.X) + (p.Y - c.Y) * (p.Y - c.Y)));
 
     /// <summary>
     /// Reads stops as typed: colours separated by commas, each with "at" and a per cent if it isn't evenly spaced:

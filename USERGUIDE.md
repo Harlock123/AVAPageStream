@@ -374,6 +374,11 @@ The Object tab's **Effects** go on any object: shapes, text frames, pictures, ta
 - **Fill with**: a colour, or a **linear** or **radial gradient**. Type its **Colours** separated by commas, swatches
   and tints among them, each with **at** and a per cent if it isn't evenly spaced: `Navy, Gold at 60, White`. A
   linear gradient runs at its **Angle** (0° left to right, 90° top to bottom); a radial one out from the middle.
+- The **Gradient tool** (D, in the toolbox) sets where a gradient runs by dragging: across an object from where its
+  first colour starts to where its last ends, or, for a radial one, out from its centre to its edge. An object with
+  no gradient gets one from its fill to white. The selected object's gradient shows as a line, its start a hollow
+  dot and its end a solid one: drag either to change it (a radial gradient's centre takes its edge with it). Shift
+  keeps the line to steps of 45°.
 - **Opacity** makes the whole object see-through, and **Fill** and **Stroke** each on their own.
 - **Blend** mixes its colours with what is under it: Multiply darkens (as ink over ink), Screen lightens, and the
   others as in other programs.
@@ -384,6 +389,8 @@ The Object tab's **Effects** go on any object: shapes, text frames, pictures, ta
 
 They are drawn the same on screen, in PNGs and in PDFs, where they stay as vector shading and transparency (a
 shadow's blur is the one part a PDF carries as a picture).
+
+![The Gradient tool: a gradient's line across a panel, from its hollow start to its solid end](docs/images/guide/gradienttool.png)
 
 ### Object styles
 

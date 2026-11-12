@@ -501,4 +501,22 @@ public partial class WindowTests
         Guide(w, "outlines");
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_gradient_tool()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var panel = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 90, Y = 90, W = 420, H = 240, Stroke = null, Corners = Corners.All(12) });
+        e.Change("Gradient", d => d.Find(panel.Id)!.Gradient = new Gradient(false, [new ColourStop(0, "@Blue"), new ColourStop(0.55, "@Cyan"), new ColourStop(1, "@White")])
+            .Dragged(d.Find(panel.Id)!.Bounds, new Pt(150, 300), new Pt(430, 120)));
+        e.Add(SheetRef.PageAt(0), new EllipseObject { X = 120, Y = 380, W = 150, H = 150, Stroke = null, Gradient = new Gradient(true, [new ColourStop(0, "@Yellow"), new ColourStop(1, "@Red")], 0, 0.35, 0.35, 0.9) });
+        w.View.Tool = AVAPageStream.Tool.Gradient;
+        w.View.Select([panel.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0, 300);
+        w.Refresh();
+        Guide(w, "gradienttool");
+        Done(w);
+    }
 }

@@ -60,4 +60,29 @@ public class EffectsTests
         Assert.Null(e.Doc.Find(r.Id)!.Gradient);
         Assert.False(e.Doc.Find(r.Id)!.HasEffects);
     }
+
+    [Fact]
+    public void A_gradient_s_ends_are_where_it_is_dragged()
+    {
+        var box = new Box(100, 50, 200, 100);
+        var g = new Gradient(false, [new ColourStop(0, "@Red"), new ColourStop(1, "@Blue")]);
+        Assert.Equal((new Pt(100, 100), new Pt(300, 100)), g.Ends(box));       // across the box, as before
+        var down = g with { Angle = 90 };
+        var (top, foot) = down.Ends(box);
+        Assert.Equal((200, 50, 200, 150), (Math.Round(top.X, 6), Math.Round(top.Y, 6), Math.Round(foot.X, 6), Math.Round(foot.Y, 6)));
+        var dragged = g.Dragged(box, new Pt(120, 60), new Pt(220, 160));        // 45°, from near a corner
+        Assert.Equal(45, dragged.Angle);
+        var (from, to) = dragged.Ends(box);
+        Assert.Equal(120, from.X, 6);
+        Assert.Equal(60, from.Y, 6);
+        Assert.Equal(220, to.X, 6);
+        Assert.Equal(160, to.Y, 6);
+        Assert.Same(g, g.Dragged(box, new Pt(5, 5), new Pt(5.1, 5)));          // a click is no drag
+        var radial = new Gradient(true, g.Stops).Dragged(box, new Pt(150, 75), new Pt(150, 125));
+        Assert.Equal((0.25, 0.25, 90.0), (radial.X, radial.Y, radial.Angle));
+        var (c, edge) = radial.Ends(box);
+        Assert.Equal(new Pt(150, 75), c);
+        Assert.Equal(150, edge.X, 6);
+        Assert.Equal(125, edge.Y, 6);
+    }
 }

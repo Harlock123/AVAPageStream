@@ -517,6 +517,7 @@ public sealed class MainWindow : Window
         (Tool.Picture, "Picture", "P", "F0 M2,4 H18 V16 H2 Z M3.8,5.8 V14.2 H16.2 V5.8 Z M5,13 L8.2,8.8 L10.4,11.2 L12.4,8.4 L15,13 Z"),
         (Tool.Pen, "Pen: polygons and curves", "B", "M3,17 L4.5,12.5 L13,4 L16,7 L7.5,15.5 Z M14,3 L15.5,1.5 L18.5,4.5 L17,6 Z M3,17 L5.5,16.3 L3.7,14.5 Z"),
         (Tool.Table, "Table", "G", "F0 M2,3 H18 V17 H2 Z M3.6,4.6 V7.6 H9.2 V4.6 Z M10.8,4.6 V7.6 H16.4 V4.6 Z M3.6,9.2 V11.6 H9.2 V9.2 Z M10.8,9.2 V11.6 H16.4 V9.2 Z M3.6,13.2 V15.4 H9.2 V13.2 Z M10.8,13.2 V15.4 H16.4 V13.2 Z"),
+        (Tool.Gradient, "Gradient: drag across an object", "D", "F0 M2,3 H18 V17 H2 Z M3.8,4.8 V15.2 H16.2 V4.8 Z M5,6 H7 V14 H5 Z M8.5,6 H10 V14 H8.5 Z M11.3,6 H12.3 V14 H11.3 Z M13.4,6 H13.9 V14 H13.4 Z"),
         (Tool.Link, "Link frames", "K", "F0 M1.5,10 A4,4 0 0 1 5.5,6 H9 V8 H5.5 A2,2 0 0 0 5.5,12 H9 V14 H5.5 A4,4 0 0 1 1.5,10 Z M11,6 H14.5 A4,4 0 0 1 14.5,14 H11 V12 H14.5 A2,2 0 0 0 14.5,8 H11 Z M6.5,9 H13.5 V11 H6.5 Z"),
         (Tool.Hand, "Hand", "H", "M6,18.5 L2.8,11.6 L4.6,10.6 L7,13.2 V4.2 H9 V10 H10 V3 H12 V10 H13 V4.2 H15 V10.6 H15.6 V7 H17.6 V13 L15,18.5 Z"),
     ];

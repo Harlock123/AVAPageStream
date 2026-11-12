@@ -218,4 +218,32 @@ public partial class WindowTests
         Assert.NotNull(e.Doc.Pages[0].Objects.OfType<PathObject>().Single().Shadow);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void The_gradient_tool_drags_a_gradient_across_an_object()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var r = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 100, Y = 100, W = 200, H = 100, Fill = "@Red" });
+        w.View.Tool = AVAPageStream.Tool.Gradient;
+        Drag(w, new Pt(150, 110), new Pt(150, 190));                          // top to bottom, within the box
+        var g = e.Doc.Find(r.Id)!.Gradient!;
+        Assert.Equal(["@Red", "@White"], g.Stops.Select(s => s.Colour));       // from its fill to white
+        var (from, to) = g.Ends(e.Doc.Find(r.Id)!.Bounds);
+        Assert.Equal((150, 110, 150, 190), (Math.Round(from.X), Math.Round(from.Y), Math.Round(to.X), Math.Round(to.Y)));
+        Assert.Equal(90, g.Angle, 1);
+        // Its end dragged, with Shift: the line keeps to 45°.
+        Drag(w, to, new Pt(232, 175), RawInputModifiers.Shift);
+        var g2 = e.Doc.Find(r.Id)!.Gradient!;
+        Assert.Equal(45, g2.Angle, 1);
+        Assert.Equal(from.X, g2.Ends(e.Doc.Find(r.Id)!.Bounds).From.X, 1);   // the start stays put
+        e.Undo();
+        Assert.Equal(90, e.Doc.Find(r.Id)!.Gradient!.Angle, 1);
+        e.Undo();
+        Assert.Null(e.Doc.Find(r.Id)!.Gradient);
+        // Not on an object: it says what to do.
+        Drag(w, new Pt(400, 400), new Pt(450, 450));
+        Assert.Contains("Drag across a shape", w.Message.Text);
+        Done(w);
+    }
 }

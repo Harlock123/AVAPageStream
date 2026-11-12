@@ -9,7 +9,7 @@ using Page = AVAPageStream.Core.Page;
 
 namespace AVAPageStream;
 
-public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand, Pen, Table }
+public enum Tool { Select, Text, Rectangle, Ellipse, Line, Picture, Link, Hand, Pen, Table, Gradient }
 
 /// <summary>The caret and selection in a story being edited, and a format waiting to be typed.</summary>
 public sealed class TextEdit
@@ -46,7 +46,7 @@ public sealed class PageView : Control
     private Tool _tool;
 
     // The drag under way.
-    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text, Crop, Rotate, Pen, Node }
+    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text, Crop, Rotate, Pen, Node, Gradient }
     private Drag _drag;
     private Point _dragStartScreen;
     private Pt _dragStart;
@@ -62,6 +62,9 @@ public sealed class PageView : Control
     private List<PathNode>? _pen;        // the path being drawn with the Pen tool
     private Pt? _penPreview;
     private Pt _penFrom;
+    private string? _gradientId;   // the object whose gradient is being dragged
+    private Pt _gradientAnchor;    // the end that stays put, in the object's own (unturned) coordinates
+    private bool _gradientStart;   // whether the start (or a radial's centre) is the end being dragged
     private (int Node, int Part)? _nodeHit; // in point editing: the point (0) or handle in (1) or out (2) being dragged
     private const int RotateHandle = 8;
     private (double X, double Y) _cropFrom;
@@ -853,6 +856,7 @@ public sealed class PageView : Control
             case Key.H: Tool = Tool.Hand; break;
             case Key.B: Tool = Tool.Pen; break;
             case Key.G: Tool = Tool.Table; break;
+            case Key.D: Tool = Tool.Gradient; break;
             default: return;
         }
         e.Handled = true;
@@ -1128,6 +1132,10 @@ public sealed class PageView : Control
                 PenPress(p, e);
                 return;
 
+            case Tool.Gradient:
+                GradientPress(p, screen, e);
+                return;
+
             case Tool.Select:
                 if (HitOverset(screen) is { } overset)
                 {
@@ -1338,6 +1346,81 @@ public sealed class PageView : Control
 
     private int? _lastNode;
 
+    /// <summary>A point on the page in an object's own coordinates (its rotation undone).</summary>
+    private static Pt Unturned(PageObject o, Pt p) => o.Rotation == 0 ? p : Shapes.Rotate(p, Shapes.Centre(o), -o.Rotation);
+
+    private static bool TakesGradient(PageObject o) => o is not (LineObject or GroupObject or TableObject) && !(o is PathObject { Closed: false });
+
+    /// <summary>
+    /// The Gradient tool's press: on an end of the selected object's gradient, drags that end; elsewhere on an object,
+    /// starts its gradient's line there (giving it a gradient from its fill to white if it has none).
+    /// </summary>
+    private void GradientPress(Pt p, Point screen, PointerPressedEventArgs e)
+    {
+        bool Near(Pt q) => Math.Abs(ToView(q).X - screen.X) <= HandleSize && Math.Abs(ToView(q).Y - screen.Y) <= HandleSize;
+        if (Selected is [{ Locked: false, Gradient: { } g } sel])
+        {
+            var (from, to) = g.Ends(sel.Bounds);
+            foreach (var (start, at, other) in new[] { (false, to, from), (true, from, to) })
+                if (Near(Shapes.ToPage(sel, at)))
+                {
+                    (_gradientId, _gradientStart, _gradientAnchor) = (sel.Id, start, other);
+                    _editor.Begin();
+                    Begin(Drag.Gradient, e);
+                    return;
+                }
+        }
+        if (HitObject(p) is not { } hit || !TakesGradient(hit))
+        {
+            Status?.Invoke("Drag across a shape, frame or picture to set its gradient: from where the first colour starts to where the last ends.");
+            return;
+        }
+        if (hit.Locked) { Status?.Invoke("That object is locked. Unlock it to change it."); return; }
+        Select([hit.Id]);
+        (_gradientId, _gradientStart, _gradientAnchor) = (hit.Id, false, Unturned(hit, p));
+        _editor.Begin();
+        if (hit.Gradient is null)
+        {
+            var white = Doc.Swatches.Any(w => w.Name == "White") ? Colours.Ref("White") : Colours.White;
+            hit.Gradient = new Gradient(false, [new ColourStop(0, hit.Fill ?? Colours.Black), new ColourStop(1, white)]);
+        }
+        Begin(Drag.Gradient, e);
+    }
+
+    /// <summary>Moves the gradient's dragged end; Shift keeps the line to steps of 45°.</summary>
+    private void DragGradient(Pt p)
+    {
+        if (_gradientId is not { } id || Doc.Find(id) is not { Gradient: { } g } o) return;
+        var at = Unturned(o, p);
+        if (_shift)
+        {
+            var (dx, dy) = (at.X - _gradientAnchor.X, at.Y - _gradientAnchor.Y);
+            var len = Math.Sqrt(dx * dx + dy * dy);
+            var a = Math.Round(Math.Atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4);
+            at = new Pt(_gradientAnchor.X + Math.Cos(a) * len, _gradientAnchor.Y + Math.Sin(a) * len);
+        }
+        // A radial gradient's centre moves with its edge, keeping the radius, when the centre is dragged.
+        if (_gradientStart && g.Radial)
+        {
+            var (from, to) = g.Ends(o.Bounds);
+            o.Gradient = g.Dragged(o.Bounds, at, new Pt(at.X + to.X - from.X, at.Y + to.Y - from.Y));
+        }
+        else o.Gradient = _gradientStart ? g.Dragged(o.Bounds, at, _gradientAnchor) : g.Dragged(o.Bounds, _gradientAnchor, at);
+        _editor.Preview();
+    }
+
+    /// <summary>The selected object's gradient as a line: its start (or centre) a hollow dot, its end a solid one.</summary>
+    private void DrawGradientLine(DrawingContext dc, PageObject o)
+    {
+        if (o.Gradient is not { } g) return;
+        var (from, to) = g.Ends(o.Bounds);
+        var (a, b) = (ToView(Shapes.ToPage(o, from)), ToView(Shapes.ToPage(o, to)));
+        dc.DrawLine(new Pen(Brushes.White, 3), a, b);
+        dc.DrawLine(new Pen(Look.Handle, 1.2), a, b);
+        dc.DrawEllipse(Brushes.White, new Pen(Look.Handle, 1.5), a, HandleSize / 2 + 1, HandleSize / 2 + 1);
+        dc.DrawEllipse(Look.Handle, new Pen(Brushes.White, 1.5), b, HandleSize / 2 + 1, HandleSize / 2 + 1);
+    }
+
     private void DragNode(Pt p)
     {
         if (EditingPoints is not { } id || Doc.Find(id) is not PathObject path || _nodeHit is not { } hit) return;
@@ -1459,6 +1542,9 @@ public sealed class PageView : Control
                 break;
             case Drag.Node:
                 DragNode(p);
+                break;
+            case Drag.Gradient:
+                DragGradient(p);
                 break;
             case Drag.Create:
                 _dragNow = Snapped(p);
@@ -1590,6 +1676,10 @@ public sealed class PageView : Control
             case Drag.Node:
                 _editor.Commit("Edit points");
                 break;
+            case Drag.Gradient:
+                _editor.Commit("Drag gradient");
+                Notify();
+                break;
             case Drag.Create:
                 FinishCreate();
                 break;
@@ -1610,7 +1700,7 @@ public sealed class PageView : Control
 
     private void CancelDrag()
     {
-        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node) _editor.Cancel();
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node or Drag.Gradient) _editor.Cancel();
         _drag = Drag.None;
         InvalidateVisual();
     }
@@ -1948,6 +2038,11 @@ public sealed class PageView : Control
         {
             if (o is not LineObject) Outline(dc, o, null, o is GroupObject ? Look.Marquee : Look.Selection);
             if (Editing is not null || EditingPoints == o.Id) continue;
+            if (_tool == Tool.Gradient)
+            {
+                if (selected.Count == 1) DrawGradientLine(dc, o);
+                continue;
+            }
             foreach (var h in Handles(o)) Square(dc, h, o.Locked);
             if (selected.Count == 1 && CanRotate(o) && !o.Locked)
             {
@@ -2208,7 +2303,7 @@ public sealed class PageView : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node && _editor.Busy) _editor.Commit("Move");
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop or Drag.Rotate or Drag.Node or Drag.Gradient && _editor.Busy) _editor.Commit("Move");
         _drag = Drag.None;
     }
 }
