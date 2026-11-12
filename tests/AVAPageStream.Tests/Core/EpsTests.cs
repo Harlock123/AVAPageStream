@@ -6,7 +6,7 @@ namespace AVAPageStream.Tests.Core;
 public class EpsTests
 {
     /// <summary>A small EPS: a 4×2 preview (1 bit: a black left half) and a bounding box of 0 0 40 20.</summary>
-    /// <param name="text">With a tiling pattern in it, which AVAPageStream doesn't draw itself: so the preview is what shows.</param>
+    /// <param name="text">With Lab colour in it, which AVAPageStream doesn't draw itself: so the preview is what shows.</param>
     internal static byte[] Sample(bool binary = false, bool text = false)
     {
         var ps = """
@@ -20,7 +20,7 @@ public class EpsTests
             0 0 20 20 rectfill
             %%EOF
             """.Replace("\r\n", "\n");
-        if (text) ps = ps.Replace("%%EOF", "<< /PatternType 1 >> matrix makepattern pop\n%%EOF");
+        if (text) ps = ps.Replace("%%EOF", "[/Lab << >>] setcolorspace\n%%EOF");
         var bytes = Encoding.ASCII.GetBytes(ps);
         if (!binary) return bytes;
         // The DOS binary form: a 30-byte header pointing at the PostScript.

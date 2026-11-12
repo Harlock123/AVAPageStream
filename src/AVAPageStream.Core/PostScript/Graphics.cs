@@ -18,7 +18,8 @@ public sealed class GState
     public double DashOffset;
     public List<PsClip> Clips = [];
     public PsDict? Font;
-    public PsDict? Pattern;  // a shading pattern being painted with
+    public PsDict? Pattern;  // a pattern being painted with
+    public PsColour? PatternColour; // for an uncoloured one, its colour
     public bool StrokeAdjust;
     public double Flat = 1;
 
@@ -238,7 +239,10 @@ public sealed partial class Interpreter
             "DeviceN" => "DeviceN",
             "ICCBased" => "ICCBased",
             "Pattern" => "Pattern",
-            "CIEBasedABC" or "CIEBasedA" or "CIEBasedDEF" or "CIEBasedDEFG" or "Lab" => throw new PsError("unsupported", "CIE colour spaces"),
+            "CIEBasedABC" or "CIEBasedDEF" => name,
+            "CIEBasedA" => name,
+            "CIEBasedDEFG" => name,
+            "Lab" => throw new PsError("unsupported", "Lab colour"),
             _ => throw new PsError("unsupported", "colour space " + name),
         };
         SetComponents(G.Space switch
@@ -248,6 +252,8 @@ public sealed partial class Interpreter
             "Separation" => [1],
             "DeviceN" => Enumerable.Repeat(1.0, ((PsArray)((PsArray)array)[1]).Length).ToArray(),
             "ICCBased" => new double[IccComponents((PsArray)array)],
+            "CIEBasedABC" or "CIEBasedDEF" => [0, 0, 0],
+            "CIEBasedDEFG" => [0, 0, 0, 0],
             _ => [0],
         });
     }
@@ -295,6 +301,8 @@ public sealed partial class Interpreter
                 }
                 return ToRgb(baseName, baseArray, comps);
             }
+            case "CIEBasedA" or "CIEBasedABC" or "CIEBasedDEF" or "CIEBasedDEFG":
+                return Cie(space, (PsArray)array, c);
             case "Separation" or "DeviceN":
             {
                 // The colour its alternative space gives: the tint run through the tint transform.
@@ -459,7 +467,16 @@ public sealed partial class Interpreter
         Op("flattenpath", _ => { });
         Op("reversepath", _ => { });
         Op("setbbox", i => { i.Num(); i.Num(); i.Num(); i.Num(); });
-        Op("strokepath", _ => throw new PsError("unsupported", "strokepath"));
+        Op("strokepath", i =>
+        {
+            // The outline a stroke would fill, worked out in user space (the pen turns with the matrix) by the program's outliner.
+            if (i.G.Path.IsEmpty) return;
+            if (i.StrokeOutliner is null) throw new PsError("unsupported", "strokepath");
+            var inv = i.Inverse;
+            var outline = i.StrokeOutliner(i.G.Path.Transformed(inv), i.Pen) ?? throw new PsError("unsupported", "strokepath");
+            i.G.Path = outline.Transformed(i.G.Ctm);
+            i.G.Point = null;
+        });
         Op("pathforall", i =>
         {
             var close = i.Proc(); var curve = i.Proc(); var line = i.Proc(); var move = i.Proc();
@@ -558,8 +575,24 @@ public sealed partial class Interpreter
         Op("currentcolorspace", i => i.Push(i.G.SpaceArray is PsArray a ? a : new PsArray([i.G.SpaceArray])));
         Op("setcolor", i =>
         {
-            if (i.G.Space == "Pattern") { i.G.Pattern = i.Pop<PsDict>("setcolor"); return; }
-            var n = i.G.Space switch { "DeviceRGB" => 3, "DeviceCMYK" => 4, "DeviceN" => ((PsArray)((PsArray)i.G.SpaceArray)[1]).Length, "ICCBased" => IccComponents((PsArray)i.G.SpaceArray), _ => 1 };
+            if (i.G.Space == "Pattern")
+            {
+                i.G.Pattern = i.Pop<PsDict>("setcolor");
+                // An uncoloured pattern's colour, in the space under it: [/Pattern /DeviceRGB].
+                if (i.G.SpaceArray is PsArray { Length: > 1 } under)
+                {
+                    var keep = (i.G.Space, i.G.SpaceArray, i.G.Components, i.G.Colour);
+                    i.SetSpace(under[1]);
+                    var count = i.G.Components.Length;
+                    var cs = new double[count];
+                    for (var k = count - 1; k >= 0; k--) cs[k] = i.Num();
+                    var colour = i.ToRgb(i.G.Space, i.G.SpaceArray, cs);
+                    (i.G.Space, i.G.SpaceArray, i.G.Components, i.G.Colour) = keep;
+                    i.G.PatternColour = colour;
+                }
+                return;
+            }
+            var n = i.G.Space switch { "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" => 3, "DeviceCMYK" or "CIEBasedDEFG" => 4, "DeviceN" => ((PsArray)((PsArray)i.G.SpaceArray)[1]).Length, "ICCBased" => IccComponents((PsArray)i.G.SpaceArray), _ => 1 };
             var c = new double[n];
             for (var k = n - 1; k >= 0; k--) c[k] = i.Num();
             i.SetComponents(c);
@@ -611,7 +644,19 @@ public sealed partial class Interpreter
         {
             var category = i.Pop<PsName>("findresource").Value;
             var key = i.Pop();
+            if (category == "ProcSet" && Show(key) == "CIDInit") { i.Push(i.CidInit()); return; }
+            if (category == "ProcSet" && Show(key) == "FontSetInit") { i.Push(i.FontSetInit()); return; }
             if (category == "ProcSet" && i.Lookup(Show(key)) is PsDict known) { i.Push(known); return; }
+            if (category == "CMap")
+            {
+                if (i.Resources("CMap").Get(key) is PsDict cm) { i.Push(cm); return; }
+                var made = new PsDict();
+                made.Put("CMapName", new PsName(Show(key)));
+                made.Put(CMapKey, i.CMapOf(key));
+                i.Push(made);
+                return;
+            }
+            if (category == "CIDFont") { i.Push(i.Resources("CIDFont").Get(key) ?? throw new PsError("undefinedresource", Show(key))); return; }
             if (category is "ColorSpace" or "Category" or "ProcSet" or "Encoding")
             {
                 i.Push(i.Resources(category).Get(key) ?? throw new PsError("undefinedresource", Show(key)));
@@ -625,6 +670,8 @@ public sealed partial class Interpreter
             var category = i.Pop<PsName>("defineresource").Value;
             var instance = i.Pop();
             var key = i.Pop();
+            if (instance is PsDict fontLike && category is "CIDFont" or "Font" && fontLike.Get("FID") is null) fontLike.Put("FID", new PsFontId(Show(key)));
+            if (category == "Font") i.FontDirectory.Put(key, instance);
             i.Resources(category).Put(key, instance);
             i.Push(instance);
         });

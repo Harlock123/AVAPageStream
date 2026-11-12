@@ -132,6 +132,6 @@ public class ImageTests
         Assert.NotNull(r.Area);                            // the rectangle filled with it
         Assert.Equal(0.5, r.Colours[16].R, 6);              // a quarter of the way: half of the first function
         Assert.Equal(0.25, r.Colours[48].R, 6);             // past the bound: the PostScript function
-        Assert.Equal("unsupported", new Interpreter().Run("<< /PatternType 1 >> matrix makepattern")!.Name); // tiling: not yet
+        Assert.Equal("unsupported", new Interpreter().Run("<< /PatternType 3 >> matrix makepattern")!.Name); // no such pattern
     }
 }

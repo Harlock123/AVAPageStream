@@ -14,6 +14,11 @@ public sealed partial class Interpreter
     /// <summary>This interpreter's printer-font outlines: <see cref="SystemGlyphs"/> unless given others (as tests do).</summary>
     public Func<string, bool, bool, int, SystemGlyph?>? Glyphs { get; init; } = SystemGlyphs;
 
+    /// <summary>Works out the outline of a stroke (for strokepath): its path in user space and the pen. Given by the program.</summary>
+    public static Func<PsPath, PsPen, PsPath?>? Outliner { get; set; }
+
+    public Func<PsPath, PsPen, PsPath?>? StrokeOutliner { get; init; } = Outliner;
+
     private const string SystemKey = "AVAPageStream.Font";
     private readonly Dictionary<(object, string), (PsPath Path, double Wx, double Wy)> _glyphs = [];
     private readonly Dictionary<object, TrueType> _trueTypes = [];
@@ -40,7 +45,7 @@ public sealed partial class Interpreter
         {
             var font = i.Pop<PsDict>("definefont");
             var key = i.Pop();
-            if (font.Get("FontType") is { } t && (int)ToNum(t) is 0 or 2 or 9 or 10 or 11 or 32) throw new PsError("unsupported", "composite and CFF fonts");
+            if (font.Get("FontType") is { } t && (int)ToNum(t) is 9 or 10 or 11 or 32) throw new PsError("unsupported", "CFF-based CIDFonts made by definefont");
             font.Put("FID", new PsFontId(Show(key)));
             i.FontDirectory.Put(key, font);
             i.Resources("Font").Put(key, font);
@@ -59,7 +64,13 @@ public sealed partial class Interpreter
             var font = key as PsDict ?? i.FindFont(key);
             i.G.Font = size is PsArray m ? Transformed(font, ToMatrix(m)) : Transformed(font, new PsMatrix(ToNum(size), 0, 0, ToNum(size), 0, 0));
         });
-        Op("composefont", _ => throw new PsError("unsupported", "composite fonts"));
+        Op("composefont", i =>
+        {
+            var fonts = i.Pop<PsArray>("composefont");
+            var cmap = i.Pop();
+            var key = i.Pop();
+            i.Push(i.ComposeFont(key, cmap, fonts));
+        });
         Op("setcachedevice", i => { for (var k = 0; k < 4; k++) i.Pop(); var wy = i.Num(); var wx = i.Num(); i._charWidth = (wx, wy); });
         Op("setcachedevice2", i => { for (var k = 0; k < 8; k++) i.Pop(); var wy = i.Num(); var wx = i.Num(); i._charWidth = (wx, wy); });
         Op("setcharwidth", i => { var wy = i.Num(); var wx = i.Num(); i._charWidth = (wx, wy); });
@@ -83,7 +94,7 @@ public sealed partial class Interpreter
             var numbers = i.Pop() switch
             {
                 PsArray a => a.All().Select(ToNum).ToArray(),
-                PsString => throw new PsError("unsupported", "encoded number strings"),
+                PsString packed => EncodedNumbers(packed),
                 _ => throw new PsError("typecheck", name),
             };
             var s = i.Pop<PsString>(name);
@@ -103,24 +114,78 @@ public sealed partial class Interpreter
             var proc = i.Proc();
             i.Show(s, between: (a, b) => { i.Push(a); i.Push(b); i.RunProc(proc); });
         });
-        Op("cshow", _ => throw new PsError("unsupported", "cshow"));
-        Op("glyphshow", i => i.ShowGlyphs([(-1, Show(i.Pop()))], null, null, null, path: false));
-        Op("charpath", i => { i.Bool(); var s = i.Pop<PsString>("charpath"); i.ShowGlyphs(Codes(i.Font(), s), null, null, null, path: true); });
+        Op("cshow", i =>
+        {
+            // Each character's code and advance given to the procedure, which shows it (or not) itself.
+            var s = i.Pop<PsString>("cshow");
+            var proc = i.Proc();
+            foreach (var g in i.Codes(i.Font(), s))
+            {
+                var (gx, gy) = i.Width(g);
+                var (wx, wy) = g.Matrix.Delta(gx, gy);
+                i.Push(g.Code);
+                i.Push(wx);
+                i.Push(wy);
+                i.RunProc(proc);
+            }
+        });
+        Op("glyphshow", i =>
+        {
+            var g = i.Pop();
+            var font = i.Font();
+            // A CID for a CIDFont, a name for anything else.
+            var target = font.Get("FontType") is { } t && (int)ToNum(t) == 0 && font.Get("FDepVector") is PsArray v && v.Length > 0 && v[0] is PsDict d ? d : font;
+            var matrix = ReferenceEquals(target, font) ? FontMatrix(font) : FontMatrix(target).Then(FontMatrix(font));
+            i.ShowGlyphs([new GlyphRef(target, matrix, -1, g is int ? "" : Show(g), g is int cid ? cid : -1)], null, null, null, path: false);
+        });
+        Op("charpath", i => { i.Bool(); var s = i.Pop<PsString>("charpath"); i.ShowGlyphs(i.Codes(i.Font(), s), null, null, null, path: true); });
         Op("stringwidth", i =>
         {
             var s = i.Pop<PsString>("stringwidth");
-            var font = i.Font();
-            var fm = FontMatrix(font);
             double wx = 0, wy = 0;
-            foreach (var (code, name) in Codes(font, s))
+            foreach (var g in i.Codes(i.Font(), s))
             {
-                var (gx, gy) = i.Width(font, code, name);
-                var (ux, uy) = fm.Delta(gx, gy);
+                var (gx, gy) = i.Width(g);
+                var (ux, uy) = g.Matrix.Delta(gx, gy);
                 (wx, wy) = (wx + ux, wy + uy);
             }
             i.Push(wx);
             i.Push(wy);
         });
+    }
+
+    /// <summary>
+    /// An encoded number string, as xshow and the like may take: a header (149, its representation, its count) and
+    /// the numbers, as 32-bit or 16-bit fixed point, or 32-bit reals, either byte order.
+    /// </summary>
+    public static double[] EncodedNumbers(PsString s)
+    {
+        if (s.Length < 4 || s[0] != 149) throw new PsError("typecheck", "number string");
+        var r = (int)s[1];
+        var little = r >= 128;
+        var rep = r % 128;
+        var count = little ? s[2] | s[3] << 8 : s[2] << 8 | s[3];
+        var numbers = new double[count];
+        var at = 4;
+        for (var k = 0; k < count; k++)
+        {
+            uint U(int bytes)
+            {
+                uint v = 0;
+                for (var b = 0; b < bytes; b++) v = little ? v | (uint)s[at + b] << (8 * b) : v << 8 | s[at + b];
+                at += bytes;
+                return v;
+            }
+            if (at + (rep < 32 || rep >= 48 ? 4 : 2) > s.Length) break;
+            numbers[k] = rep switch
+            {
+                < 32 => (int)U(4) / Math.Pow(2, rep),
+                < 48 => (short)U(2) / Math.Pow(2, rep - 32),
+                48 or 49 => BitConverter.UInt32BitsToSingle(U(4)),
+                _ => throw new PsError("typecheck", "number string"),
+            };
+        }
+        return numbers;
     }
 
     private PsDict Font() => G.Font ?? FindFont(new PsName("Courier"));
@@ -137,20 +202,97 @@ public sealed partial class Interpreter
         return copy;
     }
 
-    /// <summary>The characters of a string, each with its glyph's name in the font's encoding.</summary>
-    private static List<(int Code, string Name)> Codes(PsDict font, PsString s)
+    /// <summary>A glyph to set: the (base) font it is in, the matrix from its glyph space, its code, its name, and its CID (or -1).</summary>
+    private readonly record struct GlyphRef(PsDict Font, PsMatrix Matrix, int Code, string Name, int Cid);
+
+    private static bool IsCid(PsDict font) => font.Get("CIDFontType") is not null;
+
+    /// <summary>
+    /// The glyphs a string shows in a font. A composite (Type 0) font's bytes are split by its mapping into codes of
+    /// its descendant fonts: 8/8, 1/7, 9/7 or SubsVector, or a CMap giving CIDs for a CIDFont.
+    /// </summary>
+    private List<GlyphRef> Codes(PsDict font, PsString s)
     {
-        if (font.Get("FontType") is { } t && (int)ToNum(t) == 0) throw new PsError("unsupported", "composite fonts");
-        var encoding = font.Get("Encoding") as PsArray;
-        var list = new List<(int, string)>(s.Length);
-        for (var k = 0; k < s.Length; k++)
+        var fm = FontMatrix(font);
+        if (font.Get("FontType") is not { } t || (int)ToNum(t) != 0)
         {
-            var c = (int)s[k];
-            var name = encoding is not null && c < encoding.Length && encoding[c] is PsName n ? n.Value
-                : encoding is null ? Encodings.Standard[c] ?? ".notdef" : ".notdef";
-            list.Add((c, name));
+            var encoding = font.Get("Encoding") as PsArray;
+            var list = new List<GlyphRef>(s.Length);
+            for (var k = 0; k < s.Length; k++)
+            {
+                var c = (int)s[k];
+                var name = encoding is not null && c < encoding.Length && encoding[c] is PsName n ? n.Value
+                    : encoding is null ? Encodings.Standard[c] ?? ".notdef" : ".notdef";
+                list.Add(new GlyphRef(font, fm, c, name, -1));
+            }
+            return list;
         }
-        return list;
+        var map = font.Get("FMapType") is { } m ? (int)ToNum(m) : 2;
+        var fdep = font.Get("FDepVector") as PsArray ?? throw new PsError("invalidfont", "FDepVector");
+        var fencoding = font.Get("Encoding") as PsArray;
+        var glyphs = new List<GlyphRef>();
+        PsDict Descendant(int index)
+        {
+            var e = fencoding is not null && index < fencoding.Length ? (int)ToNum(fencoding[index]) : index;
+            return e < fdep.Length && fdep[e] is PsDict d ? d : throw new PsError("rangecheck", "font number");
+        }
+        void Add(PsDict d, int code, int cid = -1)
+        {
+            if (d.Get("FontType") is { } dt && (int)ToNum(dt) == 0) throw new PsError("unsupported", "composite fonts within composite fonts");
+            var matrix = FontMatrix(d).Then(fm);
+            if (IsCid(d)) { glyphs.Add(new GlyphRef(d, matrix, code, "", cid < 0 ? code : cid)); return; }
+            var enc = d.Get("Encoding") as PsArray;
+            var name = enc is not null && code < enc.Length && enc[code] is PsName n ? n.Value : Encodings.Standard[code & 255] ?? ".notdef";
+            glyphs.Add(new GlyphRef(d, matrix, code, name, -1));
+        }
+        switch (map)
+        {
+            case 2: // 8/8: a font number, then a code
+                for (var k = 0; k + 1 < s.Length; k += 2) Add(Descendant(s[k]), s[k + 1]);
+                break;
+            case 4: // 1/7
+                for (var k = 0; k < s.Length; k++) Add(Descendant(s[k] >> 7), s[k] & 127);
+                break;
+            case 5: // 9/7
+                for (var k = 0; k + 1 < s.Length; k += 2) { var v = s[k] << 8 | s[k + 1]; Add(Descendant(v >> 7), v & 127); }
+                break;
+            case 6: // SubsVector: the code's range says the font
+            {
+                var sv = font.Get("SubsVector") as PsString ?? throw new PsError("invalidfont", "SubsVector");
+                var width = sv[0] + 1;
+                var ranges = new List<long>();
+                for (var k = 1; k + width <= sv.Length; k += width)
+                {
+                    long r = 0;
+                    for (var b = 0; b < width; b++) r = r << 8 | sv[k + b];
+                    ranges.Add(r);
+                }
+                for (var k = 0; k + width <= s.Length; k += width)
+                {
+                    long code = 0;
+                    for (var b = 0; b < width; b++) code = code << 8 | s[k + b];
+                    var f = 0;
+                    while (f < ranges.Count && code >= ranges[f]) { code -= ranges[f]; f++; }
+                    Add(Descendant(f), (int)code);
+                }
+                break;
+            }
+            case 9: // a CMap: codes to CIDs, in the first descendant (a CIDFont)
+            {
+                var cmap = CMapOf(font.Get("CMap") ?? throw new PsError("invalidfont", "CMap"));
+                var d = (PsDict)fdep[0];
+                for (var k = 0; k < s.Length;)
+                {
+                    var (cid, used) = cmap.Lookup(s, k);
+                    Add(d, cid, cid);
+                    k += Math.Max(1, used);
+                }
+                break;
+            }
+            default:
+                throw new PsError("unsupported", $"composite fonts with FMapType {map}");
+        }
+        return glyphs;
     }
 
     /// <summary>
@@ -201,6 +343,8 @@ public sealed partial class Interpreter
             return r;
         }
         var type = font.Get("FontType") is { } t ? (int)ToNum(t) : 1;
+        if (font.Get(CffKey) is Cff cff) return CffGlyph(font, cff, code, name);
+        if (IsCid(font)) return CidGlyph(font, code);
         if (type == 42) return TrueTypeGlyph(font, name);
         if (type == 1 || type == 4) return Type1Glyph(font, name);
         throw new PsError("unsupported", $"fonts of type {type}");
@@ -236,12 +380,13 @@ public sealed partial class Interpreter
     }
 
     /// <summary>A glyph's advance in glyph space; a Type 3 glyph's is what its procedure sets, so it is run (and what it paints thrown away).</summary>
-    private (double X, double Y) Width(PsDict font, int code, string name)
+    private (double X, double Y) Width(GlyphRef g)
     {
+        var (font, code, name) = (g.Font, g.Cid >= 0 ? g.Cid : g.Code, g.Name);
         if (font.Get("FontType") is { } t && (int)ToNum(t) == 3)
         {
             var ops = Ops.Count;
-            var w = RunType3(font, code, name, PsMatrix.Identity);
+            var w = RunType3(font, g.Code, name, PsMatrix.Identity);
             Ops.RemoveRange(ops, Ops.Count - ops);
             return w;
         }
@@ -287,35 +432,31 @@ public sealed partial class Interpreter
     /// Sets glyphs from the current point: each drawn (or, for charpath, added to the path) and the point moved on by
     /// its advance, or by what xshow and the like give, plus what ashow and widthshow add. In user space throughout.
     /// </summary>
-    private void ShowGlyphs(List<(int Code, string Name)> glyphs, Func<int, int, (double X, double Y)>? extra, Func<int, (double X, double Y)>? advance, Action<int, int>? between, bool path)
+    private void ShowGlyphs(List<GlyphRef> glyphs, Func<int, int, (double X, double Y)>? extra, Func<int, (double X, double Y)>? advance, Action<int, int>? between, bool path)
     {
-        var font = Font();
-        var fm = FontMatrix(font);
-        var type3 = font.Get("FontType") is { } t && (int)ToNum(t) == 3;
-        if (type3 && path) throw new PsError("unsupported", "charpath with a Type 3 font");
-        var stroked = font.Get("PaintType") is { } pt && (int)ToNum(pt) == 2;
+        var top = Font();
+        var stroked = top.Get("PaintType") is { } pt && (int)ToNum(pt) == 2;
         var outline = new PsPath();
         for (var k = 0; k < glyphs.Count; k++)
         {
-            var (code, name) = glyphs[k];
+            var g = glyphs[k];
+            var type3 = g.Font.Get("FontType") is { } t && (int)ToNum(t) == 3;
+            if (type3 && path) throw new PsError("unsupported", "charpath with a Type 3 font");
             var cpu = Inverse.Apply(Current.X, Current.Y);
-            var toDevice = fm.Then(new PsMatrix(1, 0, 0, 1, cpu.X, cpu.Y)).Then(G.Ctm);
+            var toDevice = g.Matrix.Then(new PsMatrix(1, 0, 0, 1, cpu.X, cpu.Y)).Then(G.Ctm);
             double wx, wy;
-            if (type3)
-            {
-                (wx, wy) = RunType3(font, code, name, toDevice);
-            }
+            if (type3) (wx, wy) = RunType3(g.Font, g.Code, g.Name, toDevice);
             else
             {
-                var (glyphPath, gx, gy) = Glyph(font, code, name);
+                var (glyphPath, gx, gy) = Glyph(g.Font, g.Cid >= 0 ? g.Cid : g.Code, g.Name);
                 outline.Segs.AddRange(glyphPath.Transformed(toDevice).Segs);
                 (wx, wy) = (gx, gy);
             }
-            var (ux, uy) = advance?.Invoke(k) ?? fm.Delta(wx, wy);
-            if (extra?.Invoke(k, code) is var (ex, ey)) (ux, uy) = (ux + ex, uy + ey);
+            var (ux, uy) = advance?.Invoke(k) ?? g.Matrix.Delta(wx, wy);
+            if (extra?.Invoke(k, g.Code) is var (ex, ey)) (ux, uy) = (ux + ex, uy + ey);
             var (dx, dy) = G.Ctm.Delta(ux, uy);
             G.Point = (Current.X + dx, Current.Y + dy);
-            if (between is not null && k + 1 < glyphs.Count) between(code, glyphs[k + 1].Code);
+            if (between is not null && k + 1 < glyphs.Count) between(g.Code, glyphs[k + 1].Code);
         }
         if (outline.IsEmpty) return;
         if (path)
@@ -329,8 +470,8 @@ public sealed partial class Interpreter
         if (G.Space == "Pattern") { FillWithPattern(outline, false); return; }
         if (stroked && G.Ctm.Inverse() is { } inv)
         {
-            var width = font.Get("StrokeWidth") is { } sw ? ToNum(sw) : 0;
-            Ops.Add(new PsStroke(outline.Transformed(inv), G.Ctm, Pen with { Width = width * Math.Abs(fm.A) }, G.Colour, [.. G.Clips]));
+            var width = top.Get("StrokeWidth") is { } sw ? ToNum(sw) : 0;
+            Ops.Add(new PsStroke(outline.Transformed(inv), G.Ctm, Pen with { Width = width * Math.Abs(FontMatrix(top).A) }, G.Colour, [.. G.Clips]));
         }
         else Ops.Add(new PsFill(outline, G.Colour, false, [.. G.Clips]));
     }

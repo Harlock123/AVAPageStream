@@ -50,7 +50,9 @@ public sealed partial class Interpreter
     private void DictImage(PsDict d, bool mask)
     {
         int Need(string key) => d.Get(key) is { } v ? (int)ToNum(v) : throw new PsError("undefined", "image " + key);
-        if (d.Get("ImageType") is { } t && (int)ToNum(t) != 1) throw new PsError("unsupported", "masked images");
+        var type = d.Get("ImageType") is { } t ? (int)ToNum(t) : 1;
+        if (type == 3 && !mask) { MaskedImage(d); return; }
+        if (type is not (1 or 4)) throw new PsError("unsupported", "images of type " + type);
         var w = Need("Width");
         var h = Need("Height");
         var matrix = ToMatrix(d.Get("ImageMatrix") as PsArray ?? throw new PsError("undefined", "image ImageMatrix"));
@@ -63,14 +65,78 @@ public sealed partial class Interpreter
         }
         var multiple = d.Get("MultipleDataSources") is true;
         var sources = multiple && source is PsArray a ? a.All().ToArray() : [source];
-        Sampled(w, h, Need("BitsPerComponent"), matrix, sources, multiple, G.Space, G.SpaceArray, decode);
+        // ImageType 4: the samples MaskColor gives (a value, or a range, for each colour) are left clear.
+        var key = type == 4 ? (d.Get("MaskColor") as PsArray)?.All().Select(o => (long)ToNum(o)).ToArray() : null;
+        Sampled(w, h, Need("BitsPerComponent"), matrix, sources, multiple, G.Space, G.SpaceArray, decode, colourKey: key);
+    }
+
+    /// <summary>
+    /// ImageType 3: a picture with a mask of where it is painted (a mask value 0, by its decode, paints), the mask
+    /// interleaved in the picture's samples (1), its rows (2), or from a source of its own (3).
+    /// </summary>
+    private void MaskedImage(PsDict d)
+    {
+        var data = d.Get("DataDict") as PsDict ?? throw new PsError("undefined", "DataDict");
+        var maskDict = d.Get("MaskDict") as PsDict ?? throw new PsError("undefined", "MaskDict");
+        var interleave = d.Get("InterleaveType") is { } it ? (int)ToNum(it) : 1;
+        int Need(PsDict x, string key) => x.Get(key) is { } v ? (int)ToNum(v) : throw new PsError("undefined", "image " + key);
+        var (w, h, bits) = (Need(data, "Width"), Need(data, "Height"), Need(data, "BitsPerComponent"));
+        var matrix = ToMatrix(data.Get("ImageMatrix") as PsArray ?? throw new PsError("undefined", "ImageMatrix"));
+        var decode = (data.Get("Decode") as PsArray)?.All().Select(ToNum).ToArray();
+        var maskInverted = (maskDict.Get("Decode") as PsArray)?.All().Select(ToNum).ToArray() is [1, 0];
+        if (interleave == 1)
+        {
+            var source = d.Get("DataSource") ?? data.Get("DataSource") ?? throw new PsError("undefined", "DataSource");
+            Sampled(w, h, bits, matrix, [source], false, G.Space, G.SpaceArray, decode, maskFirst: maskInverted ? 2 : 1);
+            return;
+        }
+        var (mw, mh) = (Need(maskDict, "Width"), Need(maskDict, "Height"));
+        byte[] maskBits;
+        if (interleave == 2)
+        {
+            // A mask row, then the picture's rows for it, and so on.
+            var n = G.Space switch { "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" => 3, "DeviceCMYK" or "CIEBasedDEFG" => 4, _ => 1 };
+            var rowBytes = (w * n * bits + 7) / 8;
+            var maskRow = (mw + 7) / 8;
+            var per = Math.Max(1, h / Math.Max(1, mh));
+            var all = ReadData(data.Get("DataSource") ?? throw new PsError("undefined", "DataSource"), mh * (maskRow + per * rowBytes));
+            maskBits = new byte[mh * maskRow];
+            var pixels = new byte[h * rowBytes];
+            for (var r = 0; r < mh; r++)
+            {
+                var at = r * (maskRow + per * rowBytes);
+                Array.Copy(all, at, maskBits, r * maskRow, maskRow);
+                Array.Copy(all, at + maskRow, pixels, Math.Min(r * per, h - 1) * rowBytes, Math.Min(per * rowBytes, pixels.Length - Math.Min(r * per, h - 1) * rowBytes));
+            }
+            Sampled(w, h, bits, matrix, [PsString.Of(pixels)], false, G.Space, G.SpaceArray, decode);
+        }
+        else if (interleave == 3)
+        {
+            var source = data.Get("DataSource") ?? throw new PsError("undefined", "DataSource");
+            Sampled(w, h, bits, matrix, [source], false, G.Space, G.SpaceArray, decode);
+            maskBits = ReadData(maskDict.Get("DataSource") ?? throw new PsError("undefined", "mask DataSource"), (mw + 7) / 8 * mh);
+        }
+        else throw new PsError("rangecheck", "InterleaveType");
+        // The mask over the picture, scaled to it.
+        if (Ops.Count == 0 || Ops[^1] is not PsImage img) return;
+        var maskRowBytes = (mw + 7) / 8;
+        for (var y = 0; y < h; y++)
+            for (var x = 0; x < w; x++)
+            {
+                var (mx, my) = (x * mw / w, y * mh / h);
+                var bit = maskBits[my * maskRowBytes + mx / 8] >> (7 - mx % 8) & 1;
+                if ((bit == 1) != maskInverted) img.Rgba[(y * w + x) * 4 + 3] = 0;
+            }
     }
 
     /// <summary>Where an image of so many pixels goes: its unit square through the image matrix's inverse and the current transformation.</summary>
     private PsMatrix ImagePlacement(int w, int h, PsMatrix imageMatrix) =>
         new PsMatrix(w, 0, 0, h, 0, 0).Then(imageMatrix.Inverse() ?? throw new PsError("undefinedresult", "image matrix")).Then(G.Ctm);
 
-    private void Sampled(int w, int h, int bits, PsMatrix matrix, object[] sources, bool multiple, string space, object spaceArray, double[]? decode)
+    /// <param name="maskFirst">For a masked image whose mask comes first in each pixel's samples: 1 (0 paints) or 2 (1 paints).</param>
+    /// <param name="colourKey">For ImageType 4: the sample values (or ranges) not painted.</param>
+    private void Sampled(int w, int h, int bits, PsMatrix matrix, object[] sources, bool multiple, string space, object spaceArray, double[]? decode,
+        int maskFirst = 0, long[]? colourKey = null)
     {
         if (w <= 0 || h <= 0) return;
         if (w * (long)h > 40_000_000) throw new PsError("limitcheck", "image size");
@@ -84,8 +150,8 @@ public sealed partial class Interpreter
         }
         var n = space switch
         {
-            "DeviceRGB" => 3,
-            "DeviceCMYK" => 4,
+            "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" => 3,
+            "DeviceCMYK" or "CIEBasedDEFG" => 4,
             "DeviceN" => ((PsArray)((PsArray)spaceArray)[1]).Length,
             "ICCBased" => IccComponents((PsArray)spaceArray),
             _ => 1,
@@ -101,9 +167,11 @@ public sealed partial class Interpreter
         }
         else
         {
-            rowBytes = (w * n * bits + 7) / 8;
+            rowBytes = (w * (n + (maskFirst > 0 ? 1 : 0)) * bits + 7) / 8;
             data = [ReadData(sources[0], rowBytes * h)];
         }
+        var stride = n + (maskFirst > 0 ? 1 : 0);
+        var lead = maskFirst > 0 ? 1 : 0;
         int Sample(byte[] d, int row, int index)
         {
             var at = row * rowBytes;
@@ -135,11 +203,19 @@ public sealed partial class Interpreter
             for (var x = 0; x < w; x++)
             {
                 long key = 0;
+                var clear = colourKey is not null;
                 for (var c = 0; c < n; c++)
                 {
-                    var s = multiple ? Sample(data[c], y, x) : Sample(data[0], y, x * n + c);
+                    var s = multiple ? Sample(data[c], y, x) : Sample(data[0], y, x * stride + lead + c);
                     key = key * 257 + s;
                     comps[c] = decode[2 * c] + s * (decode[2 * c + 1] - decode[2 * c]) / scale;
+                    if (colourKey is not null)
+                        clear &= colourKey.Length >= 2 * n ? s >= colourKey[2 * c] && s <= colourKey[2 * c + 1] : c < colourKey.Length && s == colourKey[c];
+                }
+                if (maskFirst > 0)
+                {
+                    var m = Sample(data[0], y, x * stride);
+                    clear = maskFirst == 1 ? m != 0 : m == 0;
                 }
                 if (!cache.TryGetValue(key, out var colour))
                 {
@@ -150,7 +226,7 @@ public sealed partial class Interpreter
                 rgba[o] = (byte)Math.Round(colour.R * 255);
                 rgba[o + 1] = (byte)Math.Round(colour.G * 255);
                 rgba[o + 2] = (byte)Math.Round(colour.B * 255);
-                rgba[o + 3] = 255;
+                rgba[o + 3] = clear ? (byte)0 : (byte)255;
             }
         Ops.Add(new PsImage(w, h, rgba, ImagePlacement(w, h, matrix), [.. G.Clips]));
     }
@@ -267,9 +343,6 @@ public sealed partial class Interpreter
             sc.Position += mark.Length;
             return true;
         }
-        var fromProgram = source is PsFile { IsFilter: false } pf && ReferenceEquals(pf.Scanner, File?.Scanner);
-        if (name is "RunLengthDecode" or "RL" or "LZWDecode" or "LZW" or "FlateDecode" or "Fl" or "DCTDecode" or "DCT" && fromProgram)
-            throw new PsError("unsupported", "binary data in the program");
         if (name is not ("ASCIIHexDecode" or "AHx" or "ASCII85Decode" or "A85" or "SubFileDecode" or "RunLengthDecode" or "RL" or "LZWDecode" or "LZW" or "FlateDecode" or "Fl" or "DCTDecode" or "DCT" or "NullEncode"))
             throw new PsError("unsupported", "the " + name + " filter");
         var predictor = parameters?.Get("Predictor") is { } p ? (int)ToNum(p) : 1;
@@ -280,9 +353,11 @@ public sealed partial class Interpreter
                 "ASCIIHexDecode" or "AHx" => Filters.AsciiHex(Take(sc => Marks(sc, ">"))),
                 "ASCII85Decode" or "A85" => Filters.Ascii85(Take(sc => Marks(sc, "~>"))),
                 "SubFileDecode" => Take(eod!.Length == 0 && count == 0 ? null : SubFileEnd(eod, count)),
-                "RunLengthDecode" or "RL" => Filters.RunLength(Take(null)),
-                "LZWDecode" or "LZW" => Filters.Lzw(Take(null)),
-                "FlateDecode" or "Fl" => Filters.Flate(Take(null)),
+                // From a file (the program itself, binary), each reads just its own data, to its end.
+                "RunLengthDecode" or "RL" => source is PsFile rf ? Filters.RunLength(rf.Scanner) : Filters.RunLength(Take(null)),
+                "LZWDecode" or "LZW" => source is PsFile lf ? Filters.Lzw(lf.Scanner) : Filters.Lzw(Take(null)),
+                "FlateDecode" or "Fl" => source is PsFile ff ? Filters.Flate(ff.Scanner) : Filters.Flate(Take(null)),
+                "DCTDecode" or "DCT" => source is PsFile jf ? Filters.Jpeg(jf.Scanner) : Take(null),
                 _ => Take(null),
             };
             if (name is "LZWDecode" or "FlateDecode" or "LZW" or "Fl" && predictor >= 2) decoded = Predict(decoded, parameters!, predictor);

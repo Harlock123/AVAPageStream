@@ -204,6 +204,6 @@ public class FontTests
     [Fact]
     public void Composite_fonts_fall_back()
     {
-        Assert.Equal("unsupported", new Interpreter().Run("/X << /FontType 0 >> definefont")!.Name);
+        Assert.Equal("unsupported", new Interpreter().Run("/X << /FontType 0 /FMapType 3 /FDepVector [] /FontMatrix [1 0 0 1 0 0] >> definefont 10 scalefont setfont 0 0 moveto (a) show")!.Name); // escape codes
     }
 }

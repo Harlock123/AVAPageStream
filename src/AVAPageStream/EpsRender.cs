@@ -15,6 +15,58 @@ internal static class EpsRender
     {
         Interpreter.Jpeg = DecodeJpeg;
         Interpreter.SystemGlyphs = SystemGlyph;
+        Interpreter.Outliner = StrokeOutline;
+    }
+
+    /// <summary>strokepath: the outline a stroke fills, as Skia works it out.</summary>
+    private static PsPath? StrokeOutline(PsPath path, PsPen pen)
+    {
+        using var src = ToSkia(path, false);
+        using var paint = new SKPaint
+        {
+            Style = SKPaintStyle.Stroke,
+            StrokeWidth = (float)Math.Max(pen.Width, 0.001),
+            StrokeCap = pen.Cap switch { 1 => SKStrokeCap.Round, 2 => SKStrokeCap.Square, _ => SKStrokeCap.Butt },
+            StrokeJoin = pen.Join switch { 1 => SKStrokeJoin.Round, 2 => SKStrokeJoin.Bevel, _ => SKStrokeJoin.Miter },
+            StrokeMiter = (float)pen.Miter,
+        };
+        using var dash = Dash(pen);
+        paint.PathEffect = dash;
+        using var outline = new SKPath();
+        if (!paint.GetFillPath(src, outline)) return null;
+        return FromSkia(outline, flip: false);
+    }
+
+    /// <summary>A Skia path as the interpreter's (its y turned over for glyphs, whose Skia outlines are y down).</summary>
+    private static PsPath FromSkia(SKPath path, bool flip)
+    {
+        var f = flip ? -1f : 1f;
+        var ps = new PsPath();
+        using var iterator = path.CreateRawIterator();
+        var pts = new SKPoint[4];
+        SKPathVerb verb;
+        while ((verb = iterator.Next(pts)) != SKPathVerb.Done)
+            switch (verb)
+            {
+                case SKPathVerb.Move: ps.Segs.Add(new PsSeg(SegKind.Move, X3: pts[0].X, Y3: f * pts[0].Y)); break;
+                case SKPathVerb.Line: ps.Segs.Add(new PsSeg(SegKind.Line, X3: pts[1].X, Y3: f * pts[1].Y)); break;
+                case SKPathVerb.Quad:
+                    ps.Segs.Add(new PsSeg(SegKind.Curve,
+                        pts[0].X + 2f / 3 * (pts[1].X - pts[0].X), f * (pts[0].Y + 2f / 3 * (pts[1].Y - pts[0].Y)),
+                        pts[2].X + 2f / 3 * (pts[1].X - pts[2].X), f * (pts[2].Y + 2f / 3 * (pts[1].Y - pts[2].Y)),
+                        pts[2].X, f * pts[2].Y));
+                    break;
+                case SKPathVerb.Conic:
+                    // A conic (an arc from a stroke's round cap): close enough as a quadratic through its control point.
+                    ps.Segs.Add(new PsSeg(SegKind.Curve,
+                        pts[0].X + 2f / 3 * (pts[1].X - pts[0].X), f * (pts[0].Y + 2f / 3 * (pts[1].Y - pts[0].Y)),
+                        pts[2].X + 2f / 3 * (pts[1].X - pts[2].X), f * (pts[2].Y + 2f / 3 * (pts[1].Y - pts[2].Y)),
+                        pts[2].X, f * pts[2].Y));
+                    break;
+                case SKPathVerb.Cubic: ps.Segs.Add(new PsSeg(SegKind.Curve, pts[1].X, f * pts[1].Y, pts[2].X, f * pts[2].Y, pts[3].X, f * pts[3].Y)); break;
+                case SKPathVerb.Close: ps.Segs.Add(new PsSeg(SegKind.Close)); break;
+            }
+        return ps;
     }
 
     private static readonly Dictionary<string, SKFont?> Typefaces = [];
@@ -124,11 +176,18 @@ internal static class EpsRender
         canvas.Translate(-(float)b.X, (float)(b.Y + b.H));
         canvas.Scale(1, -1);
         canvas.ClipRect(new SKRect((float)b.X, (float)b.Y, (float)b.Right, (float)b.Bottom));
+        Draw(canvas, d.Ops, null, 0);
+        return recorder.EndRecording();
+    }
+
+    /// <summary>Draws a list of what an EPS paints; with <paramref name="only"/>, all of it in that colour (an uncoloured pattern's cell).</summary>
+    private static void Draw(SKCanvas canvas, IReadOnlyList<PsOp> ops, PsColour? only, int depth)
+    {
         using var paint = new SKPaint { IsAntialias = true };
-        var seamless = ShadingRuns(d.Ops);
-        for (var index = 0; index < d.Ops.Count; index++)
+        var seamless = ShadingRuns(ops);
+        for (var index = 0; index < ops.Count; index++)
         {
-            var op = d.Ops[index];
+            var op = ops[index];
             canvas.Save();
             foreach (var clip in op.Clips)
             {
@@ -142,23 +201,23 @@ internal static class EpsRender
                     using var path = ToSkia(f.Path, f.EvenOdd);
                     paint.Style = SKPaintStyle.Fill;
                     paint.PathEffect = null;
-                    paint.Color = Colour(f.Colour);
+                    paint.Color = Colour(only ?? f.Colour);
                     paint.IsAntialias = !seamless[index];
                     canvas.DrawPath(path, paint);
                     paint.IsAntialias = true;
                     break;
                 }
-                case PsStroke s:
+                case PsStroke st:
                 {
-                    using var path = ToSkia(s.Path, false);
-                    canvas.Concat(Matrix(s.Matrix));
+                    using var path = ToSkia(st.Path, false);
+                    canvas.Concat(Matrix(st.Matrix));
                     paint.Style = SKPaintStyle.Stroke;
-                    paint.Color = Colour(s.Colour);
-                    paint.StrokeWidth = (float)s.Pen.Width;
-                    paint.StrokeCap = s.Pen.Cap switch { 1 => SKStrokeCap.Round, 2 => SKStrokeCap.Square, _ => SKStrokeCap.Butt };
-                    paint.StrokeJoin = s.Pen.Join switch { 1 => SKStrokeJoin.Round, 2 => SKStrokeJoin.Bevel, _ => SKStrokeJoin.Miter };
-                    paint.StrokeMiter = (float)s.Pen.Miter;
-                    using var dash = Dash(s.Pen);
+                    paint.Color = Colour(only ?? st.Colour);
+                    paint.StrokeWidth = (float)st.Pen.Width;
+                    paint.StrokeCap = st.Pen.Cap switch { 1 => SKStrokeCap.Round, 2 => SKStrokeCap.Square, _ => SKStrokeCap.Butt };
+                    paint.StrokeJoin = st.Pen.Join switch { 1 => SKStrokeJoin.Round, 2 => SKStrokeJoin.Bevel, _ => SKStrokeJoin.Miter };
+                    paint.StrokeMiter = (float)st.Pen.Miter;
+                    using var dash = Dash(st.Pen);
                     paint.PathEffect = dash;
                     canvas.DrawPath(path, paint);
                     paint.PathEffect = null;
@@ -187,12 +246,56 @@ internal static class EpsRender
                     paint.Shader = null;
                     break;
                 }
+                case PsTiling t when depth < 4 && t.XStep != 0 && t.YStep != 0:
+                {
+                    // The cell recorded once, repeated by the pattern's steps through its matrix.
+                    if (t.Area is { } area)
+                    {
+                        using var ap = ToSkia(area, t.EvenOdd);
+                        canvas.ClipPath(ap, antialias: true);
+                    }
+                    var tile = new SKRect((float)t.BBox.X, (float)t.BBox.Y, (float)(t.BBox.X + Math.Abs(t.XStep)), (float)(t.BBox.Y + Math.Abs(t.YStep)));
+                    using var recorder = new SKPictureRecorder();
+                    var cellCanvas = recorder.BeginRecording(tile);
+                    cellCanvas.ClipRect(new SKRect((float)t.BBox.X, (float)t.BBox.Y, (float)t.BBox.Right, (float)t.BBox.Bottom));
+                    Draw(cellCanvas, t.Cell, t.Colour, depth + 1);
+                    using var cell = recorder.EndRecording();
+                    using var shader = SKShader.CreatePicture(cell, SKShaderTileMode.Repeat, SKShaderTileMode.Repeat, SKFilterMode.Linear, Matrix(t.Matrix), tile);
+                    paint.Style = SKPaintStyle.Fill;
+                    paint.PathEffect = null;
+                    paint.Shader = shader;
+                    canvas.DrawPaint(paint);
+                    paint.Shader = null;
+                    break;
+                }
+                case PsMesh mesh:
+                {
+                    if (mesh.Area is { } area)
+                    {
+                        using var ap = ToSkia(area, mesh.EvenOdd);
+                        canvas.ClipPath(ap, antialias: true);
+                    }
+                    var points = new SKPoint[mesh.Points.Length / 2];
+                    for (var k = 0; k < points.Length; k++) points[k] = new SKPoint((float)mesh.Points[2 * k], (float)mesh.Points[2 * k + 1]);
+                    var colours = mesh.Colours.Select(c => Colour(only ?? c)).ToArray();
+                    using var vertices = SKVertices.CreateCopy(SKVertexMode.Triangles, points, colours);
+                    using var vp = new SKPaint { IsAntialias = true, Color = SKColors.White };
+                    canvas.DrawVertices(vertices, SKBlendMode.Dst, vp);
+                    break;
+                }
                 case PsImage img:
                 {
                     // The image's unit square, its first row at the top as PostScript's image space has it.
                     canvas.Concat(Matrix(img.Matrix));
+                    var rgba = img.Rgba;
+                    if (only is { } oc)
+                    {
+                        // An uncoloured pattern's mask: its colour where the picture is painted.
+                        rgba = (byte[])rgba.Clone();
+                        for (var k = 0; k < rgba.Length; k += 4) (rgba[k], rgba[k + 1], rgba[k + 2]) = ((byte)Math.Round(oc.R * 255), (byte)Math.Round(oc.G * 255), (byte)Math.Round(oc.B * 255));
+                    }
                     using var bitmap = new SKBitmap(new SKImageInfo(img.Width, img.Height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
-                    System.Runtime.InteropServices.Marshal.Copy(img.Rgba, 0, bitmap.GetPixels(), img.Rgba.Length);
+                    System.Runtime.InteropServices.Marshal.Copy(rgba, 0, bitmap.GetPixels(), rgba.Length);
                     using var image = SKImage.FromBitmap(bitmap);
                     var smooth = img.Width * img.Height > 64 * 64;
                     canvas.DrawImage(image, new SKRect(0, 0, 1, 1), new SKSamplingOptions(smooth ? SKFilterMode.Linear : SKFilterMode.Nearest));
@@ -201,7 +304,6 @@ internal static class EpsRender
             }
             canvas.Restore();
         }
-        return recorder.EndRecording();
     }
 
     /// <summary>

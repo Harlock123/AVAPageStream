@@ -103,5 +103,16 @@ public sealed record PsImage(int Width, int Height, byte[] Rgba, PsMatrix Matrix
 public sealed record PsShading(bool Radial, double[] Coords, PsColour[] Colours, double[] Positions, bool ExtendStart, bool ExtendEnd,
     PsMatrix Matrix, PsPath? Area, bool EvenOdd, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
 
+/// <summary>
+/// A tiling pattern filling an area: its cell (what its PaintProc drew, in pattern space), the part of it that
+/// repeats (from the cell's corner, XStep by YStep), and the matrix from pattern space to device space. An
+/// uncoloured pattern's cell is all painted in <see cref="Colour"/>.
+/// </summary>
+public sealed record PsTiling(IReadOnlyList<PsOp> Cell, Box BBox, double XStep, double YStep, PsMatrix Matrix, PsColour? Colour,
+    PsPath? Area, bool EvenOdd, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
+
+/// <summary>Triangles with a colour at each corner, blended across them (smooth shading of types 1 and 4 to 7), in device space.</summary>
+public sealed record PsMesh(double[] Points, PsColour[] Colours, PsPath? Area, bool EvenOdd, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
+
 /// <summary>What an EPS draws: its bounding box (in its own points) and the drawing, in order.</summary>
 public sealed record PsDrawing(Box BoundingBox, IReadOnlyList<PsOp> Ops);

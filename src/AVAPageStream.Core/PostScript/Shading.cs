@@ -9,9 +9,11 @@ public sealed partial class Interpreter
         {
             var m = ToMatrix(i.Pop<PsArray>("makepattern"));
             var d = i.Pop<PsDict>("makepattern");
-            if (d.Get("PatternType") is not { } t || (int)ToNum(t) != 2) throw new PsError("unsupported", "tiling patterns");
+            var type = d.Get("PatternType") is { } t ? (int)ToNum(t) : 0;
+            if (type is not (1 or 2)) throw new PsError("unsupported", "patterns of type " + type);
             var made = new PsDict();
             foreach (var (k, v) in d.Entries) made.Put(k, v);
+            if (type == 1) made.Put(TileKey, i.PaintCell(d));
             // The pattern's space, fixed now: its matrix, then the current transformation.
             made.Put("Implementation", NewMatrix(m.Then(i.G.Ctm)));
             i.Push(made);
@@ -27,8 +29,17 @@ public sealed partial class Interpreter
     private void FillWithPattern(PsPath area, bool evenOdd)
     {
         var p = G.Pattern ?? throw new PsError("undefined", "no pattern set");
-        if (p.Get("Shading") is not PsDict shading) throw new PsError("unsupported", "tiling patterns");
         var m = p.Get("Implementation") is PsArray a ? ToMatrix(a) : G.Ctm;
+        if (p.Get(TileKey) is List<PsOp> cell)
+        {
+            double N(string key) => p.Get(key) is { } v ? ToNum(v) : 0;
+            var bbox = (p.Get("BBox") as PsArray)?.All().Select(ToNum).ToArray() ?? [0, 0, 1, 1];
+            var uncoloured = p.Get("PaintType") is { } pt && (int)ToNum(pt) == 2;
+            Ops.Add(new PsTiling(cell, new Box(bbox[0], bbox[1], bbox[2] - bbox[0], bbox[3] - bbox[1]), N("XStep"), N("YStep"), m,
+                uncoloured ? G.PatternColour : null, area, evenOdd, [.. G.Clips]));
+            return;
+        }
+        if (p.Get("Shading") is not PsDict shading) throw new PsError("undefined", "the pattern's shading");
         Shade(shading, m, area, evenOdd);
     }
 
@@ -36,6 +47,7 @@ public sealed partial class Interpreter
     private void Shade(PsDict d, PsMatrix matrix, PsPath? area, bool evenOdd)
     {
         var type = d.Get("ShadingType") is { } t ? (int)ToNum(t) : 0;
+        if (type is 1 or 4 or 5 or 6 or 7) { Mesh(d, type, matrix, area, evenOdd); return; }
         if (type is not (2 or 3)) throw new PsError("unsupported", "shading of type " + type);
         var coords = (d.Get("Coords") as PsArray ?? throw new PsError("undefined", "Coords")).All().Select(ToNum).ToArray();
         if (coords.Length != (type == 2 ? 4 : 6)) throw new PsError("rangecheck", "Coords");

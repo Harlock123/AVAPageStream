@@ -57,7 +57,10 @@ public partial class WindowTests
     [InlineData("text-cairo.eps", "text.png")]           // text: Cairo turns it into outlines
     [InlineData("text-pdftocairo.eps", "text.png")]      // TrueType fonts as Type 42
     [InlineData("text-poppler.eps", "text.png")]
-    [InlineData("printer-fonts.eps", "printer-fonts.png")] // Times, Helvetica and Courier named, drawn in Liberation
+    [InlineData("printer-fonts.eps", "printer-fonts.png")]
+    [InlineData("composite-poppler.eps", "composite.png")]
+    [InlineData("pattern-cairo.eps", "pattern.png")]     // a tiling pattern
+    [InlineData("pattern-poppler.eps", "pattern.png")] // a composite (Type 0) font over Type 42 fonts; drawn by Poppler from the PDF // Times, Helvetica and Courier named, drawn in Liberation
     public void Eps_files_are_drawn_like_their_producers_draw_them(string eps, string reference)
     {
         using var expected = SKBitmap.Decode(EpsSample(reference));
@@ -88,5 +91,24 @@ public partial class WindowTests
         Wait(w.ExportPdf());
         Assert.DoesNotContain("/Subtype /Image", System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdf)));
         Done(w);
+    }
+
+    [AvaloniaFact]
+    public void Mesh_shadings_blend_their_corners_colours()
+    {
+        using var drawn = DrawEps(File.ReadAllBytes(EpsSample("mesh.eps")), 200, 100);
+        if (Shots is { } dir)
+        {
+            using var data = drawn.Encode(SKEncodedImageFormat.Png, 100);
+            File.WriteAllBytes(Path.Combine(dir, "eps-mesh.png"), data.ToArray());
+        }
+        // The triangle: red at its corner (10, 10 up), and a mix of all three inside it.
+        var corner = drawn.GetPixel(18, 88);
+        Assert.True(corner.Red > 2 * corner.Green && corner.Red > 2 * corner.Blue, corner.ToString());
+        var inside = drawn.GetPixel(50, 63); // its centre
+        Assert.True(inside.Red > 40 && inside.Green > 40 && inside.Blue > 40 && inside.Red < 220, inside.ToString());
+        // The patch is drawn too, not left white.
+        var patch = drawn.GetPixel(150, 50);
+        Assert.False(patch.Red > 245 && patch.Green > 245 && patch.Blue > 245, patch.ToString());
     }
 }
