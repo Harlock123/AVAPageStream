@@ -306,6 +306,16 @@ public sealed class Editor
             else if (o is PathObject bare) bare.StoryId = null;
             if (o is TableObject table && original is TableObject t)
             {
+                // A copy is a table of its own: of the whole table, for a frame it runs on into.
+                if (ReferenceEquals(o, copy) && t.Continues is { } headId && (from ?? d).Find(headId) is TableObject head)
+                {
+                    var whole = (TableObject)Copy(d, head, from);
+                    whole.MoveBy(t.X - head.X, t.Y - head.Y);
+                    return whole;
+                }
+                table.Next = null;
+                table.Continues = null;
+                table.Fit();
                 // A copied table gets copies of its cells' stories.
                 for (var i = 0; i < table.Cells.Count; i++)
                 {
@@ -390,9 +400,20 @@ public sealed class Editor
     });
 
     /// <summary>Changes a table as one step: rows and columns put in or taken out, fitted, or resized.</summary>
+    /// <summary>Makes a table run on into a new frame on the next page. Returns the new frame's id, or null.</summary>
+    public string? RunOnTable(string tableId)
+    {
+        if (Doc.Find(tableId) is not TableObject t || Tables.Head(Doc, t) is not { } head) return null;
+        var last = Tables.Chain(Doc, head)[^1];
+        if (!Doc.Pages.Any(p => p.All.Any(o => o.Id == last.Id))) return null; // on a master
+        return Change("Run table on", d => Tables.RunOn(d, (TableObject)d.Find(tableId)!)?.Id);
+    }
+
     public void ChangeTable(string tableId, string label, Action<Document, TableObject> change) => Change(label, d =>
     {
-        if (d.Find(tableId) is TableObject t) change(d, t);
+        if (d.Find(tableId) is not TableObject t) return;
+        change(d, t);
+        if (Tables.Head(d, t) is { } head) Tables.Sync(d, head);
     });
 
     public enum Order { Front, Forward, Backward, Back }

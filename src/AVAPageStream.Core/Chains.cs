@@ -19,12 +19,17 @@ public static class Chains
         if (story.Table is { } tableId)
         {
             // A table cell's story is set in its cell, less the inset.
+            // In whichever of the table's frames its row is set (none, if no frame had room for it).
             if (doc.Find(tableId) is not TableObject table) return [];
             var i = table.Cells.IndexOf(story.Id);
             if (i < 0) return [];
-            var cell = table.CellBox(i);
+            Box cell;
+            var shownIn = table;
+            if (table.Next is null) cell = table.CellBox(i);
+            else if (Tables.Place(doc, table) is { } placed && placed.CellBox(i) is { } box && placed.FrameOf(i) is { } frame) (cell, shownIn) = (box, frame);
+            else return [];
             var inner = new Box(cell.X + table.CellInset, cell.Y + table.CellInset, Math.Max(0, cell.W - 2 * table.CellInset), Math.Max(0, cell.H - 2 * table.CellInset));
-            return [new Area(inner, table.CellId(i), 0)];
+            return [new Area(inner, shownIn.CellId(i), 0)];
         }
         var own = story.Frames.ToHashSet();
         var areas = new List<Area>();
@@ -107,10 +112,24 @@ public static class Chains
     /// <summary>The object an area of text is in: a text frame's id, or the table of a cell ("table#3").</summary>
     public static string ObjectOf(string areaId) => areaId.IndexOf('#') is var i and > 0 ? areaId[..i] : areaId;
 
-    /// <summary>Takes a table that is being deleted away with its cells' stories.</summary>
+    /// <summary>
+    /// Takes a table frame that is being deleted out: a table's first frame takes its cells' stories and the frames it
+    /// runs on into with it; a frame it runs on into is taken out of the chain, the rows it held going on to the next.
+    /// </summary>
     public static void Forget(Document doc, TableObject table)
     {
+        if (table.Continues is { } headId)
+        {
+            if (doc.Find(headId) is not TableObject head) return;
+            var chain = Tables.Chain(doc, head);
+            var at = chain.FindIndex(t => t.Id == table.Id);
+            if (at > 0) chain[at - 1].Next = table.Next;
+            head.Fit();
+            return;
+        }
         foreach (var id in table.Cells) doc.Stories.Remove(id);
+        foreach (var more in Tables.Chain(doc, table).Skip(1))
+            if (doc.SheetOf(more.Id) is { } sheet) Shapes.ContainerOf(sheet.Objects, more.Id)?.Remove(more);
     }
 
     /// <summary>Takes a path that is being deleted away with the text on it.</summary>

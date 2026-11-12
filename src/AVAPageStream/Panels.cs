@@ -461,11 +461,14 @@ public sealed class SidePanel : TabControl
         return new StackPanel { Children = { ObjectTitle, _objectBody } };
     }
 
+    /// <summary>The selected table, by its first frame (which holds its rows and cells) when a frame it runs on into is selected.</summary>
+    private TableObject? SelectedTable => View.Selected is [TableObject t] ? Tables.Head(Doc, t) : null;
+
     private void BuildTableRows()
     {
         void Count(NumericUpDown box, bool rows) => box.ValueChanged += (_, _) =>
         {
-            if (_refreshing || box.Value is not { } v || View.Selected is not [TableObject t]) return;
+            if (_refreshing || box.Value is not { } v || SelectedTable is not { } t) return;
             var want = (int)v;
             Editor.ChangeTable(t.Id, rows ? "Rows" : "Columns", (d, table) =>
             {
@@ -480,19 +483,24 @@ public sealed class SidePanel : TabControl
         Count(TableColumnsBox, rows: false);
         HeaderRowsBox.ValueChanged += (_, _) =>
         {
-            if (_refreshing || HeaderRowsBox.Value is not { } v || View.Selected is not [TableObject t]) return;
+            if (_refreshing || HeaderRowsBox.Value is not { } v || SelectedTable is not { } t) return;
             Editor.ChangeTable(t.Id, "Header rows", (_, table) => table.HeaderRows = Math.Min((int)v, table.Rows));
         };
         Commit(HeaderFillBox, text =>
         {
-            if (View.Selected is not [TableObject t]) return;
+            if (SelectedTable is not { } t) return;
             if (!Colours.TryRead(text, Doc.Swatches, out var c)) { _window.Say("Type a colour's name, a value like #D0D0D0, or none."); return; }
             Editor.ChangeTable(t.Id, "Header fill", (_, table) => table.HeaderFill = c);
         });
-        MeasureBox(CellInsetBox, (o, v) => { if (o is TableObject t) t.CellInset = Math.Max(0, v); }, "Cell inset");
+        Commit(CellInsetBox, text =>
+        {
+            if (SelectedTable is not { } t) return;
+            if (!Units.TryParse(text, Unit, out var v)) { _window.Say("Type a measure like 4, 0.05in or 1mm."); Refresh(); return; }
+            Editor.ChangeTable(t.Id, "Cell inset", (_, table) => table.CellInset = Math.Max(0, v));
+        });
         Commit(ColumnWidthsBox, text =>
         {
-            if (View.Selected is not [TableObject t]) return;
+            if (SelectedTable is not { } t) return;
             var parts = text.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
             var widths = new List<double>();
             foreach (var part in parts)
@@ -513,12 +521,13 @@ public sealed class SidePanel : TabControl
             Ui.Buttons(
                 Ui.Button("Fit rows to text", () =>
                 {
-                    if (View.Selected is [TableObject t]) Editor.ChangeTable(t.Id, "Fit rows", (d, table) => Tables.FitRows(d, table, FontMeasurer.Shared));
+                    if (SelectedTable is { } t) Editor.ChangeTable(t.Id, "Fit rows", (d, table) => Tables.FitRows(d, table, FontMeasurer.Shared));
                 }, "Make each row as tall as its tallest cell's text needs"),
                 Ui.Button("Even columns", () =>
                 {
-                    if (View.Selected is [TableObject t]) Editor.ChangeTable(t.Id, "Even columns", (_, table) => table.ColumnWidths = Enumerable.Repeat(table.W / table.Columns, table.Columns).ToList());
+                    if (SelectedTable is { } t) Editor.ChangeTable(t.Id, "Even columns", (_, table) => table.ColumnWidths = Enumerable.Repeat(table.W / table.Columns, table.Columns).ToList());
                 })),
+            Ui.Buttons(Ui.Button("Run on to the next page", () => _window.RunOnTable(), "Carry the rows that don't fit on to a new frame on the next page, under the header rows again")),
             new TextBlock
             {
                 Text = "Double-click a cell to type in it; Tab goes to the next (and adds a row after the last). Object › Table puts rows and columns in where the caret is.",
@@ -1300,7 +1309,7 @@ public sealed class SidePanel : TabControl
         if (one is PathObject { StoryId: not null } onPath) Set(TextOffsetBox, Units.Format(onPath.TextOffset, Unit));
         _arrowRows.IsVisible = selected.All(o => o is LineObject);
         _tableRows.IsVisible = one is TableObject;
-        if (one is TableObject table)
+        if (one is TableObject frameOfTable && Tables.Head(Doc, frameOfTable) is { } table)
         {
             TableRowsBox.Value = table.Rows;
             TableColumnsBox.Value = table.Columns;

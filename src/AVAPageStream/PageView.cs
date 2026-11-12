@@ -394,8 +394,12 @@ public sealed class PageView : Control
         {
             case TextFrame f when storyId is null || f.StoryId == storyId:
                 return new TextSpot(f, f.Id, f.StoryId);
-            case TableObject t when t.CellAt(Shapes.ToLocal(t, p)) is var cell and >= 0 && (storyId is null || t.Cells[cell] == storyId):
+            case TableObject { Next: null, Continues: null } t when t.CellAt(Shapes.ToLocal(t, p)) is var cell and >= 0 && (storyId is null || t.Cells[cell] == storyId):
                 return new TextSpot(t, t.CellId(cell), t.Cells[cell]);
+            case TableObject t when Tables.Place(Doc, t) is { } placed && placed.CellAt(t, p) is var (cell, repeated) && (storyId is null || placed.Head.Cells[cell] == storyId):
+                // A header row shown again is edited where it is set, in the table's first frame.
+                var shown = repeated ? placed.Head : t;
+                return new TextSpot(shown, shown.CellId(cell), placed.Head.Cells[cell]);
         }
         return null;
     }
@@ -414,7 +418,11 @@ public sealed class PageView : Control
     }
 
     /// <summary>Puts the caret in a table's cell, at its start.</summary>
-    public void StartEditing(TableObject table, int cell) => StartEditing(new TextSpot(table, table.CellId(cell), table.Cells[cell]));
+    public void StartEditing(TableObject table, int cell)
+    {
+        var shown = Tables.Place(Doc, table)?.FrameOf(cell) ?? table;
+        StartEditing(new TextSpot(shown, shown.CellId(cell), table.Cells[cell]));
+    }
 
     public void StartEditing(TextFrame frame, Pt? at = null)
     {
@@ -1830,14 +1838,27 @@ public sealed class PageView : Control
             }
         }
         foreach (var table in sheet.All.OfType<TableObject>())
-            for (var i = 0; i < table.Cells.Count; i++)
-                if (LayoutOf(table.Cells[i]) is { Overset: true })
+        {
+            if (Tables.Place(Doc, table) is not { } placed) continue;
+            for (var i = 0; i < placed.Head.Cells.Count; i++)
+                if (placed.FrameOf(i)?.Id == table.Id && placed.CellBox(i) is { } box && LayoutOf(placed.Head.Cells[i]) is { Overset: true })
                 {
                     // A little red mark in the corner of a cell whose text doesn't fit.
-                    var box = table.CellBox(i);
                     var c = ToView(new Pt(box.Right, box.Bottom));
                     dc.FillRectangle(Look.Overset, new Rect(c.X - 7, c.Y - 7, 6, 6));
                 }
+            // Rows with no frame left to go in: a mark at the foot of the table's last frame.
+            if (placed.Frames[^1].Id == table.Id && placed.Rows.Any(r => r.Frame < 0))
+            {
+                var c = ToView(new Pt(table.X + table.W / 2, table.Y + table.H));
+                var mark = new Rect(c.X - 6, c.Y - 6, 12, 12);
+                dc.FillRectangle(Brushes.White, mark);
+                dc.DrawRectangle(null, new Pen(Look.Overset, 1.5), mark.Deflate(0.75));
+                var pen = new Pen(Look.Overset, 1.5);
+                dc.DrawLine(pen, new Point(mark.Center.X, mark.Top + 3), new Point(mark.Center.X, mark.Bottom - 3));
+                dc.DrawLine(pen, new Point(mark.Left + 3, mark.Center.Y), new Point(mark.Right - 3, mark.Center.Y));
+            }
+        }
         if (LinkFrom is not null && sheet.All.FirstOrDefault(o => o.Id == LinkFrom) is { } from)
             Outline(dc, from, Look.LinkFrom, new Pen(Look.Handle, 2));
 

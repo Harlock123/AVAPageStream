@@ -137,8 +137,16 @@ public static class DocumentFile
             if (!doc.Stories.ContainsKey(frame.StoryId)) Chains.NewStory(doc, frame, doc.Style("Body"));
         foreach (var path in doc.AllObjects.OfType<PathObject>())
             if (path.StoryId is { } sid && !doc.Stories.ContainsKey(sid)) path.StoryId = null;
-        foreach (var table in doc.AllObjects.OfType<TableObject>())
+        foreach (var table in doc.AllObjects.OfType<TableObject>().ToList())
         {
+            // A table's frames: one whose table has gone goes too; a link to a frame that isn't there is dropped.
+            if (table.Continues is { } head && doc.Find(head) is not TableObject)
+            {
+                if (doc.SheetOf(table.Id) is { } sheet) Shapes.ContainerOf(sheet.Objects, table.Id)?.Remove(table);
+                continue;
+            }
+            if (table.Next is { } next && doc.Find(next) is not TableObject { Continues: not null }) table.Next = null;
+            if (table.Continues is not null) continue;
             // Every cell has its story, and the table is as many cells as its rows and columns make.
             while (table.Cells.Count < table.Rows * table.Columns) table.Cells.Add("");
             if (table.Cells.Count > table.Rows * table.Columns) table.Cells.RemoveRange(table.Rows * table.Columns, table.Cells.Count - table.Rows * table.Columns);

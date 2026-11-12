@@ -343,6 +343,8 @@ public sealed class MainWindow : Window
                                 new Separator(),
                                 Item("_Delete row", () => TableEdit("Delete row", (d, t, r, _) => Tables.DeleteRow(d, t, r))),
                                 Item("Delete _column", () => TableEdit("Delete column", (d, t, _, c) => Tables.DeleteColumn(d, t, c))),
+                                new Separator(),
+                                Item("_Run on to the next page", RunOnTable),
                             },
                         },
                     },
@@ -777,6 +779,19 @@ public sealed class MainWindow : Window
         editor.Closed += (_, _) => _storyEditors.Remove(editor);
         editor.Show(this);
         return editor;
+    }
+
+    /// <summary>Makes the selected table (or the one the caret is in) run on to a new frame on the next page.</summary>
+    public void RunOnTable()
+    {
+        var table = View.Selected is [TableObject t] ? t : View.CurrentCell() is var (ct, _) ? ct : null;
+        if (table is null) { Say("Select a table, or put the caret in one, first."); return; }
+        if (Editor.RunOnTable(table.Id) is not { } id) { Say("A table on a master page can't run on to another page."); return; }
+        var page = Editor.Doc.Pages.FindIndex(p => p.All.Any(o => o.Id == id));
+        var held = Tables.Place(Editor.Doc, (TableObject)Editor.Doc.Find(id)!)!;
+        var left = held.Rows.Count(r => r.Frame < 0);
+        Say($"The table runs on to page {page + 1}, its header rows repeated there." +
+            (left > 0 ? $" {left} row{(left == 1 ? "" : "s")} still don't fit: run it on again." : " Resize either frame to move rows between them."));
     }
 
     /// <summary>Changes the table the caret is in, at the caret's row and column, keeping the caret in a cell.</summary>

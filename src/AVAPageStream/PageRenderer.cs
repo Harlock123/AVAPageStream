@@ -150,26 +150,48 @@ internal sealed class PageRenderer
         }
     }
 
-    /// <summary>A table: its fill and header rows' fill, each cell's text, then the rules round and between the cells.</summary>
-    private void DrawTable(DrawingContext dc, Document doc, TableObject t, IBrush? fill, IPen? pen, int? page)
+    /// <summary>
+    /// A table frame: its fill and header rows' fill, each cell's text, then the rules round and between the cells. A
+    /// frame a table runs on into shows the rows set in it, under its header rows drawn again.
+    /// </summary>
+    private void DrawTable(DrawingContext dc, Document doc, TableObject frame, IBrush? fill, IPen? pen, int? page)
     {
-        if (t.Rows == 0 || t.Columns == 0) return;
-        if (fill is not null) dc.FillRectangle(fill, new Rect(t.X, t.Y, t.W, t.H));
-        if (t.HeaderRows > 0 && BrushOf(doc, t.HeaderFill) is { } header)
-            dc.FillRectangle(header, new Rect(t.X, t.Y, t.W, t.RowHeights.Take(t.HeaderRows).Sum()));
-        for (var i = 0; i < t.Cells.Count; i++)
+        if (Tables.Place(doc, frame) is not { } placed) return;
+        var t = placed.Head;
+        var index = placed.Frames.ToList().FindIndex(f => f.Id == frame.Id);
+        var rows = placed.RowsIn(index).ToList();
+        if (rows.Count == 0 || t.Columns == 0) return;
+        var height = rows.Max(r => r.Y + t.RowHeights[r.Row]);
+        if (fill is not null) dc.FillRectangle(fill, new Rect(frame.X, frame.Y, frame.W, height));
+        if (t.HeaderRows > 0 && BrushOf(doc, t.HeaderFill) is { } header && rows.Where(r => r.Row < t.HeaderRows).ToList() is { Count: > 0 } heads)
+            dc.FillRectangle(header, new Rect(frame.X, frame.Y + heads.Min(r => r.Y), frame.W, heads.Sum(r => t.RowHeights[r.Row])));
+        foreach (var (row, y, repeated) in rows)
         {
-            var cell = t.CellId(i);
-            var box = t.CellBox(i);
-            using (dc.PushClip(new Rect(box.X, box.Y, box.W, box.H)))
-                DrawStory(dc, doc, t.Cells[i], id => id == cell, page);
+            var x = frame.X;
+            for (var c = 0; c < t.Columns; c++)
+            {
+                var i = row * t.Columns + c;
+                var box = new Rect(x, frame.Y + y, t.ColumnWidths[c], t.RowHeights[row]);
+                x += t.ColumnWidths[c];
+                using (dc.PushClip(box))
+                {
+                    if (!repeated)
+                    {
+                        DrawStory(dc, doc, t.Cells[i], id => id == frame.CellId(i), page);
+                        continue;
+                    }
+                    // A header row again: its cell's text, from where it is set in the first frame.
+                    if (placed.CellBox(i) is not { } real) continue;
+                    using (dc.PushTransform(Matrix.CreateTranslation(box.X - real.X, box.Y - real.Y)))
+                        DrawStory(dc, doc, t.Cells[i], id => id == t.CellId(i), page);
+                }
+            }
         }
         if (pen is null) return;
-        dc.DrawRectangle(null, pen, new Rect(t.X, t.Y, t.W, t.H));
-        var x = t.X;
-        foreach (var w in t.ColumnWidths.SkipLast(1)) { x += w; dc.DrawLine(pen, new Point(x, t.Y), new Point(x, t.Y + t.H)); }
-        var y = t.Y;
-        foreach (var h in t.RowHeights.SkipLast(1)) { y += h; dc.DrawLine(pen, new Point(t.X, y), new Point(t.X + t.W, y)); }
+        dc.DrawRectangle(null, pen, new Rect(frame.X, frame.Y, frame.W, height));
+        var cx = frame.X;
+        foreach (var w in t.ColumnWidths.SkipLast(1)) { cx += w; dc.DrawLine(pen, new Point(cx, frame.Y), new Point(cx, frame.Y + height)); }
+        foreach (var (_, y, _) in rows.Skip(1)) dc.DrawLine(pen, new Point(frame.X, frame.Y + y), new Point(frame.X + frame.W, frame.Y + y));
     }
 
     /// <summary>The lines of a story that are set in the areas <paramref name="inArea"/> picks (a frame, or a table's cell).</summary>

@@ -423,10 +423,19 @@ public sealed class TableObject : PageObject
     public string? HeaderFill { get; set; } = "@Light grey";
     public double CellInset { get; set; } = 4;
 
+    /// <summary>The table frame the table runs on into when its rows don't all fit in this one, if any.</summary>
+    public string? Next { get; set; }
+
+    /// <summary>
+    /// On a frame a table runs on into: the table's first frame, which holds its rows, columns and cells. This one
+    /// holds none of its own; it shows the rows that didn't fit before it, under the header rows again.
+    /// </summary>
+    public string? Continues { get; set; }
+
     [JsonIgnore] public int Rows => RowHeights.Count;
     [JsonIgnore] public int Columns => ColumnWidths.Count;
 
-    public override string Kind => "Table";
+    public override string Kind => Continues is null ? "Table" : "Table, continued";
 
     public TableObject()
     {
@@ -458,15 +467,21 @@ public sealed class TableObject : PageObject
         return r * Columns + c;
     }
 
-    /// <summary>Makes the frame match the columns and rows.</summary>
+    /// <summary>Makes the frame match the columns and rows (a table that runs on keeps the height it was given).</summary>
     public void Fit()
     {
         W = ColumnWidths.Sum();
-        H = RowHeights.Sum();
+        if (Next is null && Continues is null) H = RowHeights.Sum();
     }
 
     protected override void SetBounds(Box b)
     {
+        // A table that runs on into other frames: resizing sets how much of it this frame holds, not its rows.
+        if (Next is not null || Continues is not null)
+        {
+            base.SetBounds(b with { W = W, H = Math.Max(1, b.H) });
+            return;
+        }
         // Resizing scales the columns and rows.
         if (W > 0) ColumnWidths = ColumnWidths.Select(w => w * b.W / W).ToList();
         if (H > 0) RowHeights = RowHeights.Select(h => h * b.H / H).ToList();
