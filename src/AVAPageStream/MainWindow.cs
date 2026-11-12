@@ -1196,7 +1196,7 @@ public sealed class MainWindow : Window
         if (View.PickImage is null || await View.PickImage() is not var (bytes, path)) return;
         var doc = Editor.Doc;
         if (!ImageStore.IsImage(bytes)) { Say("That file isn't a picture AVAPageStream can show."); return; }
-        if (doc.Stories[t.StoryId] is { Table: not null } or { NoteOf: not null } or { OnPath: not null }) { Say("Pictures can be anchored in a frame's text, not in tables, footnotes or text on a path."); return; }
+        if (doc.Stories[t.StoryId] is { OnPath: not null }) { Say("Pictures can be anchored in a frame's text, a table's cells or footnotes, not in text on a path."); return; }
         if (PdfPages.IsPdf(bytes) && PdfPages.NeedsPassword(bytes)) { Say("That PDF needs its password: place it in a frame of its own first, then copy it into the text."); return; }
         var size = Pictures.Load(bytes)?.Size ?? new Avalonia.Size(144, 144);
         var column = View.Layouts.Of(doc, t.StoryId) is { } l && l.Lines.FirstOrDefault(x => x.Start <= t.Start && t.Start <= x.End) is { } line ? l.Areas[line.Area].Box.W : 300;
@@ -1245,13 +1245,13 @@ public sealed class MainWindow : Window
             // Objects copied last, pasted into text: anchored there, in the line.
             if (_objectsLast && _clipboard is { } objects)
             {
-                if (t.Length > 0) Editor.ReplaceText(t.StoryId, t.Start, t.Length, "");
-                var pasted = objects.Ids.Select(objects.Doc.Find).OfType<PageObject>().ToList();
-                if (Editor.Doc.Stories[t.StoryId].Table is not null || Editor.Doc.Stories[t.StoryId].NoteOf is not null)
+                if (Editor.Doc.Stories[t.StoryId].OnPath is not null)
                 {
-                    Say("Objects can be anchored in a frame's text, not in a table's cells or footnotes.");
+                    Say("Objects can be anchored in a frame's text, a table's cells or footnotes, not in text on a path.");
                     return;
                 }
+                if (t.Length > 0) Editor.ReplaceText(t.StoryId, t.Start, t.Length, "");
+                var pasted = objects.Ids.Select(objects.Doc.Find).OfType<PageObject>().ToList();
                 Editor.AnchorAt(t.StoryId, t.Start, pasted);
                 t.Caret = t.Anchor = t.Start + pasted.Count;
                 View.Reveal(t.StoryId, t.Caret, 0);

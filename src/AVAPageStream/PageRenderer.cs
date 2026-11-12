@@ -96,7 +96,7 @@ internal sealed class Layouts(ITextMeasurer measurer)
         {
             var kept = areas.Select(a =>
             {
-                var mine = wrapping.Where(o => o.PlacedIn == a.FrameId && o.Bounds.Inflate(o.WrapGap).Intersects(a.Box)).Select(Shapes.KeepOf).ToList();
+                var mine = wrapping.Where(o => o.PlacedIn == Chains.ObjectOf(a.FrameId) && o.Bounds.Inflate(o.WrapGap).Intersects(a.Box)).Select(Shapes.KeepOf).ToList();
                 return mine.Count == 0 ? a : a with { Exclusions = [.. a.Keep, .. mine] };
             }).ToList();
             layout = TextFlow.Layout(story, kept, measurer, fields, grid, heights);

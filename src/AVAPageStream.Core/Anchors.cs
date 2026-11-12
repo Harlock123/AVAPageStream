@@ -48,7 +48,7 @@ public static class Anchors
                 }
                 var b = o.Bounds;
                 if (Math.Abs(b.X - x) > 1e-9 || Math.Abs(b.Y - y) > 1e-9) o.MoveBy(x - b.X, y - b.Y);
-                o.PlacedIn = area.FrameId;
+                o.PlacedIn = Chains.ObjectOf(area.FrameId); // a cell's table, a footnote's frame
             }
     }
 

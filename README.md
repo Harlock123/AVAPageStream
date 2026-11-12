@@ -41,8 +41,8 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   hidden, locked, and printed or not; footnotes at the foot of the column; tables that run on from page to page
   with their header rows repeated; and a baseline grid for lines to line up on across columns.
 - **Text on a path**: type set along any curve or polyline, turned to follow it.
-- **Anchored objects**: pictures, shapes and frames set in a line of text or placed beside it (in the margin, say),
-  moving as the text reflows, with text wrapping round them.
+- **Anchored objects**: pictures, shapes and frames set in a line of text (in frames, table cells or footnotes) or
+  placed beside it (in the margin, say), moving as the text reflows, with text wrapping round them.
 - **Effects**: linear and radial gradients of any number of colours, opacity and blend modes, drop shadows and
   glows, and rounded or cut corners, on anything on the page; object styles that keep a look by name and update
   everything in it; rules above and below paragraphs, in their styles; and text turned into outlines.

@@ -93,4 +93,50 @@ public partial class WindowTests
         Assert.Equal("Index 3", e.Doc.Stories[a.StoryId].Paras[^1].Style);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Objects_are_anchored_in_table_cells_and_footnotes()
+    {
+        var w = Open();
+        var e = w.Editor;
+        var table = e.AddTable(SheetRef.PageAt(0), new Box(72, 72, 300, 120), 2, 2);
+        var cell = table.Cells[3]; // the second row's second cell
+        e.ReplaceText(cell, 0, 0, "Lamps ");
+        var frame = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 300, W = 300, H = 300 });
+        e.ReplaceText(frame.StoryId, 0, 0, "The harbour.");
+        var note = e.InsertFootnote(frame.StoryId, 11, "See the chart ")!;
+        // Pasted at the caret, in the cell and in the note, as a user would.
+        var red = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 500, Y = 500, W = 12, H = 12, Fill = "#FF0000", Stroke = null });
+        var blue = e.Add(SheetRef.PageAt(0), new RectangleObject { X = 520, Y = 500, W = 12, H = 12, Fill = "#0000FF", Stroke = null });
+        w.View.Select([red.Id]);
+        Wait(w.Copy());
+        w.View.StartEditing((TableObject)e.Doc.Find(table.Id)!, 3);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[cell].Length;
+        Wait(w.Paste());
+        Assert.Contains("Anchored in the text", w.Message.Text);
+        w.View.StopEditing();
+        w.View.Select([blue.Id]);
+        Wait(w.Copy());
+        w.View.Reveal(note, e.Doc.Stories[note].Length, 0);
+        Wait(w.Paste());
+        w.View.StopEditing();
+        e.Delete([red.Id, blue.Id]);
+        var inCell = Assert.Single(e.Doc.Stories[cell].Anchored);
+        var inNote = Assert.Single(e.Doc.Stories[note].Anchored);
+        // Placed where their text is, and selectable there.
+        var here = w.View.AnchoredHere();
+        Assert.Contains(here, o => o.Id == inCell.Id);
+        Assert.Contains(here, o => o.Id == inNote.Id);
+        var c = e.Doc.Find(inCell.Id)!;
+        var n = e.Doc.Find(inNote.Id)!;
+        Assert.Equal(table.Id, c.PlacedIn);
+        Assert.Equal(frame.Id, n.PlacedIn);
+        var cellBox = ((TableObject)e.Doc.Find(table.Id)!).CellBox(3)!;
+        Assert.True(cellBox.Contains(new Pt(c.X + 1, c.Y + 1)), $"{c.Bounds} in {cellBox}");
+        Assert.True(n.Y > 300 + 20, "in the note at the foot of the frame");
+        using var page = DrawPage(e.Doc);
+        Assert.Equal((255, 0, 0), Pixel(page, (int)(c.X + 6), (int)(c.Y + 6)));
+        Assert.Equal((0, 0, 255), Pixel(page, (int)(n.X + 6), (int)(n.Y + 6)));
+        Done(w);
+    }
 }

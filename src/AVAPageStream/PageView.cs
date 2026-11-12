@@ -958,9 +958,20 @@ public sealed class PageView : Control
     /// <summary>The objects anchored in text set on this sheet, where their text put them (drawn over its frames).</summary>
     internal List<PageObject> AnchoredHere()
     {
-        var frames = Shapes.Flatten(CurrentSheet.Objects).OfType<TextFrame>().Select(f => f.Id).ToHashSet();
+        var all = Shapes.Flatten(CurrentSheet.Objects).ToList();
+        var frames = all.Where(o => o is TextFrame or TableObject).Select(f => f.Id).ToHashSet();
         if (frames.Count == 0) return [];
-        foreach (var f in Shapes.Flatten(CurrentSheet.Objects).OfType<TextFrame>()) _ = _layouts.Of(Doc, f.StoryId);
+        // Their places come from the layouts: the frames' stories, their footnotes, and the tables' cells.
+        foreach (var o in all)
+        {
+            IEnumerable<string> stories = o switch { TextFrame f => [f.StoryId], TableObject t => Tables.Head(Doc, t) is { } head ? head.Cells : [], _ => [] };
+            foreach (var id in stories)
+                if (Doc.Stories.TryGetValue(id, out var s))
+                {
+                    _ = _layouts.Of(Doc, id);
+                    foreach (var note in Footnotes.Numbers(s).Keys) _ = _layouts.Of(Doc, note);
+                }
+        }
         return Doc.Stories.Values.SelectMany(s => s.Anchored).Where(o => o.PlacedIn is { } p && frames.Contains(p)).ToList();
     }
 

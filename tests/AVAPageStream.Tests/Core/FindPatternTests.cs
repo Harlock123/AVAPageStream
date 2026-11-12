@@ -103,4 +103,26 @@ public class FindPatternTests
         Assert.Equal(m.Start + m.Length, end);
         Assert.Equal(["ocean", "rises"], Texts(e, "", new FindOptions(CharStyle: "Strong")));
     }
+
+    [Fact]
+    public void A_pattern_finds_across_paragraphs_and_joins_or_splits_them()
+    {
+        var (e, id) = OneStory("Tides\nThe tide turns\nat noon, and\nagain at midnight.\nMoorings");
+        e.ApplyStyle(id, 0, 0, "Heading");
+        var o = new FindOptions(Regex: true, MatchCase: true);
+        Assert.Equal(["turns\nat", "and\nagain"], Texts(e, @"\w+\n[a-z]+", o));
+        Assert.Equal(["Tides\nThe"], Texts(e, @"^Tides\n\w+", o));
+        // Lines broken in the middle of a sentence: joined, the paragraph before keeping its format.
+        Assert.Equal(2, e.ReplaceAll(@"\n(?=[a-z])", " ", o));
+        var story = e.Doc.Stories[id];
+        Assert.Equal("Tides\nThe tide turns at noon, and again at midnight.\nMoorings", story.Text);
+        Assert.Equal(["Heading", "Body", "Body"], story.Paras.Select(p => p.Style));
+        Assert.True(story.IsWellFormed());
+        // And split again, each new paragraph in the format of the one it came from.
+        e.ReplaceAll(@", ", @",\n", o);
+        Assert.Equal(4, e.Doc.Stories[id].ParagraphCount);
+        Assert.Equal("Body", e.Doc.Stories[id].Paras[2].Style);
+        // In a style, a match across paragraphs needs both in it.
+        Assert.Empty(Texts(e, @"Tides\nThe", o with { ParaStyle = "Heading" }));
+    }
 }

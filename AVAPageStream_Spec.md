@@ -798,7 +798,7 @@ stages, each usable on its own:
    paragraphs can be found together and joined or split by Replace; and objects can be anchored in table cells and
    footnotes as in any other text.
 
-**Status (12 November 2026):** started. Stage 1 done: `Document.Lists` holds each contents and index as a
+**Status (12 November 2026):** done. Stage 1: `Document.Lists` holds each contents and index as a
 `GeneratedList` (kind, styles, width); its text starts at a `Fields.ListStart` marker (`CharFormat.List`) and runs
 through the paragraphs after it in the list's own styles (`GeneratedLists.Where`). `Editor.UpdateLists` makes the
 stale ones again (`GeneratedLists.IsStale` compares their text with what `Make` would give), up to four rounds, and
@@ -806,10 +806,16 @@ forgets any whose marker is gone; making one settles the same way. Export, PNG a
 reports `ListStale`. With it, a fix: applying or changing a paragraph style dropped what markers mark (footnote
 references, anchors, places, cross-references and index entries); `Story.Keep` holds them.
 
-Stage 2 done: `StyleChange` (a paragraph style, a character style, "" for none) given to `Editor.ReplaceAll` and
+Stage 2: `StyleChange` (a paragraph style, a character style, "" for none) given to `Editor.ReplaceAll` and
 `ReplaceOne`; with no replacement text the found text is kept and only restyled ("Restyle n" to undo). The find bar's
 Change to list chooses it.
 
-Stage 3 done: `IndexMark` has `Sub2` and `Covers` (here, to its paragraph's end, or to a named place), written after
+Stage 3: `IndexMark` has `Sub2` and `Covers` (here, to its paragraph's end, or to a named place), written after
 the stage 3 key so older entries read the same; `Indexes.Entries` gives `IndexHit`s with the page reached
 (`To`), and `Paragraphs` sets any depth of topics (three levels, Index 1 to 3), each level's own see references.
+
+Stage 4: patterns already ran over a story's whole text, so `\n` matches a paragraph's end and Replace joins and
+splits paragraphs (now tested, and in the guide). Objects are anchored in table cells and footnotes: `PlacedIn` is
+the object the text is drawn in (`Chains.ObjectOf` of the area, so a cell's table), and the page view lays out
+cells' and footnotes' stories to find them. Not done: anchored objects in a table's repeated header rows (drawn in
+the first frame only), and in text on a path.

@@ -384,7 +384,8 @@ belongs with its paragraph, an icon in the margin beside a heading, a symbol in 
 
 - **In the line**: copy an object, put the caret in some text and paste, and the object goes into the line like a
   letter. The line grows to hold it. Or, with the caret in text, choose Object › Place picture… to put a picture
-  there at its own size (no wider than the column).
+  there at its own size (no wider than the column). This works in any text: a frame's, a table's cells (a flag
+  in a cell of a timetable) and footnotes.
 - **Beside the text**: select an object on the page and choose Object › **Anchor to text**. It is anchored to the
   start of the line it is level with, and stays where it is against that line. Move the text and it follows.
 
@@ -577,6 +578,10 @@ Tick **Pattern** to find a regular expression rather than the words as typed: `.
 paragraph, and brackets make a group. In the replacement, `$1` is what the first group found, `$0` all of it, `\n`
 starts a new paragraph and `\t` is a tab. So `(\d+):(\d\d)` replaced with `$1.$2` turns 18:30 into 18.30. A pattern
 with a mistake in it says so beside the boxes.
+
+`\n` in a pattern is a paragraph's end, so a pattern can find across paragraphs and Replace can join or split
+them: `\n(?=[a-z])` replaced with a space joins lines that were broken in mid-sentence (as text pasted from an
+email often is), and `;\s*` replaced with `;\n` starts a paragraph after each semicolon.
 
 The style list (**In any style**, to begin with) finds only in text of one paragraph style (¶) or character style
 (a). With nothing typed to find, it finds each stretch of text in that style: every heading, say, or every word in
