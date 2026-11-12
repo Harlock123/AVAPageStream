@@ -116,9 +116,6 @@ public sealed class PageView : Control
     /// <summary>Asks for a picture file: its bytes and where it is.</summary>
     public Func<Task<(byte[] Bytes, string Path)?>>? PickImage { get; set; }
 
-    /// <summary>Asks for a story to be opened in the story editor (a footnote double-clicked at the foot of a column).</summary>
-    public event Action<string>? OpenStory;
-
     /// <summary>The footnote at a point on the sheet being worked on, if there is one.</summary>
     public string? NoteAt(Pt p)
     {
@@ -380,8 +377,46 @@ public sealed class PageView : Control
         Select(CurrentSheet.Objects.Where(Pickable).Select(o => o.Id));
     }
 
-    private IEnumerable<TextFrame> FramesOnSheet(string storyId) =>
-        CurrentSheet.All.OfType<TextFrame>().Where(f => f.StoryId == storyId);
+    /// <summary>The objects on the sheet showing a story: its frames (a footnote's, its story's), or its path.</summary>
+    private IEnumerable<PageObject> FramesOnSheet(string storyId)
+    {
+        var shown = Doc.Stories.GetValueOrDefault(storyId)?.NoteOf ?? storyId;
+        return CurrentSheet.All.Where(o => o is TextFrame f && f.StoryId == shown || o is PathObject p && p.StoryId == shown);
+    }
+
+    /// <summary>
+    /// The letter of text on a path under a point (the index a caret there would take), or with <paramref name="near"/>
+    /// the nearest wherever the point is; null for none.
+    /// </summary>
+    public int? PathIndexAt(PathObject path, Pt p, bool near = false)
+    {
+        if (path.StoryId is not { } id || !Doc.Stories.TryGetValue(id, out var story)) return null;
+        var (glyphs, _) = PathText.Place(story, PathText.Points(path), _layouts.Measurer, path.TextOffset);
+        if (glyphs.Count == 0) return near ? 0 : null;
+        var q = Shapes.ToLocal(path, p);
+        int? best = null;
+        var bestDistance = double.MaxValue;
+        foreach (var g in glyphs)
+        {
+            // The point in the letter's own frame: along its baseline, and up from it.
+            var r = -g.Angle * Math.PI / 180;
+            var (dx, dy) = (q.X - g.At.X, q.Y - g.At.Y);
+            var along = dx * Math.Cos(r) - dy * Math.Sin(r);
+            var up = -(dx * Math.Sin(r) + dy * Math.Cos(r));
+            var size = g.Format.Size;
+            var index = g.Index + (along > g.Width / 2 ? 1 : 0);
+            if (along >= -1 && along <= g.Width + 1 && up >= -size * 0.3 && up <= size * 1.1) return index;
+            var mx = Math.Clamp(along, 0, g.Width) - along;
+            var my = Math.Clamp(up, 0, size) - up;
+            var d = mx * mx + my * my;
+            if (d < bestDistance) (bestDistance, best) = (d, index);
+        }
+        return near ? best : null;
+    }
+
+    /// <summary>Where in its story a point in a frame, a cell, a footnote or along a path is.</summary>
+    private int? IndexAt(TextLayout layout, TextSpot spot, Pt p) =>
+        spot.Object is PathObject path ? PathIndexAt(path, p, near: true) : layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p));
 
     /// <summary>Puts the caret in a text frame's story, at a point in it (or at its start).</summary>
     /// <summary>Text under a point: a text frame's story, or a table cell's; and the area of the story it is in.</summary>
@@ -390,10 +425,15 @@ public sealed class PageView : Control
     /// <summary>The text frame or table cell under a point (inside groups too), of one story if given.</summary>
     public TextSpot? TextAt(Pt p, string? storyId = null)
     {
-        switch (HitObject(p, o => o is TextFrame or TableObject))
+        switch (HitObject(p, o => o is TextFrame or TableObject or PathObject { StoryId: not null }))
         {
+            case TextFrame f when NoteAt(p) is { } note && Doc.Stories.GetValueOrDefault(note)?.NoteOf == f.StoryId:
+                // A footnote at the foot of one of the frame's columns.
+                return storyId is null || storyId == note ? new TextSpot(f, f.Id, note) : null;
             case TextFrame f when storyId is null || f.StoryId == storyId:
                 return new TextSpot(f, f.Id, f.StoryId);
+            case PathObject { StoryId: { } onPath } path when (storyId is null || storyId == onPath) && (storyId is not null || PathIndexAt(path, p) is not null):
+                return new TextSpot(path, path.Id, onPath);
             case TableObject { Next: null, Continues: null } t when t.CellAt(Shapes.ToLocal(t, p)) is var cell and >= 0 && (storyId is null || t.Cells[cell] == storyId):
                 return new TextSpot(t, t.CellId(cell), t.Cells[cell]);
             case TableObject t when Tables.Place(Doc, t) is { } placed && placed.CellAt(t, p) is var (cell, repeated) && (storyId is null || placed.Head.Cells[cell] == storyId):
@@ -409,7 +449,7 @@ public sealed class PageView : Control
     {
         var index = 0;
         if (LayoutOf(spot.StoryId) is { } layout)
-            index = at is { } p ? layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) ?? FirstIndexIn(layout, spot.Area) : FirstIndexIn(layout, spot.Area);
+            index = at is { } p ? IndexAt(layout, spot, p) ?? FirstIndexIn(layout, spot.Area) : FirstIndexIn(layout, spot.Area);
         Editing = new TextEdit { StoryId = spot.StoryId, Caret = index, Anchor = index };
         _selection.Clear();
         _selection.Add(spot.Object.Id);
@@ -449,11 +489,12 @@ public sealed class PageView : Control
     /// </summary>
     public bool Reveal(string storyId, int start, int length)
     {
-        if (!Doc.Stories.TryGetValue(storyId, out var story) || story.Frames.Count == 0) return false;
+        if (!Doc.Stories.TryGetValue(storyId, out var story)) return false;
         var layout = LayoutOf(storyId);
         var line = layout?.LineOf(start) ?? -1;
-        var frameId = line >= 0 ? Chains.ObjectOf(layout!.Areas[layout.Lines[line].Area].FrameId) : story.Frames[^1];
-        if (SheetWith(frameId) is not { } sheet) return false;
+        // A footnote's lines are in its story's frame, and a path's text in its path.
+        var frameId = line >= 0 ? Chains.ObjectOf(layout!.Areas[layout.Lines[line].Area].FrameId) : story.Frames.LastOrDefault() ?? story.OnPath;
+        if (frameId is null || SheetWith(frameId) is not { } sheet) return false;
         if (sheet != _sheet) ShowSheet?.Invoke(sheet);
         Editing = new TextEdit { StoryId = storyId, Anchor = start, Caret = start + length };
         _selection.Clear();
@@ -1114,11 +1155,6 @@ public sealed class PageView : Control
                 }
                 if (HitObject(p) is { } hit)
                 {
-                    if (e.ClickCount >= 2 && NoteAt(p) is { } note)
-                    {
-                        OpenStory?.Invoke(note);
-                        return;
-                    }
                     if (e.ClickCount >= 2 && TextAt(p) is { } frame)
                     {
                         StartEditing(frame, p); // into a frame inside a group, or a table's cell, too
@@ -1210,7 +1246,7 @@ public sealed class PageView : Control
     private void ClickInText(TextLayout layout, TextSpot spot, Pt p, int clicks, bool extend)
     {
         if (Editing is not { } t) return;
-        var index = layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) ?? t.Caret;
+        var index = IndexAt(layout, spot, p) ?? t.Caret;
         var text = layout.Story.Text;
         if (clicks == 2)
         {
@@ -1433,7 +1469,7 @@ public sealed class PageView : Control
                 break;
             case Drag.Text:
                 if (Editing is { } t && LayoutOf(t.StoryId) is { } layout && TextAt(p, t.StoryId) is { } spot &&
-                    layout.IndexAt(spot.Area, Shapes.ToLocal(spot.Object, p)) is { } index && index != t.Caret)
+                    IndexAt(layout, spot, p) is { } index && index != t.Caret)
                 {
                     t.Caret = index;
                     CaretMoved();
@@ -1937,8 +1973,70 @@ public sealed class PageView : Control
         }
     }
 
+    /// <summary>The letters of text on a path from one index to another, as turned boxes (corners in page points).</summary>
+    private List<Pt[]> PathBoxes(PathObject path, int start, int end)
+    {
+        var boxes = new List<Pt[]>();
+        if (path.StoryId is not { } id || !Doc.Stories.TryGetValue(id, out var story)) return boxes;
+        foreach (var g in PathText.Place(story, PathText.Points(path), _layouts.Measurer, path.TextOffset).Glyphs)
+            if (g.Index >= start && g.Index < end) boxes.Add(GlyphBox(g, 0.8, 0.25));
+        return boxes;
+    }
+
+    /// <summary>A letter on a path as a turned box: from its baseline up <paramref name="up"/> and down <paramref name="down"/> of its size.</summary>
+    private static Pt[] GlyphBox(PathGlyph g, double up, double down)
+    {
+        var r = g.Angle * Math.PI / 180;
+        var (cx, cy) = (Math.Cos(r), Math.Sin(r));   // along the baseline
+        var (nx, ny) = (Math.Sin(r), -Math.Cos(r));  // up from it
+        Pt At(double a, double u) => new(g.At.X + cx * a + nx * u, g.At.Y + cy * a + ny * u);
+        var (top, bottom) = (g.Format.Size * up, -g.Format.Size * down);
+        return [At(0, bottom), At(g.Width, bottom), At(g.Width, top), At(0, top)];
+    }
+
+    private void FillPolygon(DrawingContext dc, IBrush brush, Pt[] corners)
+    {
+        var g = new StreamGeometry();
+        using (var c = g.Open())
+        {
+            c.BeginFigure(ToView(corners[0]), true);
+            foreach (var p in corners.Skip(1)) c.LineTo(ToView(p));
+            c.EndFigure(true);
+        }
+        dc.DrawGeometry(brush, null, g);
+    }
+
+    /// <summary>The caret and selection in text on a path, along its letters.</summary>
+    private void DrawPathCaret(DrawingContext dc, TextEdit t, PathObject path, Story story)
+    {
+        using var turned = Turned(dc, path);
+        if (t.Length > 0)
+            foreach (var box in PathBoxes(path, t.Start, t.Start + t.Length)) FillPolygon(dc, Look.TextSelection, box);
+        if (!_caretOn && IsFocused) return;
+        var glyphs = PathText.Place(story, PathText.Points(path), _layouts.Measurer, path.TextOffset).Glyphs;
+        // At the start of the letter it comes before, or the end of the one after it.
+        Pt at;
+        double angle, size;
+        if (glyphs.FirstOrDefault(g => g.Index >= t.Caret) is { } next)
+            (at, angle, size) = (next.At, next.Angle, next.Format.Size);
+        else if (glyphs.Count > 0 && glyphs[^1] is var last)
+        {
+            var r = last.Angle * Math.PI / 180;
+            (at, angle, size) = (new Pt(last.At.X + Math.Cos(r) * last.Width, last.At.Y + Math.Sin(r) * last.Width), last.Angle, last.Format.Size);
+        }
+        else (at, angle, size) = (PathText.At(PathText.Points(path), 0).At, 0, story.FormatAt(0).Size);
+        var a = angle * Math.PI / 180;
+        var (nx, ny) = (Math.Sin(a), -Math.Cos(a));
+        dc.DrawLine(new Pen(Look.Caret, 1.5), ToView(new Pt(at.X - nx * size * 0.25, at.Y - ny * size * 0.25)), ToView(new Pt(at.X + nx * size * 0.85, at.Y + ny * size * 0.85)));
+    }
+
     private void DrawText(DrawingContext dc)
     {
+        if (Editing is { } pt && Doc.Stories.GetValueOrDefault(pt.StoryId) is { OnPath: { } pathId } onPath)
+        {
+            if (CurrentSheet.All.FirstOrDefault(o => o.Id == pathId) is PathObject path) DrawPathCaret(dc, pt, path, onPath);
+            return;
+        }
         if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout) return;
         var here = CurrentSheet.All.ToDictionary(o => o.Id);
         PageObject? FrameOf(int area) => here.GetValueOrDefault(Chains.ObjectOf(layout.Areas[area].FrameId));
@@ -1966,7 +2064,15 @@ public sealed class PageView : Control
     {
         var here = CurrentSheet.All.ToDictionary(o => o.Id);
         var pen = new Pen(Look.Overset, 1);
-        foreach (var storyId in here.Values.SelectMany(o => o switch { TextFrame f => [f.StoryId], TableObject t => t.Cells, _ => Enumerable.Empty<string>() }).Distinct())
+        foreach (var path in here.Values.OfType<PathObject>().Where(p => p.StoryId is not null))
+            foreach (var m in MisspeltIn(path.StoryId!))
+                using (Turned(dc, path))
+                    foreach (var box in PathBoxes(path, m.Start, m.Start + m.Length))
+                        dc.DrawLine(pen, ToView(box[0]), ToView(box[1]));
+        var shownHere = here.Values.SelectMany(o => o switch { TextFrame f => [f.StoryId], TableObject t => t.Cells, _ => Enumerable.Empty<string>() }).Distinct().ToList();
+        // Footnotes are set in their stories' frames.
+        shownHere.AddRange(shownHere.SelectMany(id => Doc.Stories.TryGetValue(id, out var s) ? Footnotes.Numbers(s).Keys : Enumerable.Empty<string>()).ToList());
+        foreach (var storyId in shownHere)
         {
             if (LayoutOf(storyId) is not { } layout) continue;
             foreach (var m in MisspeltIn(storyId))

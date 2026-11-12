@@ -48,6 +48,12 @@ internal sealed class Layouts(ITextMeasurer measurer)
             fields = fields with { Note = box.Number };
             grid = null;
         }
+        else if (story.OnPath is { } pathId)
+        {
+            // Text on a path is drawn along it (PathText); this layout, one long line, is for moving the caret through it.
+            areas = [new Area(new Box(0, 0, 1_000_000, 1_000_000), pathId, 0)];
+            grid = null;
+        }
         else if (story.Table is null && story.Text.Contains(Fields.Footnote))
         {
             heights = Footnotes.Heights(doc, measurer);

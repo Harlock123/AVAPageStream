@@ -568,3 +568,23 @@ What books, magazines and reports need beyond milestone 3:
 **Status (12 November 2026):** done. Limits: PDFs carry no separate trim and bleed boxes (SkiaSharp can't write
 them), so a print shop works from the crop marks; find and spelling don't look in footnotes or text on paths; and
 text on a path is edited in the story editor, not on the page.
+
+### Milestone 5: ready to go out
+
+Making what is there dependable on its way to a printer or a reader, before adding more:
+
+- **Everywhere text is**: find and replace and the spelling check go through footnotes and text on paths too, and
+  both are edited on the page like any other text: click into a footnote at the foot of its column, or into the
+  letters along a path.
+- **Preflight**: before exporting or printing, and from File › Preflight, a list of what would go wrong: overset
+  text, table rows with no frame to go in, linked pictures that are missing or have changed, pictures with too few
+  pixels for the size they are printed at (under 150 dots an inch by default), artwork that stops short of the bleed
+  at a page's edge, and fonts that are neither bundled nor embeddable. Each entry shows the page and goes to the
+  problem when picked.
+- **Package**: File › Package… copies the document, its linked pictures and the font files it uses into one folder
+  (links pointing at the copies), with a short report, ready to hand to a printer.
+- **A better PDF**: bookmarks made from the headings (the paragraph styles a table of contents would use), entries
+  of a table of contents that go to their pages, web addresses that open, and the document's title and author.
+  Where SkiaSharp can't write something (trim and bleed boxes), see whether a pass over the finished file can add it.
+
+**Status (12 November 2026):** started. Done: footnotes and text on paths found, checked and edited on the page.

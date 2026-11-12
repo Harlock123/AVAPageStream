@@ -156,7 +156,6 @@ public sealed class MainWindow : Window
         View.PointerAt += p => CursorInfo.Text = p is { } pt
             ? $"{Units.Format(pt.X, Editor.Doc.Setup.Unit, false)}, {Units.Format(pt.Y, Editor.Doc.Setup.Unit)}" : "";
         View.ShowSheet += ShowSheet;
-        View.OpenStory += id => OpenStoryEditor(id);
         Editor.Changed += OnChanged;
         Panel = new SidePanel(this);
 
@@ -729,28 +728,27 @@ public sealed class MainWindow : Window
         Editor.Change(locked ? "Lock" : "Unlock", d => { foreach (var id in ids) if (d.Find(id) is { } o) o.Locked = locked; });
     }
 
-    /// <summary>Puts a footnote at the caret and opens its text in the story editor to write.</summary>
-    public StoryEditor? InsertFootnote()
+    /// <summary>Puts a footnote at the caret and the caret in the note, at the foot of its column, to write it.</summary>
+    public bool InsertFootnote()
     {
-        if (View.Editing is not { } t) { Say("Put the caret where the footnote's number goes first."); return null; }
+        if (View.Editing is not { } t) { Say("Put the caret where the footnote's number goes first."); return false; }
         if (t.Length > 0) View.Type("");
         var at = View.Editing!.Caret;
-        if (Editor.InsertFootnote(t.StoryId, at) is not { } note) { Say("A footnote can't go in a footnote, a table's cell or text on a path."); return null; }
-        View.Editing!.Caret = View.Editing.Anchor = at + 1;
-        var se = OpenStoryEditor(note);
-        Say("Write the footnote in the story editor. It is set at the foot of the column its number is in.");
-        return se;
+        if (Editor.InsertFootnote(t.StoryId, at) is not { } note) { Say("A footnote can't go in a footnote, a table's cell or text on a path."); return false; }
+        View.Reveal(note, Editor.Doc.Stories[note].Length, 0);
+        Say("Write the footnote: it is set at the foot of the column its number is in. Escape goes back to the text.");
+        return true;
     }
 
-    /// <summary>Opens the footnote whose number the caret is beside in the story editor.</summary>
-    public StoryEditor? EditFootnote()
+    /// <summary>Puts the caret in the footnote whose number the caret is beside.</summary>
+    public bool EditFootnote()
     {
         if (View.Editing is not { } t || !Editor.Doc.Stories.TryGetValue(t.StoryId, out var story) || Footnotes.At(story, t.Caret) is not { } note)
         {
-            Say("Put the caret beside a footnote's number in the text first, or double-click the footnote.");
-            return null;
+            Say("Put the caret beside a footnote's number in the text first, or click into the footnote.");
+            return false;
         }
-        return OpenStoryEditor(note);
+        return View.Reveal(note, Editor.Doc.Stories[note].Length, 0);
     }
 
     /// <summary>Puts text along the selected path and opens it in the story editor to write.</summary>
@@ -758,9 +756,10 @@ public sealed class MainWindow : Window
     {
         if (View.Selected is not [PathObject path]) { Say("Select a path or polyline drawn with the pen, then choose Text on path."); return; }
         if (Editor.PutTextOnPath(path.Id) is { } why) { Say(why); return; }
-        View.Select([path.Id]);
-        OpenStoryEditor();
-        Say("Write the path's text in the story editor; the Text tab sets its type, and its alignment where it sits on the path.");
+        // Its words selected, ready to type over.
+        var story = ((PathObject)Editor.Doc.Find(path.Id)!).StoryId!;
+        View.Reveal(story, 0, Editor.Doc.Stories[story].Length);
+        Say("Type the path's text. The Text tab sets its type, and its alignment where it sits on the path.");
     }
 
     /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>

@@ -22,7 +22,10 @@ public partial class WindowTests
         Pump();
         var p = (PathObject)w.Editor.Doc.Find(path.Id)!;
         Assert.NotNull(p.StoryId);
-        Assert.Contains("story editor", w.Message.Text);
+        Assert.Equal((p.StoryId, 0, 14), (w.View.Editing!.StoryId, w.View.Editing.Start, w.View.Editing.Length)); // ready to type over
+        Type(w, "Harbour lamps");
+        Assert.Equal("Harbour lamps", w.Editor.Doc.Stories[p.StoryId!].Text);
+        w.View.StopEditing();
         w.Panel.SelectedIndex = 0;
         w.Refresh();
         Pump();
@@ -51,15 +54,17 @@ public partial class WindowTests
         Press(w, Key.F, RawInputModifiers.Control | RawInputModifiers.Alt);
         var s = w.Editor.Doc.Stories[id];
         var note = Assert.Single(Footnotes.Numbers(s).Keys);
-        Assert.Equal(18, w.View.Editing!.Caret);
-        w.Editor.ReplaceText(note, w.Editor.Doc.Stories[note].Length, 0, "Two years late.");
+        Assert.Equal(note, w.View.Editing!.StoryId); // the caret goes into the note to write it
+        Type(w, "Two years late.");
         var layout = w.View.Layouts.Of(w.Editor.Doc, id)!;
         var box = Assert.Single(layout.Notes);
         Assert.True(box.Box.Y > 380 && box.Box.Bottom <= 400.01); // at the foot of the frame
         Assert.Equal("1 Two years late.", w.View.Layouts.Of(w.Editor.Doc, note)!.Display(0, w.Editor.Doc.Stories[note].Length));
         Assert.Equal(note, w.View.NoteAt(new Pt(100, box.Box.Y + box.Box.H / 2)));
         Assert.Null(w.View.NoteAt(new Pt(100, 100)));
-        Assert.NotNull(w.EditFootnote());
+        w.View.Reveal(id, 18, 0);
+        Assert.True(w.EditFootnote());
+        Assert.Equal(note, w.View.Editing!.StoryId);
         Assert.NotNull(w.CaptureRenderedFrame());
         Done(w);
     }

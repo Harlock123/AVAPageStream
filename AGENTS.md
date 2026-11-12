@@ -132,8 +132,11 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   `Next`) have no rows or cells of their own; `Tables.Place` says which frame shows each row and where. A cell's area
   id names the frame showing it, so `Chains.ObjectOf` finds the right frame; repeated header rows are drawn from
   their cells in the first frame, moved. Change a table through its first frame (`Tables.Head`).
-- **Text on a path** is a story with `OnPath` set and no frames, set by `PathText.Place`, not `TextFlow`. Stories with
-  no frames (paths, footnotes) are not in `Search.StoryOrder`.
+- **Text on a path** is a story with `OnPath` set and no frames, drawn by `PathText.Place`. `Layouts.Of` gives it a
+  layout of one long line in a far-off area named after the path, for moving the caret only: hit tests
+  (`PageView.PathIndexAt`), the caret, selection and misspelling marks come from the letters on the path. Footnotes
+  and path stories are in `Search.StoryOrder`, so find and spelling reach them, and `PageView.Reveal` edits them on
+  the page.
 - **Linked pictures** (`PictureObject.Linked`) aren't written into the `.avps`; `DocumentFile.Read` reads them from
   `Source` or beside the document, and `Editor.UpdateLinks` brings them up to date as one undo step.
 - **Autosave** copies go in `Recovery/` beside the settings file, one per window (`MainWindow.RecoveryId`), and go

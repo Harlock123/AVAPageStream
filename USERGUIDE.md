@@ -344,8 +344,10 @@ the last point you dragged. Escape, or a click elsewhere, finishes.
 
 ![Text set along a curve, and a footnote at the foot of the column](docs/images/guide/pathtext.png)
 
-Select a path or polyline and choose Object › **Text on path**: "Text on a path" is set along it, and the story
-editor opens to write your own. Each letter sits on the path, turned to follow it. With the path selected:
+Select a path or polyline and choose Object › **Text on path**: "Text on a path" is set along it, selected, so what you
+type replaces it. Each letter sits on the path, turned to follow it. Double-click the letters (or click them with the
+Text tool) to type in them again; double-click the path away from its letters to change its points. With the path
+selected:
 
 - The **Text** tab sets the type: font, size, colour and the rest. Its **Align** puts the text at the path's
   start (left), in its middle (centre) or at its end (right).
@@ -353,7 +355,7 @@ editor opens to write your own. Each letter sits on the path, turned to follow i
 - **Edit text…** (or Ctrl+Shift+E) opens it in the story editor, and **Remove text** takes it off.
 
 Draw the path with no stroke to show the text alone. Text that runs past the path's end isn't shown: the story
-editor counts how much. Find and the spelling check don't look in text on paths.
+editor counts how much. Find and the spelling check go along paths too.
 
 ## Tables
 
@@ -427,8 +429,9 @@ following the mouse.
 ![The find bar, with a word found and shown selected](docs/images/guide/find.png)
 
 Ctrl+F opens the find bar under the page. Type what to find and press Enter (or F3) for the next, Shift+Enter for
-the one before. It looks through every story in reading order, page by page and then the master pages, and shows
-each one selected on its page, with how many there are. **Match case** and **Whole word** narrow it down.
+the one before. It looks through every story in reading order, page by page and then the master pages (each
+story's footnotes after it, and text on paths where they are), and shows each one selected on its page, with how many
+there are. **Match case** and **Whole word** narrow it down.
 
 **Replace** changes the one found and finds the next; **Replace all** changes every one at once, as a single step to
 undo. Each replacement takes the look of the text it replaces. Escape closes the bar.
@@ -516,7 +519,8 @@ and staple it on the fold.
 ## Footnotes
 
 Put the caret where a footnote's number goes and choose Text › **Insert footnote** (Ctrl+Alt+F). A small raised
-number goes in the text, and the story editor opens for the note itself, which starts with the same number. Notes
+number goes in the text, and the caret goes into the note itself, at the foot of the column, after the same number,
+for you to write it; Escape goes back to the text. Notes
 are numbered from 1 through their story, in the order their numbers come, and renumber themselves as notes are put in
 or taken out.
 
@@ -524,10 +528,10 @@ Each note is set at the **foot of the column** its number is in, under a short r
 above it. If a line's note won't fit under it, the line goes on to the next column with its note. Footnotes are in
 the **Footnote** paragraph style (9 pt to start with), which you can change like any other.
 
-- To change a note, double-click it at the foot of the column, or put the caret beside its number and choose
-  Text › **Edit footnote**.
+- To change a note, double-click it at the foot of the column (or click it with the Text tool), or put the caret
+  beside its number and choose Text › **Edit footnote**. Ctrl+Shift+E opens it in the story editor.
 - Deleting a note's number deletes the note. Copying text or frames with numbers in them copies their notes too.
-- Find and the spelling check don't look in footnotes.
+- Find and the spelling check go through footnotes too, each story's after its text.
 
 ## Autosave and recovery
 

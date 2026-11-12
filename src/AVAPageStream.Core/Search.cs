@@ -9,7 +9,10 @@ public sealed record FindOptions(bool MatchCase = false, bool WholeWord = false)
 /// <summary>Finding text through every story, in reading order: the pages' stories first, then the masters'.</summary>
 public static class Search
 {
-    /// <summary>The stories in the order their first frames come: page by page, top-most object last, then the master pages.</summary>
+    /// <summary>
+    /// The stories in the order their first frames come: page by page, top-most object last, then the master pages;
+    /// each story's footnotes after it, and text on paths where its path is.
+    /// </summary>
     public static List<string> StoryOrder(Document doc)
     {
         var order = new List<string>();
@@ -17,9 +20,15 @@ public static class Search
         foreach (var sheet in doc.Pages.Cast<Sheet>().Concat(doc.Sheets.Where(s => s is not Page)))
             foreach (var o in sheet.All)
             {
-                IEnumerable<string> stories = o switch { TextFrame f => [f.StoryId], TableObject t => t.Cells, _ => [] };
+                IEnumerable<string> stories = o switch { TextFrame f => [f.StoryId], TableObject t => t.Cells, PathObject { StoryId: { } p } => [p], _ => [] };
                 foreach (var id in stories)
-                    if (doc.Stories.ContainsKey(id) && seen.Add(id)) order.Add(id);
+                {
+                    if (!doc.Stories.TryGetValue(id, out var story) || !seen.Add(id)) continue;
+                    order.Add(id);
+                    // Its footnotes after it, in the order of their numbers.
+                    foreach (var note in Footnotes.Numbers(story).Keys)
+                        if (doc.Stories.ContainsKey(note) && seen.Add(note)) order.Add(note);
+                }
             }
         return order;
     }
