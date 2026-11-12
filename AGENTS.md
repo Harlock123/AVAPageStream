@@ -31,10 +31,12 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     shared by every undo state).
   - `Story.cs`: `Story` with its `CharFormat` runs and `ParaFormat` per paragraph, and `ParagraphStyle`.
   - `TextFlow.cs`: `ITextMeasurer`, and `TextFlow.Layout`, which sets a story through its `Area`s (each column of each
-    frame in its chain) as `Line`s of `Piece`s; `TextLayout` answers caret positions, hit tests and selection boxes.
+    frame in its chain, with the wrap boxes it keeps out of) as `Line`s of `Piece`s; `TextLayout` answers caret
+    positions, hit tests and selection boxes. `Fields` and `FieldContext`: the page-number and page-count characters.
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
-    `PageRanges.cs` (reading "1-3, 5"), `AppSettings.cs`.
+    `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
+    (plain text and Markdown to placed paragraphs), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
   - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),
     `PageRenderer` (draws a page and its master in points) and `PageVisual` (one page as a control, for export).
@@ -67,6 +69,12 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   changes how a story sets (text wrap, say) must join that comparison.
 - **Every question the window asks goes through a replaceable function** (`Ask`, `PickOpen`, `PickSave`,
   `AskExport`, `PageView.PickImage`), so tests answer it; the test window fails any it didn't expect.
+- **Text wrap affects the text under it.** `Chains.Areas` gives a frame the wrap boxes of objects drawn above it on
+  its sheet and, on a page, every wrapping object on the master. Beside wrap, several `Line`s can share a baseline
+  (one per stretch of room), so anything walking lines by index (up and down, hit tests) must allow for that.
+- **Fields are characters, shown through the layout.** Story text holds `Fields.PageNumber`/`PageCount`; anything that
+  shows or measures set text goes through `TextLayout.Display` (or `Fields.Expand`), never `Story.Slice` directly. A
+  master's story is laid out once per page it is drawn under (`Layouts.Of(doc, id, page)`).
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **PDF metadata starts from `SKDocumentPdfMetadata.Default`**: a bare initialiser zeroes the encoding quality, which

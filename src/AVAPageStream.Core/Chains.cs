@@ -7,9 +7,45 @@ public static class Chains
     public static List<TextFrame> FramesOf(Document doc, Story story) =>
         story.Frames.Select(id => doc.Find(id)).OfType<TextFrame>().ToList();
 
-    /// <summary>Every column of every frame in the story's chain, in the order text fills them.</summary>
-    public static List<Area> Areas(Document doc, Story story) =>
-        FramesOf(doc, story).SelectMany(f => f.ColumnBoxes().Select((b, i) => new Area(b, f.Id, i))).ToList();
+    /// <summary>
+    /// Every column of every frame in the story's chain, in the order text fills them, each with the wrap boxes it
+    /// must keep out of. Wrap affects the text under it: a frame keeps out of the wrapping objects drawn above it on
+    /// its page, and (on a page) of every wrapping object on its master, which is drawn under the page. A text frame
+    /// over a wrapping box, such as a pull quote on its tinted panel, keeps its own text.
+    /// </summary>
+    public static List<Area> Areas(Document doc, Story story)
+    {
+        var own = story.Frames.ToHashSet();
+        var areas = new List<Area>();
+        foreach (var frame in FramesOf(doc, story))
+        {
+            var sheet = doc.SheetOf(frame.Id);
+            var objects = sheet?.Objects ?? [];
+            var wrapping = objects.Skip(objects.IndexOf(frame) + 1);
+            if (sheet is Page page && doc.Master(page.Master) is { } master) wrapping = master.Objects.Concat(wrapping);
+            var keep = wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(o => o.WrapBox).ToList();
+            var column = 0;
+            foreach (var box in frame.ColumnBoxes())
+            {
+                var mine = keep.Where(k => k.Intersects(box)).ToList();
+                areas.Add(new Area(box, frame.Id, column++, mine.Count > 0 ? mine : null));
+            }
+        }
+        return areas;
+    }
+
+    /// <summary>
+    /// The page a story's fields count from when it is set on its own: the page its first frame is on (from 1), or 0
+    /// when that frame is on a master page (a master's text is set again for each page it is drawn under).
+    /// </summary>
+    public static int PageOf(Document doc, Story story)
+    {
+        if (story.Frames.Count == 0) return 0;
+        var first = story.Frames[0];
+        for (var i = 0; i < doc.Pages.Count; i++)
+            if (doc.Pages[i].Objects.Any(o => o.Id == first)) return i + 1;
+        return 0;
+    }
 
     /// <summary>
     /// Makes <paramref name="to"/> follow <paramref name="from"/> in its story's chain. The frame joining must hold

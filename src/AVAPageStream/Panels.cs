@@ -126,6 +126,8 @@ public sealed class SidePanel : TabControl
     public TextBox OffsetYBox { get; } = Ui.Box();
     public ComboBox FitChoice { get; } = new() { ItemsSource = Enum.GetNames<Fit>(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
     public CheckBox LockedBox { get; } = new() { Content = "Locked", FontSize = 12 };
+    public CheckBox WrapBox { get; } = new() { Content = "Text flows round this", FontSize = 12 };
+    public TextBox WrapGapBox { get; } = Ui.Box();
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
     private readonly StackPanel _cornerRow = new();
     private readonly StackPanel _frameRows = new();
@@ -171,6 +173,7 @@ public sealed class SidePanel : TabControl
     public TextBox MarginRightBox { get; } = Ui.Box();
     public NumericUpDown PageColumnsBox { get; } = new() { Minimum = 1, Maximum = 12, Increment = 1, FormatString = "0", FontSize = 12 };
     public TextBox PageGutterBox { get; } = Ui.Box();
+    public TextBox GridBox { get; } = Ui.Box();
     public ComboBox UnitChoice { get; } = new() { ItemsSource = Units.All.Select(Units.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
 
     // Drawn with the tab control's own template: themes look a control's template up by its exact type.
@@ -283,6 +286,13 @@ public sealed class SidePanel : TabControl
             var fit = (Fit)FitChoice.SelectedIndex;
             ChangeSelected("Picture fit", o => { if (o is PictureObject p) p.Fit = fit; });
         };
+        WrapBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing) return;
+            var wrap = WrapBox.IsChecked == true;
+            ChangeSelected(wrap ? "Text wrap" : "No text wrap", o => o.Wrap = wrap);
+        };
+        MeasureBox(WrapGapBox, (o, v) => o.WrapGap = Math.Max(0, v), "Standoff");
         LockedBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -325,6 +335,9 @@ public sealed class SidePanel : TabControl
             _cornerRow,
             _frameRows,
             _pictureRows,
+            Ui.Heading("Text wrap"),
+            WrapBox,
+            Ui.Row(("Standoff", WrapGapBox)),
             Ui.Heading("Arrange"),
             Ui.Buttons(
                 Ui.Button("Front", () => Arrange(Editor.Order.Front), "Bring to front (Ctrl+Shift+])"),
@@ -339,6 +352,9 @@ public sealed class SidePanel : TabControl
                 Ui.Button("Top", () => AlignTo(Editor.Alignment.Top)),
                 Ui.Button("Middle", () => AlignTo(Editor.Alignment.Middle)),
                 Ui.Button("Bottom", () => AlignTo(Editor.Alignment.Bottom))),
+            Ui.Buttons(
+                Ui.Button("Space across", () => Spread(true), "Space three or more objects evenly from left to right"),
+                Ui.Button("Space down", () => Spread(false), "Space three or more objects evenly from top to bottom")),
             new TextBlock { Text = "One object aligns to the page; several, to each other.", Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap },
             new Border { Height = 8 },
             LockedBox,
@@ -349,6 +365,11 @@ public sealed class SidePanel : TabControl
     private void Arrange(Editor.Order order)
     {
         if (View.SelectedIds.Count > 0) Editor.Arrange(View.SelectedIds.ToList(), order);
+    }
+
+    private void Spread(bool across)
+    {
+        if (Editor.Distribute(View.SelectedIds.ToList(), across) is { } why) _window.Say(why);
     }
 
     private void AlignTo(Editor.Alignment how)
@@ -485,6 +506,10 @@ public sealed class SidePanel : TabControl
             Ui.Row(("Style", new StackPanel { Orientation = Orientation.Horizontal, Children = { BoldToggle, ItalicToggle, UnderlineToggle } })),
             Ui.Row(("Colour", TextColourBox)),
             Ui.Row(("Tracking", TrackingBox)),
+            Ui.Heading("Insert"),
+            Ui.Buttons(
+                Ui.Button("Page number", () => View.InsertField(Fields.PageNumber), "The number of the page it is on; on a master page, of each page using it"),
+                Ui.Button("Page count", () => View.InsertField(Fields.PageCount), "How many pages the document has")),
             Ui.Heading("Paragraph"),
             Ui.Row(("Align", aligns)),
             Ui.Row(("Leading", LeadingBox)),
@@ -664,6 +689,16 @@ public sealed class SidePanel : TabControl
             if (_refreshing) return;
             (PageWidthBox.Text, PageHeightBox.Text) = (PageHeightBox.Text, PageWidthBox.Text);
         };
+        Commit(GridBox, text =>
+        {
+            if (!Units.TryParse(text, Unit, out var v) || v < 1 || v > 720)
+            {
+                _window.Say("The grid's spacing is a measure from 1 pt to 10 in, such as 18pt, 0.25in or 5mm.");
+                return;
+            }
+            if (Math.Abs(v - Doc.Setup.Grid) > 0.001) Editor.Change("Grid spacing", d => d.Setup = d.Setup with { Grid = v });
+            View.InvalidateVisual();
+        });
         UnitChoice.SelectionChanged += (_, _) =>
         {
             if (_refreshing || UnitChoice.SelectedIndex < 0) return;
@@ -687,6 +722,11 @@ public sealed class SidePanel : TabControl
                 Ui.Row(("Columns", PageColumnsBox)),
                 Ui.Row(("Gutter", PageGutterBox)),
                 Ui.Buttons(Ui.Button("Apply", ApplySetup, "Change the page size, margins and columns")),
+                Ui.Heading("Grid"),
+                Ui.Row(("Spacing", GridBox)),
+                Ui.Buttons(
+                    Ui.Button("Show grid", () => _window.SetGrid(!View.ShowGrid, View.SnapGrid)),
+                    Ui.Button("Snap to grid", () => _window.SetGrid(View.ShowGrid || !View.SnapGrid, !View.SnapGrid))),
                 Ui.Heading("Units"),
                 Ui.Row(("Measure in", UnitChoice)),
                 new TextBlock
@@ -809,6 +849,8 @@ public sealed class SidePanel : TabControl
             Set(OffsetYBox, Units.Format(p.OffsetY, Unit));
         }
         LockedBox.IsChecked = selected.All(o => o.Locked);
+        WrapBox.IsChecked = selected.All(o => o.Wrap);
+        Set(WrapGapBox, Units.Format(first.WrapGap, Unit));
     }
 
     private static IBrush Brush(string? colour) =>
@@ -882,6 +924,7 @@ public sealed class SidePanel : TabControl
         Set(MarginRightBox, Units.Format(s.Margin.Right, Unit));
         PageColumnsBox.Value = s.Columns;
         Set(PageGutterBox, Units.Format(s.Gutter, Unit));
+        Set(GridBox, Units.Format(s.Grid, Unit));
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
     }
 }

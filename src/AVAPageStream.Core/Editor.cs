@@ -265,6 +265,29 @@ public sealed class Editor
         });
     }
 
+    /// <summary>
+    /// Spaces three or more objects evenly across (or down) the room between the outermost two, which stay where they
+    /// are. Returns why not, or null.
+    /// </summary>
+    public string? Distribute(IReadOnlyCollection<string> ids, bool across)
+    {
+        var objects = ids.Select(Doc.Find).OfType<PageObject>().Where(o => !o.Locked).ToList();
+        if (objects.Count < 3) return "Select three or more objects (not locked) to space evenly.";
+        var sorted = across ? objects.OrderBy(o => o.X).ToList() : objects.OrderBy(o => o.Y).ToList();
+        var span = across ? sorted.Max(o => o.X + o.W) - sorted[0].X : sorted.Max(o => o.Y + o.H) - sorted[0].Y;
+        var gap = (span - sorted.Sum(o => across ? o.W : o.H)) / (sorted.Count - 1);
+        Change(across ? "Space across" : "Space down", d =>
+        {
+            var at = across ? sorted[0].X : sorted[0].Y;
+            foreach (var o in sorted.Select(o => d.Find(o.Id)!))
+            {
+                if (across) { o.X = Math.Round(at, 2); at += o.W + gap; }
+                else { o.Y = Math.Round(at, 2); at += o.H + gap; }
+            }
+        });
+        return null;
+    }
+
     // ---- Pages ----------------------------------------------------------------------------------------------
 
     /// <summary>Adds a page at <paramref name="index"/> using the same master as its neighbour.</summary>
@@ -340,6 +363,66 @@ public sealed class Editor
             story.Insert(start, text, f);
             return start + text.Replace("\r\n", "\n").Length;
         }, merge);
+    }
+
+    /// <summary>Replaces every match of a search in one step, each replacement in the format of the text it replaces. Returns how many.</summary>
+    public int ReplaceAll(string query, string replacement, FindOptions options)
+    {
+        var matches = Search.FindAll(Doc, query, options);
+        if (matches.Count == 0) return 0;
+        Change($"Replace {matches.Count}", d =>
+        {
+            foreach (var group in matches.GroupBy(m => m.StoryId))
+            {
+                var story = d.Stories[group.Key];
+                foreach (var m in group.OrderByDescending(m => m.Start)) Swap(story, m.Start, m.Length, replacement);
+            }
+        });
+        return matches.Count;
+    }
+
+    /// <summary>Replaces one stretch of text, keeping the format of its first character. Returns where the caret goes.</summary>
+    public int ReplaceOne(Match m, string replacement) => Change("Replace", d => Swap(d.Stories[m.StoryId], m.Start, m.Length, replacement));
+
+    private static int Swap(Story story, int start, int length, string replacement)
+    {
+        var format = story.FormatAt(start);
+        story.Delete(start, length);
+        story.Insert(start, replacement, format);
+        return start + replacement.Replace("\r\n", "\n").Length;
+    }
+
+    /// <summary>
+    /// Places paragraphs read from a file into a story at <paramref name="index"/>, as paragraphs of their own, each
+    /// in its style with its bold and italic kept, in one step. Returns where the caret goes: after them.
+    /// </summary>
+    public int Place(string storyId, int index, IReadOnlyList<PlacedPara> paras)
+    {
+        if (paras.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
+        return Change("Place text", d =>
+        {
+            var story = d.Stories[storyId];
+            index = Math.Clamp(index, 0, story.Length);
+            var before = index > 0 && story.Text[index - 1] != '\n';
+            var after = index < story.Length && story.Text[index] != '\n';
+            var body = string.Join("\n", paras.Select(p => p.Text));
+            story.Insert(index, (before ? "\n" : "") + body + (after ? "\n" : ""), d.Style("Body").Char);
+            var at = index + (before ? 1 : 0);
+            foreach (var para in paras)
+            {
+                story.ApplyStyle(at, 0, d.Style(para.Style));
+                if (para.LeftIndent != 0 || para.FirstIndent != 0)
+                    story.FormatParas(at, 0, f => f with { LeftIndent = para.LeftIndent, FirstIndent = para.FirstIndent });
+                var run = at;
+                foreach (var r in para.Runs)
+                {
+                    if (r.Bold || r.Italic) story.FormatChars(run, r.Text.Length, f => f with { Bold = f.Bold || r.Bold, Italic = f.Italic || r.Italic });
+                    run += r.Text.Length;
+                }
+                at += para.Text.Length + 1;
+            }
+            return index + (before ? 1 : 0) + body.Length;
+        });
     }
 
     public void FormatChars(string storyId, int start, int length, Func<CharFormat, CharFormat> change, string label = "Format text") =>

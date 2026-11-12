@@ -39,7 +39,7 @@ internal static class Sample
         // The master: a rule and a footer on every page.
         e.Add(SheetRef.MasterAt(0), new LineObject { X = 36, Y = 742, W = 540, H = 0, Stroke = "#1C2433", StrokeWidth = 0.75 });
         var footer = e.Add(SheetRef.MasterAt(0), new TextFrame { X = 36, Y = 748, W = 540, H = 18 });
-        e.ReplaceText(footer.StoryId, 0, 0, "Harbour Notes  ·  Autumn 2026  ·  Free to every house on the quay",
+        e.ReplaceText(footer.StoryId, 0, 0, $"Harbour Notes  ·  Autumn 2026  ·  Page {Fields.PageNumber} of {Fields.PageCount}",
             new CharFormat(Fonts.Sans, 8, Colour: "#5A6478"));
 
         // The masthead: a dark band with the title reversed out.
@@ -62,16 +62,17 @@ internal static class Sample
 
         // The story: down the left column, then on under the picture.
         var left = e.Add(page, new TextFrame { X = 36, Y = 210, W = 255, H = 516 });
-        var right = e.Add(page, new TextFrame { X = 306, Y = 420, W = 270, H = 200 });
+        var right = e.Add(page, new TextFrame { X = 306, Y = 420, W = 270, H = 306 });
         e.Change("Link frames", d => Chains.Link(d, (TextFrame)d.Find(left.Id)!, (TextFrame)d.Find(right.Id)!));
         e.ReplaceText(left.StoryId, 0, 0, Story, serif);
         e.FormatParas(left.StoryId, 0, Story.Length, p => p with { Align = Align.Justify, Leading = 15, FirstIndent = 12, SpaceAfter = 4 });
         e.FormatParas(left.StoryId, 0, 0, p => p with { FirstIndent = 0 });
-        e.FormatChars(left.StoryId, 0, 22, f => f with { Bold = true });
+        e.FormatChars(left.StoryId, 0, 20, f => f with { Bold = true }); // "The harbour wall was"
 
-        // A pull quote.
-        e.Add(page, new RectangleObject { X = 306, Y = 630, W = 270, H = 96, Fill = "#FFF1EA", Stroke = "#FF6A3D", StrokeWidth = 0.75 });
-        var quote = e.Add(page, new TextFrame { X = 306, Y = 630, W = 270, H = 96, Inset = 12 });
+        // A pull quote across the gutter: both columns flow round it.
+        var box = new Box(186, 556, 240, 104);
+        e.Add(page, new RectangleObject { Bounds = box, Fill = "#FFF1EA", Stroke = "#FF6A3D", StrokeWidth = 0.75, Wrap = true, WrapGap = 10 });
+        var quote = e.Add(page, new TextFrame { Bounds = box, Inset = 12 });
         e.ReplaceText(quote.StoryId, 0, 0, "“On the first Sunday there was a queue of swimmers along the wall before seven in the morning.”",
             new CharFormat(Fonts.Serif, 14, Italic: true, Colour: "#B0401C"));
         e.FormatParas(quote.StoryId, 0, 0, p => p with { Align = Align.Centre, Leading = 18 });

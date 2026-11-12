@@ -121,6 +121,12 @@ public sealed class PageView : Control
 
     public bool ShowGuides { get; set; } = true;
 
+    /// <summary>Whether the document grid is drawn, and whether things snap to it.</summary>
+    public bool ShowGrid { get; set; }
+    public bool SnapGrid { get; set; }
+
+    private bool Snapping => Snap || SnapGrid;
+
     public SheetRef Sheet
     {
         get => _sheet;
@@ -307,6 +313,28 @@ public sealed class PageView : Control
         return line?.Start ?? (layout.Areas.FirstOrDefault()?.FrameId == frameId ? 0 : layout.OversetFrom);
     }
 
+    /// <summary>
+    /// Shows a stretch of a story selected, on the page with the frame it is set in (the story's last frame, if it is
+    /// overset). Returns false if the story has no frame.
+    /// </summary>
+    public bool Reveal(string storyId, int start, int length)
+    {
+        if (!Doc.Stories.TryGetValue(storyId, out var story) || story.Frames.Count == 0) return false;
+        var layout = LayoutOf(storyId);
+        var line = layout?.LineOf(start) ?? -1;
+        var frameId = line >= 0 ? layout!.Areas[layout.Lines[line].Area].FrameId : story.Frames[^1];
+        if (SheetWith(frameId) is not { } sheet) return false;
+        if (sheet != _sheet) ShowSheet?.Invoke(sheet);
+        Editing = new TextEdit { StoryId = storyId, Anchor = start, Caret = start + length };
+        _selection.Clear();
+        _selection.Add(frameId);
+        _editor.Break();
+        _caretOn = true;
+        Notify();
+        InvalidateVisual();
+        return true;
+    }
+
     /// <summary>Leaves the text, selecting the frame the caret was in.</summary>
     public void StopEditing()
     {
@@ -370,6 +398,17 @@ public sealed class PageView : Control
         CaretMoved();
     }
 
+    /// <summary>Puts a page-number or page-count field in at the caret.</summary>
+    public void InsertField(char field)
+    {
+        if (Editing is null)
+        {
+            Status?.Invoke("Put the caret in a text frame first. On a master page, a page number shows each page's own.");
+            return;
+        }
+        Type(field.ToString());
+    }
+
     private void Erase(bool forward, bool word)
     {
         if (Editing is not { } t || !Doc.Stories.TryGetValue(t.StoryId, out var story)) return;
@@ -409,10 +448,27 @@ public sealed class PageView : Control
         var line = layout.LineOf(t.Caret);
         if (line < 0) return;
         t.GoalX ??= layout.CaretX(line, t.Caret);
-        var target = line + delta;
+        // The next line at another height (beside text wrap, several lines share one), then the one of those nearest
+        // the column the caret is keeping to.
+        var here = layout.Lines[line];
+        var target = line;
+        do target += delta;
+        while (target >= 0 && target < layout.Lines.Count && layout.Lines[target].Area == here.Area && layout.Lines[target].Baseline == here.Baseline);
         if (target < 0) { MoveCaret(0, extend); return; }
         if (target >= layout.Lines.Count) { MoveCaret(layout.Story.Length, extend); return; }
-        MoveCaret(layout.IndexAtX(target, t.GoalX.Value), extend, keepGoal: true);
+        var row = layout.Lines[target];
+        var best = target;
+        var bestDistance = double.MaxValue;
+        for (var i = 0; i < layout.Lines.Count; i++)
+        {
+            var l = layout.Lines[i];
+            if (l.Area != row.Area || l.Baseline != row.Baseline) continue;
+            var x0 = layout.CaretX(i, l.Start);
+            var x1 = layout.CaretX(i, l.End);
+            var d = t.GoalX.Value < x0 ? x0 - t.GoalX.Value : t.GoalX.Value > x1 ? t.GoalX.Value - x1 : 0;
+            if (d < bestDistance) { bestDistance = d; best = i; }
+        }
+        MoveCaret(layout.IndexAtX(best, t.GoalX.Value), extend, keepGoal: true);
     }
 
     /// <summary>
@@ -504,7 +560,8 @@ public sealed class PageView : Control
     public string? SelectedText()
     {
         if (Editing is not { } t || t.Length == 0 || !Doc.Stories.TryGetValue(t.StoryId, out var story)) return null;
-        return story.Slice(t.Start, t.Length);
+        // Fields go out as they read here: "#" for a page number on a master.
+        return Fields.Expand(story.Slice(t.Start, t.Length), LayoutOf(t.StoryId)?.Fields);
     }
 
     // ---- Keys -----------------------------------------------------------------------------------------------------
@@ -641,10 +698,10 @@ public sealed class PageView : Control
 
     private double Tolerance => SnapPixels / Scale;
 
-    private Pt Snapped(Pt p) => Snap ? Targets().Snap(p, Tolerance) : p;
+    private Pt Snapped(Pt p) => Snapping ? Targets().Snap(p, Tolerance) : p;
 
     private SnapTargets Targets() =>
-        SnapTargets.For(Doc.Setup, CurrentSheet, CurrentSheet is Page pg ? Doc.Master(pg.Master) : null);
+        SnapTargets.For(Doc.Setup, CurrentSheet, CurrentSheet is Page pg ? Doc.Master(pg.Master) : null, guides: Snap, grid: SnapGrid);
 
     /// <summary>The top-most object of the sheet under a point.</summary>
     private PageObject? HitObject(Pt p, Func<PageObject, bool>? which = null)
@@ -1004,7 +1061,7 @@ public sealed class PageView : Control
         var dx = p.X - _dragStart.X;
         var dy = p.Y - _dragStart.Y;
         if (_shift) { if (Math.Abs(dx) > Math.Abs(dy)) dy = 0; else dx = 0; }
-        if (Snap)
+        if (Snapping)
         {
             var moved = Box.Union(_originals.Values.Select(b => b.Offset(dx, dy)));
             var (sx, sy) = Targets().SnapBox(moved, Tolerance);
@@ -1211,12 +1268,32 @@ public sealed class PageView : Control
         using (dc.PushTransform(Matrix.CreateScale(Scale, Scale) * Matrix.CreateTranslation(Origin.X, Origin.Y)))
             _renderer.Draw(dc, doc, sheet);
 
+        if (ShowGrid) DrawGrid(dc, doc);
         if (ShowGuides) DrawGuides(dc, doc, sheet);
         DrawFrames(dc, sheet);
         DrawSelection(dc);
         DrawText(dc);
         DrawDrag(dc);
         DrawRulers(dc, bounds);
+    }
+
+    /// <summary>The document grid across the page, when its lines would be at least 6 pixels apart.</summary>
+    private void DrawGrid(DrawingContext dc, Document doc)
+    {
+        var step = doc.Setup.Grid;
+        if (step <= 0 || step * Scale < 6) return;
+        var pen = new Pen(Look.GridLine, 1);
+        var page = ToView(doc.Setup.Page);
+        for (var x = step; x < doc.Setup.PageWidth; x += step)
+        {
+            var vx = Math.Round(ToView(new Pt(x, 0)).X) + 0.5;
+            dc.DrawLine(pen, new Point(vx, page.Top), new Point(vx, page.Bottom));
+        }
+        for (var y = step; y < doc.Setup.PageHeight; y += step)
+        {
+            var vy = Math.Round(ToView(new Pt(0, y)).Y) + 0.5;
+            dc.DrawLine(pen, new Point(page.Left, vy), new Point(page.Right, vy));
+        }
     }
 
     private void DrawGuides(DrawingContext dc, Document doc, Sheet sheet)

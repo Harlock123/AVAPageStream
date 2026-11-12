@@ -38,9 +38,19 @@ public sealed class MainWindow : Window
     public TextBlock ZoomInfo { get; } = new() { Foreground = Look.Heading, FontSize = 12, MinWidth = 46, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Right };
     public TextBlock PageInfo { get; } = new() { Foreground = Look.Text, FontSize = 12, MinWidth = 96, TextAlignment = TextAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
     public Dictionary<Tool, ToggleButton> ToolButtons { get; } = [];
+
+    // The find bar
+    public Border FindBar { get; } = new() { IsVisible = false };
+    public TextBox FindBox { get; } = new() { Width = 220, PlaceholderText = "Find", FontSize = 12 };
+    public TextBox ReplaceBox { get; } = new() { Width = 200, PlaceholderText = "Replace with", FontSize = 12 };
+    public CheckBox MatchCase { get; } = new() { Content = "Match case", FontSize = 12 };
+    public CheckBox WholeWord { get; } = new() { Content = "Whole word", FontSize = 12 };
+    public TextBlock FindStatus { get; } = new() { Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     private readonly MenuItem _recentMenu = new() { Header = "Open _recent" };
     private readonly MenuItem _snapItem = new() { Header = "_Snap to guides", ToggleType = MenuItemToggleType.CheckBox };
     private readonly MenuItem _guidesItem = new() { Header = "Show _guides", ToggleType = MenuItemToggleType.CheckBox };
+    private readonly MenuItem _gridItem = new() { Header = "Show g_rid", ToggleType = MenuItemToggleType.CheckBox };
+    private readonly MenuItem _snapGridItem = new() { Header = "Snap to gr_id", ToggleType = MenuItemToggleType.CheckBox };
 
     /// <summary>Asks a question (title, message, buttons) and returns the button pressed; tests answer it themselves.</summary>
     public Func<string, string, string[], Task<int>> Ask { get; set; }
@@ -70,7 +80,7 @@ public sealed class MainWindow : Window
         Background = Look.Window;
         Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://AVAPageStream/Assets/AVAPageStream.png")));
 
-        View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides };
+        View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides, ShowGrid = Settings.ShowGrid, SnapGrid = Settings.SnapGrid };
         AskExport = kind => ExportDialog.Show(this, kind == "png", Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         View.PickImage = async () => await PickOpen("image") is { } path ? await File.ReadAllBytesAsync(path) : null;
         View.SelectionChanged += Refresh;
@@ -102,6 +112,9 @@ public sealed class MainWindow : Window
         var status = BuildStatusBar();
         DockPanel.SetDock(status, Dock.Bottom);
         dock.Children.Add(status);
+        BuildFindBar();
+        DockPanel.SetDock(FindBar, Dock.Bottom);
+        dock.Children.Add(FindBar);
         var box = BuildToolbox();
         DockPanel.SetDock(box, Dock.Left);
         dock.Children.Add(box);
@@ -112,6 +125,8 @@ public sealed class MainWindow : Window
         Opened += (_, _) => View.Focus();
         _snapItem.IsChecked = View.Snap;
         _guidesItem.IsChecked = View.ShowGuides;
+        _gridItem.IsChecked = View.ShowGrid;
+        _snapGridItem.IsChecked = View.SnapGrid;
 
         if (open is not null) OpenFile(open);
         else Say("A new document. Draw a text frame with the Text tool (T) and start typing.");
@@ -135,9 +150,13 @@ public sealed class MainWindow : Window
         {
             View.ShowGuides = Settings.ShowGuides = !View.ShowGuides;
             _guidesItem.IsChecked = View.ShowGuides;
+        _gridItem.IsChecked = View.ShowGrid;
+        _snapGridItem.IsChecked = View.SnapGrid;
             View.InvalidateVisual();
             SaveSettings();
         };
+        _gridItem.Click += (_, _) => SetGrid(show: !View.ShowGrid, snap: View.SnapGrid);
+        _snapGridItem.Click += (_, _) => SetGrid(show: View.ShowGrid || !View.SnapGrid, snap: !View.SnapGrid);
         _recentMenu.SubmenuOpened += (_, _) => FillRecent();
         FillRecent();
 
@@ -179,6 +198,9 @@ public sealed class MainWindow : Window
                         Item("De_lete", View.DeleteSelection, "Delete"),
                         new Separator(),
                         Item("Select _all", View.SelectAll, "Ctrl+A"),
+                        new Separator(),
+                        Item("_Find and replace…", ShowFind, "Ctrl+F"),
+                        Item("Find _next", () => FindNext(), "F3"),
                     },
                 },
                 new MenuItem
@@ -193,6 +215,8 @@ public sealed class MainWindow : Window
                         new Separator(),
                         _snapItem,
                         _guidesItem,
+                        _gridItem,
+                        _snapGridItem,
                     },
                 },
                 new MenuItem
@@ -209,6 +233,7 @@ public sealed class MainWindow : Window
                         Item("_Unlock", () => Lock(false)),
                         new Separator(),
                         Item("_Place picture…", PlacePicture),
+                        Item("Place _text…", () => _ = PlaceText()),
                         Item("Unlink text _frame", UnlinkSelected),
                     },
                 },
@@ -220,6 +245,9 @@ public sealed class MainWindow : Window
                         Item("_Bold", () => View.ToggleChar(f => f.Bold, (f, v) => f with { Bold = v }, "Bold"), "Ctrl+B"),
                         Item("_Italic", () => View.ToggleChar(f => f.Italic, (f, v) => f with { Italic = v }, "Italic"), "Ctrl+I"),
                         Item("_Underline", () => View.ToggleChar(f => f.Underline, (f, v) => f with { Underline = v }, "Underline"), "Ctrl+U"),
+                        new Separator(),
+                        Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
+                        Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
                         new Separator(),
                         Item("Align _left", () => View.ApplyPara(p => p with { Align = Align.Left }, "Alignment")),
                         Item("Align _centre", () => View.ApplyPara(p => p with { Align = Align.Centre }, "Alignment")),
@@ -329,6 +357,109 @@ public sealed class MainWindow : Window
         return new Border { Background = Look.Bar, BorderBrush = Look.Border, BorderThickness = new Thickness(0, 1, 1, 0), Child = stack };
     }
 
+    private void BuildFindBar()
+    {
+        Button B(string text, Action click, string tip)
+        {
+            var b = new Button { Content = text, FontSize = 12, Padding = new Thickness(10, 3) };
+            ToolTip.SetTip(b, tip);
+            b.Click += (_, _) => click();
+            return b;
+        }
+        FindBox.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.Enter) { FindNext((e.KeyModifiers & KeyModifiers.Shift) == 0); e.Handled = true; }
+            else if (e.Key == Key.Escape) { HideFind(); e.Handled = true; }
+        }, RoutingStrategies.Tunnel);
+        ReplaceBox.AddHandler(KeyDownEvent, (_, e) =>
+        {
+            if (e.Key == Key.Enter) { ReplaceNext(); e.Handled = true; }
+            else if (e.Key == Key.Escape) { HideFind(); e.Handled = true; }
+        }, RoutingStrategies.Tunnel);
+        FindBox.TextChanged += (_, _) => FindStatus.Text = "";
+        FindBar.Background = Look.Bar;
+        FindBar.BorderBrush = Look.Border;
+        FindBar.BorderThickness = new Thickness(0, 1, 0, 0);
+        FindBar.Padding = new Thickness(10, 5);
+        FindBar.Child = new WrapPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Children =
+            {
+                FindBox,
+                B("Previous", () => FindNext(false), "Find the one before (Shift+Enter)"),
+                B("Next", () => FindNext(true), "Find the next one (Enter, or F3)"),
+                ReplaceBox,
+                B("Replace", ReplaceNext, "Replace the one found, and find the next"),
+                B("Replace all", ReplaceAll, "Replace every one in the document, as one step to undo"),
+                MatchCase,
+                WholeWord,
+                FindStatus,
+                B("✕", HideFind, "Close (Escape)"),
+            },
+        };
+        foreach (var c in ((WrapPanel)FindBar.Child).Children) c.Margin = new Thickness(0, 0, 6, 0);
+    }
+
+    private FindOptions FindOptions => new(MatchCase.IsChecked == true, WholeWord.IsChecked == true);
+
+    /// <summary>Shows the find bar, starting from any text selected.</summary>
+    public void ShowFind()
+    {
+        FindBar.IsVisible = true;
+        if (View.SelectedText() is { Length: > 0 and < 200 } selected && !selected.Contains('\n')) FindBox.Text = selected;
+        FindBox.Focus();
+        FindBox.SelectAll();
+    }
+
+    public void HideFind()
+    {
+        FindBar.IsVisible = false;
+        View.Focus();
+    }
+
+    /// <summary>Finds the next (or previous) match after the selection, round every story, and shows it.</summary>
+    public bool FindNext(bool forward = true)
+    {
+        var query = FindBox.Text ?? "";
+        if (query.Length == 0) { FindStatus.Text = "Type something to find."; return false; }
+        var t = View.Editing;
+        var from = t is null ? 0 : forward ? t.Start + t.Length : t.Start;
+        var match = Search.Next(Editor.Doc, query, FindOptions, t?.StoryId, from, forward);
+        if (match is null)
+        {
+            FindStatus.Text = "Not found.";
+            return false;
+        }
+        View.Reveal(match.StoryId, match.Start, match.Length);
+        var all = Search.FindAll(Editor.Doc, query, FindOptions);
+        FindStatus.Text = $"{all.FindIndex(m => m == match) + 1} of {all.Count}";
+        Refresh();
+        return true;
+    }
+
+    /// <summary>Replaces the match that is selected (if one is) and finds the next.</summary>
+    public void ReplaceNext()
+    {
+        var query = FindBox.Text ?? "";
+        if (View.Editing is { Length: > 0 } t && Editor.Doc.Stories.TryGetValue(t.StoryId, out var story) &&
+            t.Length == query.Length && Search.IsMatch(story.Text, t.Start, query, FindOptions))
+        {
+            var after = Editor.ReplaceOne(new Match(t.StoryId, t.Start, t.Length), ReplaceBox.Text ?? "");
+            t.Caret = t.Anchor = after;
+        }
+        if (!FindNext()) FindStatus.Text = Search.FindAll(Editor.Doc, query, FindOptions).Count == 0 ? "None left." : FindStatus.Text;
+    }
+
+    public void ReplaceAll()
+    {
+        var query = FindBox.Text ?? "";
+        if (query.Length == 0) { FindStatus.Text = "Type something to find."; return; }
+        var n = Editor.ReplaceAll(query, ReplaceBox.Text ?? "", FindOptions);
+        FindStatus.Text = n switch { 0 => "Not found.", 1 => "Replaced 1.", _ => $"Replaced {n}." };
+        Say(n == 0 ? $"\"{query}\" isn't in the document." : $"Replaced {n} of \"{query}\"; one undo puts them all back.");
+    }
+
     private Control BuildStatusBar()
     {
         var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto,Auto"), Margin = new Thickness(10, 3) };
@@ -344,6 +475,17 @@ public sealed class MainWindow : Window
     // ---- Keeping the window up to date --------------------------------------------------------------------------------
 
     public void Say(string message) => Message.Text = message;
+
+    /// <summary>Shows or hides the document grid, and snaps to it or not (snapping shows it).</summary>
+    public void SetGrid(bool show, bool snap)
+    {
+        View.ShowGrid = Settings.ShowGrid = show;
+        View.SnapGrid = Settings.SnapGrid = snap;
+        _gridItem.IsChecked = show;
+        _snapGridItem.IsChecked = snap;
+        View.InvalidateVisual();
+        SaveSettings();
+    }
 
     public void SaveSettings() => Settings.Save(_settingsPath);
 
@@ -475,6 +617,46 @@ public sealed class MainWindow : Window
     {
         if (View.Selected is not [TextFrame frame]) { Say("Select one text frame to unlink."); return; }
         Say(Editor.TryChange("Unlink frame", d => Chains.Unlink(d, (TextFrame)d.Find(frame.Id)!)) ?? "Unlinked: the text flows on without that frame.");
+    }
+
+    /// <summary>
+    /// Reads a text or Markdown file into the story being edited, at the caret, or onto the end of the selected text
+    /// frame's story. The text flows on through the frame's chain; what doesn't fit shows as overset.
+    /// </summary>
+    public async Task PlaceText()
+    {
+        string storyId;
+        int at;
+        if (View.Editing is { } t)
+        {
+            if (t.Length > 0) View.Type("");
+            (storyId, at) = (t.StoryId, t.Caret);
+        }
+        else if (View.Selected is [TextFrame frame] && Editor.Doc.StoryOf(frame) is { } story)
+            (storyId, at) = (story.Id, story.Length);
+        else
+        {
+            Say("Select a text frame, or put the caret in one, to place text into.");
+            return;
+        }
+        if (await PickOpen("text") is not { } path) return;
+        string text;
+        try
+        {
+            text = await File.ReadAllTextAsync(path);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't read {Path.GetFileName(path)}: {e.Message}");
+            return;
+        }
+        var markdown = Path.GetExtension(path).ToLowerInvariant() is ".md" or ".markdown";
+        var paras = markdown ? TextImport.Markdown(text) : TextImport.PlainText(text);
+        var caret = Editor.Place(storyId, at, paras);
+        View.Reveal(storyId, caret, 0);
+        var over = View.LayoutOf(storyId) is { Overset: true } ? " Some doesn't fit: link another frame to the red mark to flow it on." : "";
+        Say($"Placed {paras.Count} paragraph{(paras.Count == 1 ? "" : "s")} from {Path.GetFileName(path)}.{over}");
+        Refresh();
     }
 
     private void PlacePicture()
@@ -663,11 +845,14 @@ public sealed class MainWindow : Window
     {
         var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = kind == "image" ? "Place a picture" : "Open a document",
+            Title = kind switch { "image" => "Place a picture", "text" => "Place text", _ => "Open a document" },
             AllowMultiple = false,
-            FileTypeFilter = kind == "image"
-                ? [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp"] }]
-                : [new FilePickerFileType("AVAPageStream documents") { Patterns = ["*" + DocumentFile.Extension] }],
+            FileTypeFilter = kind switch
+            {
+                "image" => [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp"] }],
+                "text" => [new FilePickerFileType("Text and Markdown") { Patterns = ["*.txt", "*.md", "*.markdown", "*.text"] }],
+                _ => [new FilePickerFileType("AVAPageStream documents") { Patterns = ["*" + DocumentFile.Extension] }],
+            },
         });
         return files.Count > 0 ? files[0].TryGetLocalPath() : null;
     }
@@ -704,6 +889,13 @@ public sealed class MainWindow : Window
     {
         var command = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
         var shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+        if (e.Key == Key.F3)
+        {
+            if (!FindBar.IsVisible) ShowFind();
+            else FindNext(!shift);
+            e.Handled = true;
+            return;
+        }
         if (!command) return;
         // A box in the side panel keeps its own editing keys.
         var inBox = FocusManager?.GetFocusedElement() is TextBox;
@@ -725,6 +917,8 @@ public sealed class MainWindow : Window
             case Key.C: _ = Copy(); break;
             case Key.V: _ = Paste(); break;
             case Key.A: View.SelectAll(); break;
+            case Key.D3 when shift: View.InsertField(Fields.PageNumber); break;
+            case Key.F or Key.H: ShowFind(); break;
             case Key.D: Duplicate(); break;
             case Key.D0 or Key.NumPad0: View.FitPage(); break;
             case Key.D1 or Key.NumPad1: View.ActualSize(); break;

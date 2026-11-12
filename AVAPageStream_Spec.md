@@ -229,11 +229,45 @@ moves through the whole story, across frames.
 - Cut, copy and paste (plain text; milestone 2: styled within the program).
 - Escape leaves the text and selects its frame.
 
+### Text wrap (milestone 2)
+
+- Any object can be set to wrap (Object tab › Text wrap), with a standoff (6 pt to start with). Text keeps the
+  standoff away from the object's frame.
+- Wrap affects the text under it. A frame keeps out of the wrapping objects drawn above it on its page, and on a page
+  out of every wrapping object on its master (which is drawn under the page). So a pull quote's frame on top of its own
+  wrapping panel keeps its text, while the columns underneath flow round both.
+- A line beside a wrapped object is set in each stretch of room either side of it, in order. A word that fits whole
+  in none of them waits for the line below, and where nothing fits at all the text moves on to below the object (or to
+  the next frame). Up and Down move between heights, keeping to the caret's column.
+
+### Fields (milestone 2)
+
+- Text › Insert page number (Ctrl+Shift+3) and Insert page count put a field in the story: a single character that
+  shows the number of the page it is on, or how many pages there are.
+- On a master page a page number shows "#", and under each page it shows that page's number: a master's stories are
+  set again for each page they are drawn under.
+- Elsewhere a story's fields count from the page its first frame is on.
+
+### Find and replace (milestone 2)
+
+- Edit › Find and replace (Ctrl+F) opens a bar under the page: find, replace with, Match case and Whole word. Enter
+  or F3 finds the next match (Shift: the one before), going through the stories in reading order (page by page, then
+  the master pages) and round to the start. Each match is shown selected, on its page.
+- Replace replaces the match shown and finds the next. Replace all replaces every match in one step to undo, each in
+  the format of the text it replaces.
+
+### Placing text (milestone 2)
+
+- Object › Place text… reads a .txt or .md file into the story at the caret, or onto the end of the selected text
+  frame's story, as one step. Plain text becomes a paragraph a line.
+- Markdown: # headings take Heading and ## and smaller take Subheading. Paragraphs take Body. List items get a bullet
+  or a number and a hanging indent. Quotes are indented and in italic. **Bold** and *italic* carry over. `Code` and
+  [links](…) keep their text; pictures are left out.
+
 ### Milestone 2 and later
 
-Text wrap around objects (by frame or by shape), tabs and tab leaders, drop caps, hyphenation, kerning, small caps,
-super- and subscript, page number and page count fields (on masters), a *story editor* window showing a story as
-plain text with its styles, find and replace, spelling, importing plain text and Markdown.
+Text wrap by shape, tabs and tab leaders, drop caps, hyphenation, kerning, small caps,
+super- and subscript, a *story editor* window showing a story as plain text with its styles, and spelling.
 
 ---
 
@@ -279,7 +313,8 @@ plain text with its styles, find and replace, spelling, importing plain text and
   guide moves it; dragging it back onto a ruler removes it. Guides belong to the page.
 - **Snap** (View › Snap to guides, on by default): moving, resizing and drawing snap to margins, column edges, page
   edges, guides and the page's centre lines within 5 screen pixels.
-- **Grid** (milestone 2): a document grid to snap to.
+- **Grid** (milestone 2): View › Show grid draws the document grid (18 pt to start with; Document tab › Grid), and
+  View › Snap to grid snaps to its lines as well as, or instead of, the guides.
 
 ---
 
@@ -412,6 +447,12 @@ stories a change reaches.
 Facing pages and spreads; per-master margins and columns; page number fields; groups; align and distribute; polygons
 and Bézier paths; rotation; text wrap; tabs; drop caps; hyphenation; kerning; named swatches that update their users;
 the story editor; find and replace; importing text and Markdown; styled copy and paste; a document grid.
+
+**Status (11 November 2026):** started. Done and tested: text wrap round frames, page number and page count fields,
+find and replace, placing plain text and Markdown, spacing objects evenly across or down (Object tab › Space
+across, Space down), and the document grid. Still to do: facing pages and spreads; per-master margins and columns;
+groups; polygons and Bézier paths; rotation; wrap by shape; tabs; drop caps; hyphenation; kerning between formats;
+named swatches; the story editor; styled copy and paste.
 
 ### Milestone 3: print
 

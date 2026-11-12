@@ -4,16 +4,19 @@ A desktop publishing program for Windows, macOS and Linux, built with .NET 10 an
 PageStream, the frame-based page layout program many people first used on the Amiga: you draw frames on a page, pour
 text into them, link them so a story flows from column to column and page to page, and print exactly what you see.
 
-![AVAPageStream with a newsletter page: a masthead, a headline, a two-column story flowing from the left column into a second frame under a picture, a caption, a pull quote and a footer from the master page, with rulers, margin guides and the Object tab open](docs/images/AVAPageStream-layout.png)
+![AVAPageStream with a newsletter page: a masthead, a headline, a two-column story flowing from the left column into a second frame under a picture, the left column wrapping round a pull quote set across the gutter, and a footer from the master page numbering the page, with rulers, margin guides and the Object tab open](docs/images/AVAPageStream-layout.png)
 
 ## What it does
 
 - **Pages and master pages.** Letter, Legal, Tabloid, A3, A4, A5, B5 or any size, portrait or landscape, with
   margins and column guides. Each page uses a master page, and what is on the master (a footer, a rule, a logo) is
-  drawn under every page that uses it. Add and delete pages from the Pages tab, and drag them to reorder.
+  drawn under every page that uses it. Put a page-number field in a master's footer and each page shows its own
+  number (and the page count, if you like: "Page 3 of 12"). Add and delete pages from the Pages tab, and drag them to reorder.
 - **Frames.** Text frames, pictures, rectangles (with rounded corners), ellipses and lines, each with a fill and a
   stroke. A picture fits its frame four ways, and can be slid inside it (Alt+drag) to crop a different part into view. Move, resize and nudge them, line them up, bring them forward or send them back, duplicate, lock, copy and
-  paste.
+  paste, and space them evenly across or down.
+- **Text wrap.** Set any picture, box or frame to wrap, with a standoff, and the text under it flows round it,
+  on both sides if there is room: a pull quote across the gutter pushes both columns aside.
 - **Text that flows.** A story pours through every frame in its chain, column by column, and reflows as you type or
   resize a frame. A frame whose story doesn't fit shows a red ⊞ mark; click it, then another frame, and the text flows
   on into that one, on the same page or another.
@@ -21,12 +24,15 @@ text into them, link them so a story flows from column to column and page to pag
   any installed font can be used too. Set size, bold, italic, underline, colour and tracking; alignment (left,
   centre, right, justified), leading, indents and space before and after; and paragraph styles (Body, Heading,
   Subheading, Caption, and your own) that update every paragraph using them when you redefine or rename one.
+- **Find and replace** through every story, page by page, with match case and whole word; Replace all is one undo.
+- **Place text.** Pour a plain text or Markdown file into a frame: Markdown headings, paragraphs, lists, quotes,
+  bold and italic come in as styled paragraphs and flow on through the chain.
 - **Editing in place.** Type straight into the page: the caret moves through the whole story, across frames, with
   word and line movement, Page Up and Page Down from frame to frame, selection by Shift, dragging, double-click (word)
   and triple-click (paragraph). Only the story being typed in is laid out again, so long documents stay quick.
-- **Rulers, guides and snapping.** Rulers in points, picas, inches, millimetres or centimetres; drag a guide out of
-  a ruler (and back to remove it). Moving, resizing and drawing snap to the margins, columns, page edges and centre,
-  and the guides.
+- **Rulers, guides, grid and snapping.** Rulers in points, picas, inches, millimetres or centimetres; drag a guide out
+  of a ruler (and back to remove it). Moving, resizing and drawing snap to the margins, columns, page edges and
+  centre, the guides, and (if you like) a document grid.
 - **Measures in any unit.** Every box takes `54`, `0.75in`, `4p6`, `20mm` or a sum like `1in + 6pt`.
 - **Undo** for every change, all the way back. A run of typing or nudging is one step.
 - **PDF and PNG.** Export all the pages, this page or a range (`1-3, 5`) as a vector PDF with its fonts embedded, or
@@ -72,8 +78,8 @@ dotnet test AVAPageStream.slnx
 dotnet run --project src/AVAPageStream
 ```
 
-The design, and what is still to come (facing pages, text wrap, groups, Bézier paths, a story editor, find and
-replace, printing), is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md).
+The design, and what is still to come (facing pages, groups, rotation, Bézier paths, tabs, a story editor,
+printing), is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md).
 
 ## Licence
 

@@ -35,6 +35,7 @@ internal static class Look
     public static readonly IBrush TextSelection = Brush("#5A3D8BFF");
     public static readonly IBrush Caret = Brushes.Black;
     public static readonly IBrush Overset = Brush("#E02020");
+    public static readonly IBrush GridLine = Brush("#2A4FA8E0");
     public static readonly IBrush LinkFrom = Brush("#30FF6A3D");
 
     private static SolidColorBrush Brush(string colour) => new(Color.Parse(colour));

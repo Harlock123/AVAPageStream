@@ -14,9 +14,10 @@ namespace AVAPageStream;
 /// </summary>
 internal sealed class Layouts(ITextMeasurer measurer)
 {
-    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, TextLayout Layout);
+    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, TextLayout Layout);
 
-    private readonly Dictionary<string, Entry> _layouts = [];
+    // By story, and by the page a master's story is drawn on: its page-number fields differ from page to page.
+    private readonly Dictionary<(string, int), Entry> _layouts = [];
 
     public ITextMeasurer Measurer => measurer;
 
@@ -25,20 +26,23 @@ internal sealed class Layouts(ITextMeasurer measurer)
 
     public void Clear() => _layouts.Clear();
 
-    public TextLayout? Of(Document doc, string storyId)
+    /// <summary>
+    /// A story's layout. <paramref name="page"/> is the page (from 1) a master's story is being drawn under; left out,
+    /// fields count from the page the story's first frame is on.
+    /// </summary>
+    public TextLayout? Of(Document doc, string storyId, int? page = null)
     {
-        if (!doc.Stories.TryGetValue(storyId, out var story))
-        {
-            _layouts.Remove(storyId);
-            return null;
-        }
+        if (!doc.Stories.TryGetValue(storyId, out var story)) return null;
+        var fields = new FieldContext(page ?? Chains.PageOf(doc, story), doc.Pages.Count);
+        var key = (storyId, page ?? -1);
         var areas = Chains.Areas(doc, story);
-        if (_layouts.TryGetValue(storyId, out var e) && e.Text == story.Text && e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) &&
-            e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) && e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
+        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields &&
+            e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) && e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) &&
+            e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
             return e.Layout;
-        var layout = TextFlow.Layout(story, areas, measurer);
+        var layout = TextFlow.Layout(story, areas, measurer, fields);
         LaidOut++;
-        _layouts[storyId] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], layout);
+        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, layout);
         return layout;
     }
 }
@@ -65,12 +69,16 @@ internal sealed class PageRenderer
         using (dc.PushClip(new Rect(0, 0, doc.Setup.PageWidth, doc.Setup.PageHeight)))
         {
             if (sheet is Page page && doc.Master(page.Master) is { } master)
-                foreach (var o in master.Objects) DrawObject(dc, doc, o);
+            {
+                var number = doc.Pages.IndexOf(page) + 1;
+                foreach (var o in master.Objects) DrawObject(dc, doc, o, number);
+            }
             foreach (var o in sheet.Objects) DrawObject(dc, doc, o);
         }
     }
 
-    public void DrawObject(DrawingContext dc, Document doc, PageObject o)
+    /// <summary>Draws one object; <paramref name="page"/> is the page a master's object is drawn under.</summary>
+    public void DrawObject(DrawingContext dc, Document doc, PageObject o, int? page = null)
     {
         var rect = new Rect(o.X, o.Y, Math.Max(0, o.W), Math.Max(0, o.H));
         var fill = BrushOf(o.Fill);
@@ -92,7 +100,7 @@ internal sealed class PageRenderer
                 break;
             case TextFrame frame:
                 if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
-                DrawText(dc, doc, frame);
+                DrawText(dc, doc, frame, page);
                 break;
             case PictureObject picture:
                 if (fill is not null) dc.FillRectangle(fill, rect);
@@ -102,10 +110,9 @@ internal sealed class PageRenderer
         }
     }
 
-    private void DrawText(DrawingContext dc, Document doc, TextFrame frame)
+    private void DrawText(DrawingContext dc, Document doc, TextFrame frame, int? page)
     {
-        if (Layouts.Of(doc, frame.StoryId) is not { } layout) return;
-        var story = layout.Story;
+        if (Layouts.Of(doc, frame.StoryId, page) is not { } layout) return;
         foreach (var line in layout.Lines)
         {
             if (layout.Areas[line.Area].FrameId != frame.Id) continue;
@@ -113,7 +120,7 @@ internal sealed class PageRenderer
             {
                 var f = piece.Format;
                 var brush = BrushOf(f.Colour) ?? Brushes.Black;
-                var text = story.Slice(piece.Start, piece.Length).Replace('\t', ' ');
+                var text = layout.Display(piece.Start, piece.Length).Replace('\t', ' ');
                 var baseline = line.Baseline - f.Shift;
                 if (f.Tracking == 0)
                 {

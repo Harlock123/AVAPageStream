@@ -36,7 +36,8 @@ public sealed record Setup(
     Margins? Margins = null,
     int Columns = 1,
     double Gutter = 18,
-    Unit Unit = Unit.Point)
+    Unit Unit = Unit.Point,
+    double Grid = 18)  // the document grid's spacing, in points
 {
     public Margins Margin => Margins ?? Margins.Half;
 
@@ -112,6 +113,14 @@ public abstract class PageObject
     public string? Stroke { get; set; } = Colours.Black;
     public double StrokeWidth { get; set; } = 1;
     public bool Locked { get; set; }
+
+    /// <summary>Whether text in other frames on the page flows round this object, keeping <see cref="WrapGap"/> away.</summary>
+    public bool Wrap { get; set; }
+    public double WrapGap { get; set; } = 6;
+
+    /// <summary>The box text keeps out of when this object wraps.</summary>
+    [JsonIgnore]
+    public Box WrapBox => Box.FromCorners(new Pt(X, Y), new Pt(X + W, Y + H)).Inflate(WrapGap);
 
     [JsonIgnore]
     public Box Bounds

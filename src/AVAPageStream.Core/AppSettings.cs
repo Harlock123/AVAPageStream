@@ -9,6 +9,8 @@ public sealed class AppSettings
     public List<string> Recent { get; set; } = [];
     public bool Snap { get; set; } = true;
     public bool ShowGuides { get; set; } = true;
+    public bool ShowGrid { get; set; }
+    public bool SnapGrid { get; set; }
     public Unit Unit { get; set; } = Unit.Point;
     public int ExportDpi { get; set; } = 150;
 
