@@ -20,7 +20,7 @@ public class WrapAndFieldTests
 
     private static string Words(int n) => string.Join(" ", Enumerable.Repeat("word", n));
 
-    private static Area A(double w, double h, params Box[] keep) => new(new Box(0, 0, w, h), "f", 0, keep);
+    private static Area A(double w, double h, params Box[] keep) => new(new Box(0, 0, w, h), "f", 0, keep.Select(k => new Keep(k)).ToList());
 
     [Fact]
     public void Lines_beside_something_in_the_way_are_narrower()
@@ -85,11 +85,11 @@ public class WrapAndFieldTests
         e.Add(SheetRef.MasterAt(0), new EllipseObject { X = 0, Y = 150, W = 20, H = 20, Wrap = true, WrapGap = 0 });
         e.Add(SheetRef.PageAt(0), new RectangleObject { X = 500, Y = 500, W = 10, H = 10, Wrap = true }); // nowhere near
         var area = Assert.Single(Chains.Areas(e.Doc, e.Doc.Stories[frame.StoryId]));
-        Assert.Equal([new Box(0, 150, 20, 20), new Box(145, 5, 110, 60)], area.Keep);
+        Assert.Equal([new Box(0, 150, 20, 20), new Box(145, 5, 110, 60)], area.Keep.Select(k => k.Bounds));
 
         // Wrap affects only the text under it: a frame brought to the front is clear of the page's wrapping objects.
         e.Arrange([frame.Id], Editor.Order.Front);
-        Assert.Equal([new Box(0, 150, 20, 20)], Assert.Single(Chains.Areas(e.Doc, e.Doc.Stories[frame.StoryId])).Keep);
+        Assert.Equal([new Box(0, 150, 20, 20)], Assert.Single(Chains.Areas(e.Doc, e.Doc.Stories[frame.StoryId])).Keep.Select(k => k.Bounds));
         e.Arrange([frame.Id], Editor.Order.Back);
 
         // A frame never wraps its own text.

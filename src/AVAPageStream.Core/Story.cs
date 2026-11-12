@@ -22,7 +22,11 @@ public sealed record ParaFormat(
     double RightIndent = 0,
     double FirstIndent = 0,
     double SpaceBefore = 0,
-    double SpaceAfter = 0);
+    double SpaceAfter = 0,
+    string Tabs = "",        // tab stops, as Core.Tabs keeps them
+    int DropLines = 0,       // a drop cap this many lines deep (0: none)
+    int DropChars = 1,       // and this many characters wide
+    bool Hyphenate = false); // break words at the end of lines with a hyphen
 
 /// <summary>A named set of character and paragraph settings.</summary>
 public sealed record ParagraphStyle(string Name, CharFormat Char, ParaFormat Para);

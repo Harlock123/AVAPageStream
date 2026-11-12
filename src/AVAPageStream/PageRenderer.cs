@@ -127,8 +127,13 @@ internal sealed class PageRenderer
             {
                 var f = piece.Format;
                 var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
-                var text = layout.Display(piece.Start, piece.Length).Replace('\t', ' ');
-                var baseline = line.Baseline - f.Shift;
+                var baseline = line.Baseline - f.Shift + piece.Drop;
+                if (piece.Tab)
+                {
+                    if (piece.Leader != '\0') DrawLeader(dc, piece, baseline, brush);
+                    continue;
+                }
+                var text = layout.Display(piece.Start, piece.Length) + (piece.Hyphen ? "-" : "");
                 if (f.Tracking == 0)
                 {
                     var ft = FontSupport.Format(text, f, brush);
@@ -153,6 +158,17 @@ internal sealed class PageRenderer
                 }
             }
         }
+    }
+
+    /// <summary>A tab's leader: its character repeated across the gap, on an even grid so leaders above each other line up.</summary>
+    private void DrawLeader(DrawingContext dc, Piece tab, double baseline, IBrush brush)
+    {
+        var mark = tab.Leader.ToString();
+        var step = Math.Max(1, TextFlow.Measure(Layouts.Measurer, mark + " ", tab.Format));
+        var first = Math.Ceiling(tab.X / step) * step;
+        var ft = FontSupport.Format(mark, tab.Format, brush);
+        for (var x = first; x + step <= tab.X + tab.Width + 0.01; x += step)
+            dc.DrawText(ft, new Point(x, baseline - ft.Baseline));
     }
 
     private void DrawPicture(DrawingContext dc, Document doc, PictureObject picture, Rect frame)

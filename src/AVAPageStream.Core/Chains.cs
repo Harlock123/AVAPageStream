@@ -24,11 +24,11 @@ public static class Chains
             var wrapping = objects.Skip(objects.IndexOf(frame) + 1);
             if (sheet is Page page && doc.MasterFor(page) is { } master) wrapping = master.All.Concat(wrapping);
             // A turned frame sets its text in its own unturned frame, where the page's wrap boxes don't fall: it keeps its text whole.
-            var keep = frame.Rotation != 0 ? [] : wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(o => o.WrapBox).ToList();
+            var keep = frame.Rotation != 0 ? [] : wrapping.Where(o => o.Wrap && !own.Contains(o.Id)).Select(Shapes.KeepOf).ToList();
             var column = 0;
             foreach (var box in frame.ColumnBoxes())
             {
-                var mine = keep.Where(k => k.Intersects(box)).ToList();
+                var mine = keep.Where(k => k.Bounds.Intersects(box)).ToList();
                 areas.Add(new Area(box, frame.Id, column++, mine.Count > 0 ? mine : null));
             }
         }

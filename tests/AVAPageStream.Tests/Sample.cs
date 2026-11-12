@@ -66,8 +66,10 @@ internal static class Sample
         e.Change("Link frames", d => Chains.Link(d, (TextFrame)d.Find(left.Id)!, (TextFrame)d.Find(right.Id)!));
         e.ReplaceText(left.StoryId, 0, 0, Story, serif);
         e.FormatParas(left.StoryId, 0, Story.Length, p => p with { Align = Align.Justify, Leading = 15, FirstIndent = 12, SpaceAfter = 4 });
-        e.FormatParas(left.StoryId, 0, 0, p => p with { FirstIndent = 0 });
-        e.FormatChars(left.StoryId, 0, 20, f => f with { Bold = true }); // "The harbour wall was"
+        e.FormatParas(left.StoryId, 0, Story.Length, p => p with { Hyphenate = true });
+        e.FormatParas(left.StoryId, 0, 0, p => p with { FirstIndent = 0, DropLines = 3 });
+        e.FormatChars(left.StoryId, 0, 1, f => f with { Colour = "#B0401C" });                      // the drop cap
+        e.FormatChars(left.StoryId, 1, 19, f => f with { Bold = true }); // "he harbour wall was"
 
         // A pull quote across the gutter: both columns flow round it.
         var box = new Box(186, 556, 240, 104);

@@ -157,6 +157,11 @@ public sealed class SidePanel : TabControl
     public TextBox FirstIndentBox { get; } = Ui.Box();
     public TextBox SpaceBeforeBox { get; } = Ui.Box();
     public TextBox SpaceAfterBox { get; } = Ui.Box();
+    public TextBox TabsBox { get; } = Ui.Box("1in, 4in right .");
+    public NumericUpDown DropLinesBox { get; } = new() { Minimum = 0, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
+    public NumericUpDown DropCharsBox { get; } = new() { Minimum = 1, Maximum = 10, Increment = 1, FormatString = "0", FontSize = 12 };
+    public CheckBox HyphenateBox { get; } = new() { Content = "Hyphenate", FontSize = 12 };
+    public CheckBox WrapShapeBox { get; } = new() { Content = "Follow its shape, not its frame", FontSize = 12 };
     public TextBlock TextTarget { get; } = new() { Foreground = Look.Heading, FontSize = 12, TextWrapping = TextWrapping.Wrap };
     private readonly StackPanel _textBody = new();
 
@@ -306,6 +311,12 @@ public sealed class SidePanel : TabControl
             ChangeSelected(wrap ? "Text wrap" : "No text wrap", o => o.Wrap = wrap);
         };
         MeasureBox(WrapGapBox, (o, v) => o.WrapGap = Math.Max(0, v), "Standoff");
+        WrapShapeBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing) return;
+            var shape = WrapShapeBox.IsChecked == true;
+            ChangeSelected("Wrap by shape", o => o.WrapShape = shape);
+        };
         LockedBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -352,6 +363,7 @@ public sealed class SidePanel : TabControl
             _pictureRows,
             Ui.Heading("Text wrap"),
             WrapBox,
+            WrapShapeBox,
             Ui.Row(("Standoff", WrapGapBox)),
             Ui.Heading("Arrange"),
             Ui.Buttons(
@@ -506,6 +518,26 @@ public sealed class SidePanel : TabControl
         ParaBox(SpaceBeforeBox, (p, v) => p with { SpaceBefore = v }, "Space before");
         ParaBox(SpaceAfterBox, (p, v) => p with { SpaceAfter = v }, "Space after");
 
+        Commit(TabsBox, text =>
+        {
+            if (!Tabs.TryRead(text, Unit, out var stored, out var why)) { _window.Say(why!); return; }
+            View.ApplyPara(p => p with { Tabs = stored }, "Tabs");
+        });
+        DropLinesBox.ValueChanged += (_, _) =>
+        {
+            if (_refreshing || DropLinesBox.Value is not { } v) return;
+            View.ApplyPara(p => p with { DropLines = v < 2 ? 0 : (int)v }, "Drop cap");
+        };
+        DropCharsBox.ValueChanged += (_, _) =>
+        {
+            if (_refreshing || DropCharsBox.Value is not { } v) return;
+            View.ApplyPara(p => p with { DropChars = (int)v }, "Drop cap");
+        };
+        HyphenateBox.IsCheckedChanged += (_, _) =>
+        {
+            if (_refreshing) return;
+            View.ApplyPara(p => p with { Hyphenate = HyphenateBox.IsChecked == true }, "Hyphenation");
+        };
         _textBody.Children.AddRange([
             Ui.Heading("Paragraph style"),
             Ui.Row(("Style", StyleChoice)),
@@ -531,6 +563,16 @@ public sealed class SidePanel : TabControl
             Ui.Row(("Left", LeftIndentBox), ("Right", RightIndentBox)),
             Ui.Row(("First line", FirstIndentBox)),
             Ui.Row(("Before", SpaceBeforeBox), ("After", SpaceAfterBox)),
+            Ui.Row(("Tabs", TabsBox)),
+            Ui.Row(("Drop cap", new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = {
+                DropLinesBox, new TextBlock { Text = "lines", Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center },
+                DropCharsBox, new TextBlock { Text = "letters", Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center } } })),
+            HyphenateBox,
+            new TextBlock
+            {
+                Text = "Tabs: a measure, then left, right, centre or decimal, then a leader, such as 4in right . — Kern: Alt+Left and Alt+Right in the text.",
+                Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4),
+            },
         ]);
         return new StackPanel { Children = { TextTarget, _textBody } };
     }
@@ -961,6 +1003,8 @@ public sealed class SidePanel : TabControl
         }
         LockedBox.IsChecked = selected.All(o => o.Locked);
         WrapBox.IsChecked = selected.All(o => o.Wrap);
+        WrapShapeBox.IsChecked = selected.All(o => o.WrapShape);
+        WrapShapeBox.IsVisible = selected.All(o => o is EllipseObject or PathObject);
         Set(WrapGapBox, Units.Format(first.WrapGap, Unit));
     }
 
@@ -1028,6 +1072,10 @@ public sealed class SidePanel : TabControl
         Set(FirstIndentBox, Units.Format(p.FirstIndent, Unit));
         Set(SpaceBeforeBox, Units.Format(p.SpaceBefore, Unit));
         Set(SpaceAfterBox, Units.Format(p.SpaceAfter, Unit));
+        Set(TabsBox, Tabs.Show(p.Tabs, Unit));
+        DropLinesBox.Value = p.DropLines;
+        DropCharsBox.Value = Math.Max(1, p.DropChars);
+        HyphenateBox.IsChecked = p.Hyphenate;
     }
 
     /// <summary>Gives a list new items only when they differ, so its items (and a drag among them) survive a refresh.</summary>

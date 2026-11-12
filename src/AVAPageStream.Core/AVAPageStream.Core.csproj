@@ -5,6 +5,10 @@
     <RootNamespace>AVAPageStream.Core</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Liang's hyphenation patterns for American English, read by Hyphenator. -->
+    <EmbeddedResource Include="Hyphenation\*.txt" LogicalName="Hyphenation.%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
     <InternalsVisibleTo Include="AVAPageStream.Tests" />
   </ItemGroup>
 </Project>

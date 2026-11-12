@@ -145,6 +145,9 @@ public abstract class PageObject
     public bool Wrap { get; set; }
     public double WrapGap { get; set; } = 6;
 
+    /// <summary>Whether text follows the object's shape (an ellipse's curve, a path's outline) rather than its frame.</summary>
+    public bool WrapShape { get; set; }
+
     /// <summary>The box text keeps out of when this object wraps.</summary>
     [JsonIgnore]
     public Box WrapBox => Shapes.Extent(this).Inflate(WrapGap);

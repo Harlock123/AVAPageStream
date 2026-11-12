@@ -639,6 +639,7 @@ public sealed class PageView : Control
             var text = story.Text;
             switch (e.Key)
             {
+                case Key.Left or Key.Right when (e.KeyModifiers & KeyModifiers.Alt) != 0: Kern(e.Key == Key.Left ? -1 : 1, shift); break;
                 case Key.Left when command: MoveCaret(TextNav.WordLeft(text, t.Caret), shift); break;
                 case Key.Right when command: MoveCaret(TextNav.WordRight(text, t.Caret), shift); break;
                 case Key.Left: MoveCaret(!shift && t.Length > 0 ? t.Start : t.Caret - 1, shift); break;
@@ -727,6 +728,22 @@ public sealed class PageView : Control
         if (text.Length == 0) return;
         Type(text);
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Kerning: Alt+Left and Alt+Right tighten and loosen the space after the character before the caret (or after
+    /// each selected character) by 10 thousandths of an em, 50 with Shift.
+    /// </summary>
+    public void Kern(int direction, bool more)
+    {
+        if (Editing is not { } t) return;
+        var step = direction * (more ? 50 : 10);
+        var (start, length) = t.Length > 0 ? (t.Start, t.Length) : (t.Caret - 1, 1);
+        if (start < 0) return;
+        _editor.Change(direction < 0 ? "Kern tighter" : "Kern looser",
+            d => d.Stories[t.StoryId].FormatChars(start, length, f => f with { Tracking = Math.Clamp(f.Tracking + step, -500, 2000) }),
+            merge: $"kern:{t.StoryId}:{start}:{length}");
+        Notify();
     }
 
     public void ToggleChar(Func<CharFormat, bool> get, Func<CharFormat, bool, CharFormat> set, string label)

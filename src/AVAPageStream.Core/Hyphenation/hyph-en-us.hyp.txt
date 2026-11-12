@@ -1,0 +1,19 @@
+% Hyphenation patterns for American English (hyph-en-us, from the hyph-utf8 package: https://www.hyphenation.org/tex).
+% Copyright (C) 1990, 2004, 2005 Gerard D.C. Kuiken
+% Copying and distribution of this file, with or without modification, are permitted in any medium without royalty
+% provided the copyright notice and this notice are preserved.
+% The exceptions: words hyphenated as shown.
+as-so-ciate
+as-so-ciates
+dec-li-na-tion
+oblig-a-tory
+phil-an-thropic
+present
+presents
+project
+projects
+reci-procity
+re-cog-ni-zance
+ref-or-ma-tion
+ret-ri-bu-tion
+ta-ble

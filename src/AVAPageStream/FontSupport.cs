@@ -62,7 +62,11 @@ internal sealed class FontMeasurer : ITextMeasurer
         var key = format with { Colour = "", Underline = false, Tracking = 0, Shift = 0 };
         if (_metrics.TryGetValue(key, out var m)) return m;
         var ft = FontSupport.Format("Xg", key, null);
-        m = new FontMetrics(ft.Baseline, ft.Height - ft.Baseline);
+        // How tall the capitals stand: the ink of an H above the baseline.
+        var h = FontSupport.Format("H", key, null);
+        var ink = h.BuildGeometry(new Avalonia.Point(0, 0))?.Bounds;
+        var caps = ink is { Height: > 0 } b ? h.Baseline - b.Top : 0;
+        m = new FontMetrics(ft.Baseline, ft.Height - ft.Baseline, caps);
         _metrics[key] = m;
         return m;
     }

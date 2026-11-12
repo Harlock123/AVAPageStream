@@ -1,7 +1,13 @@
 namespace AVAPageStream.Core;
 
-/// <summary>A font's height above and below the baseline at a format's size, in points.</summary>
-public readonly record struct FontMetrics(double Ascent, double Descent);
+/// <summary>
+/// A font's height above and below the baseline at a format's size, in points, and how tall its capitals stand (0:
+/// not known, taken as 72% of the ascent).
+/// </summary>
+public readonly record struct FontMetrics(double Ascent, double Descent, double CapHeight = 0)
+{
+    public double Caps => CapHeight > 0 ? CapHeight : Ascent * 0.72;
+}
 
 /// <summary>
 /// Measures text in a format. The program measures with the real fonts; tests use fixed widths. Widths are the
@@ -14,12 +20,45 @@ public interface ITextMeasurer
 }
 
 /// <summary>
-/// A box text may fill: one column of one frame in a story's chain, and the boxes in it text must keep out of
-/// (objects with text wrap, already widened by their standoff).
+/// Somewhere text keeps out of: a wrapping object's box, already widened by its standoff, and for wrap by shape the
+/// outline inside it (a polygon round an ellipse, a path or a turned frame).
 /// </summary>
-public sealed record Area(Box Box, string FrameId, int Column, IReadOnlyList<Box>? Exclusions = null)
+public sealed record Keep(Box Bounds, IReadOnlyList<Pt>? Outline = null)
 {
-    public IReadOnlyList<Box> Keep => Exclusions ?? [];
+    public static implicit operator Keep(Box b) => new(b);
+
+    public bool Equals(Keep? other) =>
+        other is not null && Bounds == other.Bounds && (Outline ?? []).SequenceEqual(other.Outline ?? []);
+
+    public override int GetHashCode() => HashCode.Combine(Bounds, Outline?.Count ?? 0);
+
+    /// <summary>How far across it reaches between two heights, or null if it doesn't reach them.</summary>
+    public (double Left, double Right)? Span(double top, double bottom)
+    {
+        if (Bounds.Y >= bottom || Bounds.Bottom <= top) return null;
+        if (Outline is not { Count: > 2 } o) return (Bounds.X, Bounds.Right);
+        double l = double.MaxValue, r = double.MinValue;
+        void Take(double x) { l = Math.Min(l, x); r = Math.Max(r, x); }
+        for (var i = 0; i < o.Count; i++)
+        {
+            var a = o[i];
+            var b = o[(i + 1) % o.Count];
+            if (a.Y >= top && a.Y <= bottom) Take(a.X);
+            // Where the edge crosses the band's top and bottom.
+            foreach (var y in new[] { top, bottom })
+                if ((a.Y - y) * (b.Y - y) < 0) Take(a.X + (b.X - a.X) * (y - a.Y) / (b.Y - a.Y));
+        }
+        return l > r ? null : (l, r);
+    }
+}
+
+/// <summary>
+/// A box text may fill: one column of one frame in a story's chain, and what in it text must keep out of (objects
+/// with text wrap).
+/// </summary>
+public sealed record Area(Box Box, string FrameId, int Column, IReadOnlyList<Keep>? Exclusions = null)
+{
+    public IReadOnlyList<Keep> Keep => Exclusions ?? [];
 
     public bool Equals(Area? other) =>
         other is not null && Box == other.Box && FrameId == other.FrameId && Column == other.Column && Keep.SequenceEqual(other.Keep);
@@ -51,8 +90,12 @@ public static class Fields
     }
 }
 
-/// <summary>A piece of a line in one format: the characters from <see cref="Start"/>, set at <see cref="X"/>.</summary>
-public sealed record Piece(int Start, int Length, double X, double Width, CharFormat Format);
+/// <summary>
+/// A piece of a line in one format: the characters from <see cref="Start"/>, set at <see cref="X"/>. A tab is a piece
+/// of its own, as wide as the gap to its stop (filled with <see cref="Leader"/>, if it has one); a piece that ends a
+/// hyphenated line shows a hyphen after it (counted in its width); a drop cap sits <see cref="Drop"/> below the line.
+/// </summary>
+public sealed record Piece(int Start, int Length, double X, double Width, CharFormat Format, bool Tab = false, char Leader = '\0', bool Hyphen = false, double Drop = 0);
 
 /// <summary>
 /// One line of text: in <see cref="Area"/>, holding the characters from <see cref="Start"/> to <see cref="End"/>
@@ -129,7 +172,7 @@ public sealed class TextLayout
         if (line.Pieces.Count == 0) return line.X;
         foreach (var piece in line.Pieces)
             if (index >= piece.Start && index < piece.Start + piece.Length)
-                return piece.X + TextFlow.Measure(_measurer, Display(piece.Start, index - piece.Start), piece.Format);
+                return piece.Tab ? piece.X : piece.X + TextFlow.Measure(_measurer, Display(piece.Start, index - piece.Start), piece.Format);
         if (index < line.Pieces[0].Start) return line.Pieces[0].X;
         var last = line.Pieces[^1];
         return last.X + last.Width;
@@ -214,6 +257,7 @@ public static class TextFlow
         public List<Chunk> Chunks { get; } = [];
         public double Width;    // spaces included
         public double Visible;  // spaces left out
+        public bool Tab;        // a tab, set as wide as the gap to its stop
         public int Start => Chunks[0].Start;
         public int End => Chunks[^1].Start + Chunks[^1].Length;
     }
@@ -248,7 +292,25 @@ public static class TextFlow
         {
             var para = story.Paras[p];
             var (pStart, pEnd) = story.ParagraphRange(p);
-            var words = Words(story, pStart, pEnd, ctx);
+            var stops = Tabs.Parse(para.Tabs);
+
+            // A drop cap: its first characters set large enough to reach down DropLines lines, the lines beside it indented.
+            var drop = para.DropLines >= 2 && pEnd > pStart ? Math.Min(Math.Max(1, para.DropChars), pEnd - pStart) : 0;
+            CharFormat? dropFormat = null;
+            double dropWidth = 0, dropGap = 0, dropDown = 0;
+            if (drop > 0)
+            {
+                var basis = story.FormatAt(pStart);
+                // Its capital stands from the last line's baseline up to the top of the first line's capitals.
+                var caps = Math.Max(0.01, measurer.Metrics(basis).Caps);
+                var lead = Leading(para, basis.Size);
+                dropDown = lead * (para.DropLines - 1);
+                dropFormat = basis with { Size = Math.Round(basis.Size * (dropDown + caps) / caps, 2) };
+                dropWidth = ctx.Measure(text[pStart..(pStart + drop)], dropFormat);
+                dropGap = basis.Size * 0.25;
+            }
+            var linesInPara = 0;
+            var words = Words(story, pStart + drop, pEnd, ctx);
             pendingSpace += para.SpaceBefore;
             var w = 0;
             var firstLine = true;
@@ -266,9 +328,11 @@ public static class TextFlow
                     }
                     var area = areas[areaIndex];
                     var box = area.Box;
-                    var left = box.X + para.LeftIndent + (firstLine ? para.FirstIndent : 0);
-                    var width = box.W - para.LeftIndent - para.RightIndent - (firstLine ? para.FirstIndent : 0);
+                    var indent = drop > 0 ? (linesInPara < para.DropLines ? dropWidth + dropGap : 0) : firstLine ? para.FirstIndent : 0;
+                    var left = box.X + para.LeftIndent + indent;
+                    var width = box.W - para.LeftIndent - para.RightIndent - indent;
                     if (width <= 0) { NextArea(); continue; }
+                    var rules = new Rules(box.X, para.LeftIndent, stops, para.Hyphenate);
 
                     // Where the line would go, judged by the format it starts in, and the room there.
                     var startIndex = w < words.Count ? words[w].Start + charSplit : pEnd;
@@ -284,14 +348,14 @@ public static class TextFlow
                     int cw = w, cs = charSplit;
                     if (words.Count == 0)
                     {
-                        if (slots.Count > 0) made.Add(new Segment([], pStart, 0, 0, 0, slots[0]));
+                        if (slots.Count > 0) made.Add(new Segment([], pStart + drop, 0, 0, 0, slots[0]));
                     }
                     else
                     {
                         foreach (var slot in slots)
                         {
                             var segmentStart = words[cw].Start + cs;
-                            var (pieces, nw, ns, vis) = Fill(story, words, cw, cs, slot.X, slot.W, ctx, breakWords: clear);
+                            var (pieces, nw, ns, vis) = Fill(story, words, cw, cs, slot.X, slot.W, ctx, rules, breakWords: clear);
                             if (pieces.Count == 0) continue;
                             made.Add(new Segment(pieces, segmentStart, nw, ns, vis, slot));
                             (cw, cs) = (nw, ns);
@@ -313,6 +377,13 @@ public static class TextFlow
                     if (jumpTo is { } j && j > baseline) baseline = j - a0 + ascent;
                     if (baseline + descent > box.Bottom + Slack) { NextArea(); continue; }
 
+                    if (drop > 0 && linesInPara == 0)
+                    {
+                        // The drop cap goes on the first line, in front, set down to the last line it spans.
+                        var first = made[0];
+                        var cap = new Piece(pStart, drop, box.X + para.LeftIndent, dropWidth, dropFormat!, Drop: dropDown);
+                        made[0] = first with { Pieces = [cap, .. first.Pieces], Start = pStart };
+                    }
                     for (var k = 0; k < made.Count; k++)
                     {
                         var seg = made[k];
@@ -332,6 +403,7 @@ public static class TextFlow
                     pendingSpace = 0;
                     (w, charSplit) = (cw, cs);
                     firstLine = false;
+                    linesInPara++;
                     break;
                 }
             } while (!done && w < words.Count);
@@ -362,35 +434,45 @@ public static class TextFlow
     }
 
     /// <summary>The stretches of a line from <paramref name="left"/> that nothing in the way covers, between two heights.</summary>
-    private static List<Slot> Room(IReadOnlyList<Box> keep, double left, double width, double top, double bottom)
+    private static List<Slot> Room(IReadOnlyList<Keep> keep, double left, double width, double top, double bottom, Keep? drop = null)
     {
         var slots = new List<Slot> { new(left, width) };
-        foreach (var k in keep)
+        foreach (var k in drop is null ? keep : keep.Append(drop))
         {
-            if (k.Y >= bottom || k.Bottom <= top) continue;
+            if (k.Span(top, bottom) is not var (kx, kr)) continue;
             var next = new List<Slot>();
             foreach (var s in slots)
             {
                 var r = s.X + s.W;
-                if (k.Right <= s.X || k.X >= r) { next.Add(s); continue; }
-                if (k.X > s.X) next.Add(new Slot(s.X, k.X - s.X));
-                if (k.Right < r) next.Add(new Slot(k.Right, r - k.Right));
+                if (kr <= s.X || kx >= r) { next.Add(s); continue; }
+                if (kx > s.X) next.Add(new Slot(s.X, kx - s.X));
+                if (kr < r) next.Add(new Slot(kr, r - kr));
             }
             slots = next;
         }
         return slots;
     }
 
-    /// <summary>The lowest point a line between two heights must drop to so that something in its way is passed: the nearest bottom.</summary>
-    private static double Below(IReadOnlyList<Box> keep, double left, double width, double top, double bottom)
+    /// <summary>
+    /// The lowest point a line between two heights must drop to so that something in its way is passed: the nearest
+    /// bottom of a box, or a little further down a shape (whose room opens up as it curves away).
+    /// </summary>
+    private static double Below(IReadOnlyList<Keep> keep, double left, double width, double top, double bottom)
     {
         var lowest = double.MaxValue;
         foreach (var k in keep)
-            if (k.Y < bottom && k.Bottom > top && k.Right > left && k.X < left + width) lowest = Math.Min(lowest, k.Bottom);
+        {
+            if (k.Span(top, bottom) is not var (kx, kr) || kr <= left || kx >= left + width) continue;
+            lowest = Math.Min(lowest, k.Outline is null ? k.Bounds.Bottom : Math.Min(k.Bounds.Bottom, top + 2));
+        }
         return lowest == double.MaxValue ? bottom : lowest + Slack;
     }
 
-    /// <summary>Breaks a paragraph into words, each with the spaces that follow it, split where the format changes.</summary>
+    /// <summary>
+    /// Breaks a paragraph into words, each with the spaces that follow it, split where the format changes; a tab is a
+    /// word of its own. Where the format changes inside a word but the face doesn't (only the colour, say), the pair of
+    /// letters either side keeps its kerning.
+    /// </summary>
     private static List<Word> Words(Story story, int start, int end, Ctx m)
     {
         var words = new List<Word>();
@@ -398,11 +480,19 @@ public static class TextFlow
         var i = start;
         while (i < end)
         {
+            if (text[i] == '\t')
+            {
+                var tab = new Word { Tab = true };
+                tab.Chunks.Add(new Chunk(i, 1, story.FormatAt(i), 0));
+                words.Add(tab);
+                i++;
+                continue;
+            }
             var j = i;
             while (j < end && text[j] != ' ' && text[j] != '\t' && !(text[j] == '-' && j > i)) j++;
             if (j < end && text[j] == '-') j++;
             var visibleEnd = j;
-            while (j < end && (text[j] == ' ' || text[j] == '\t')) j++;
+            while (j < end && text[j] == ' ') j++;
             var word = new Word();
             var at = i;
             foreach (var (runStart, run) in RunsBetween(story, i, j))
@@ -410,8 +500,17 @@ public static class TextFlow
                 var s = Math.Max(at, runStart);
                 var e = Math.Min(j, runStart + run.Length);
                 if (e <= s) continue;
-                var chunkText = text[s..e].Replace('\t', ' ');
+                var chunkText = text[s..e];
                 var width = m.Measure(chunkText, run.Format);
+                if (word.Chunks.Count > 0 && word.Chunks[^1] is var before && SameFace(before.Format, run.Format) && s < visibleEnd)
+                {
+                    // The kern between the last letter before and the first after.
+                    var pair = text[(s - 1)..(s + 1)];
+                    var kern = m.Measure(pair, run.Format) - m.Measure(pair[..1], run.Format) - m.Measure(pair[1..], run.Format);
+                    word.Chunks[^1] = before with { Width = before.Width + kern };
+                    word.Width += kern;
+                    word.Visible += kern;
+                }
                 word.Chunks.Add(new Chunk(s, e - s, run.Format, width));
                 word.Width += width;
                 var visibleChars = Math.Max(0, Math.Min(e, visibleEnd) - s);
@@ -424,6 +523,9 @@ public static class TextFlow
         return words;
     }
 
+    private static bool SameFace(CharFormat a, CharFormat b) =>
+        a.Font == b.Font && a.Size == b.Size && a.Bold == b.Bold && a.Italic == b.Italic && a.Tracking == 0 && b.Tracking == 0 && a.Shift == b.Shift;
+
     private static IEnumerable<(int Start, Run Run)> RunsBetween(Story story, int start, int end)
     {
         var at = 0;
@@ -435,12 +537,17 @@ public static class TextFlow
         }
     }
 
+    /// <summary>What a paragraph sets its lines by: where its column starts, its left indent, its tab stops, and whether it hyphenates.</summary>
+    private readonly record struct Rules(double ColumnLeft, double LeftIndent, IReadOnlyList<TabStop> Stops, bool Hyphenate);
+
     /// <summary>
     /// Fills one line from word <paramref name="w"/> (from character <paramref name="split"/> of it): whole words while
-    /// they fit, and (if <paramref name="breakWords"/>) a word wider than a whole line broken between characters.
+    /// they fit, then the first part of the next with a hyphen if the paragraph hyphenates, and (if
+    /// <paramref name="breakWords"/>) a word wider than a whole line broken between characters. A tab reaches to its
+    /// stop; text after a right, centre or decimal tab lines up on it.
     /// </summary>
     private static (List<Piece> Pieces, int NextWord, int NextSplit, double Visible) Fill(
-        Story story, List<Word> words, int w, int split, double left, double width, Ctx m, bool breakWords = true)
+        Story story, List<Word> words, int w, int split, double left, double width, Ctx m, Rules rules, bool breakWords = true)
     {
         var pieces = new List<Piece>();
         var x = left;
@@ -448,6 +555,33 @@ public static class TextFlow
         while (w < words.Count)
         {
             var word = words[w];
+            if (word.Tab)
+            {
+                var stop = Tabs.Next(rules.Stops, x - rules.ColumnLeft, rules.LeftIndent);
+                var stopX = rules.ColumnLeft + stop.Position;
+                if (stopX > left + width + Slack)
+                {
+                    if (pieces.Count > 0) break; // no stop left on this line: the tab starts the next
+                    stopX = x;
+                }
+                var target = stopX;
+                if (stop.Kind != TabKind.Left)
+                {
+                    var (follow, toPoint) = Following(story, words, w + 1, m);
+                    target = stop.Kind switch
+                    {
+                        TabKind.Right => stopX - follow,
+                        TabKind.Centre => stopX - follow / 2,
+                        _ => stopX - toPoint,
+                    };
+                }
+                var gap = Math.Max(0, target - x);
+                pieces.Add(new Piece(word.Start, 1, x, gap, word.Chunks[0].Format, Tab: true, Leader: stop.Leader));
+                x += gap;
+                visible = x - left;
+                w++;
+                continue;
+            }
             if (split == 0 && x - left + word.Visible <= width + Slack)
             {
                 foreach (var c in word.Chunks)
@@ -459,14 +593,38 @@ public static class TextFlow
                 w++;
                 continue;
             }
+            if (split == 0 && rules.Hyphenate && Hyphenated(story, word, x, left, width, m) is { } h)
+            {
+                pieces.AddRange(h.Pieces);
+                return (pieces, w, h.Split, h.Right - left);
+            }
             if (pieces.Count > 0) break;
+            var from = word.Start + split;
+            var total = word.End - from;
+            if (split > 0)
+            {
+                // The rest of a hyphenated (or broken) word: if it fits, it starts the line and the words after it follow.
+                var visibleEnd = word.End;
+                while (visibleEnd > from && story.Text[visibleEnd - 1] == ' ') visibleEnd--;
+                if (MeasureRange(story, from, visibleEnd - from, m) <= width + Slack)
+                {
+                    foreach (var (s, len, f) in Formats(story, from, total))
+                    {
+                        var wd = m.Measure(story.Slice(s, len), f);
+                        pieces.Add(new Piece(s, len, x, wd, f));
+                        x += wd;
+                    }
+                    visible = x - left - (MeasureRange(story, from, total, m) - MeasureRange(story, from, visibleEnd - from, m));
+                    w++;
+                    split = 0;
+                    continue;
+                }
+            }
             if (!breakWords) return (pieces, w, split, 0); // beside text wrap: let the word go where it fits whole
 
             // The rest of a long word, from character `split`, as much as fits (at least one character).
             var take = 0;
             var used = 0.0;
-            var from = word.Start + split;
-            var total = word.End - from;
             for (var n = 1; n <= total; n++)
             {
                 var wd = MeasureRange(story, from, n, m);
@@ -486,6 +644,60 @@ public static class TextFlow
             return (pieces, w, split, visible);
         }
         return (pieces, w, 0, visible);
+    }
+
+    /// <summary>
+    /// The first part of a word that fits the rest of a line with a hyphen after it, broken where the hyphenation
+    /// patterns allow (the longest that fits), or null.
+    /// </summary>
+    private static (List<Piece> Pieces, int Split, double Right)? Hyphenated(Story story, Word word, double x, double left, double width, Ctx m)
+    {
+        var text = story.Text;
+        var end = word.Start;
+        while (end < word.End && text[end] != ' ') end++;
+        var lead = 0;
+        while (word.Start + lead < end && !char.IsLetter(text[word.Start + lead])) lead++;
+        var trail = 0;
+        while (end - trail > word.Start + lead && !char.IsLetter(text[end - trail - 1])) trail++;
+        var letters = text[(word.Start + lead)..(end - trail)];
+        var points = Hyphenator.English.Points(letters);
+        for (var k = points.Count - 1; k >= 0; k--)
+        {
+            var length = lead + points[k];
+            var last = story.FormatAt(word.Start + length - 1);
+            var hyphen = m.Measure("-", last);
+            var wd = MeasureRange(story, word.Start, length, m) + hyphen;
+            if (x - left + wd > width + Slack) continue;
+            var pieces = new List<Piece>();
+            var at = x;
+            foreach (var (s, len, f) in Formats(story, word.Start, length))
+            {
+                var pw = m.Measure(story.Slice(s, len), f);
+                pieces.Add(new Piece(s, len, at, pw, f));
+                at += pw;
+            }
+            pieces[^1] = pieces[^1] with { Width = pieces[^1].Width + hyphen, Hyphen = true };
+            return (pieces, length, at + hyphen);
+        }
+        return null;
+    }
+
+    /// <summary>How wide the text after a tab is, up to the next tab or the paragraph's end, and up to its first decimal point.</summary>
+    private static (double Width, double ToPoint) Following(Story story, List<Word> words, int from, Ctx m)
+    {
+        double width = 0, toPoint = -1;
+        for (var i = from; i < words.Count && !words[i].Tab; i++)
+        {
+            var word = words[i];
+            if (toPoint < 0)
+            {
+                var text = story.Slice(word.Start, word.End - word.Start);
+                var dot = text.IndexOf('.');
+                if (dot >= 0) toPoint = width + MeasureRange(story, word.Start, dot, m);
+            }
+            width += i + 1 < words.Count && !words[i + 1].Tab ? word.Width : word.Visible;
+        }
+        return (width, toPoint < 0 ? width : toPoint);
     }
 
     private static double MeasureRange(Story story, int start, int length, Ctx m) =>
@@ -511,7 +723,7 @@ public static class TextFlow
         {
             case Core.Align.Centre: return Shift(pieces, free / 2);
             case Core.Align.Right: return Shift(pieces, free);
-            case Core.Align.Justify when !last && free > 0:
+            case Core.Align.Justify when !last && free > 0 && !pieces.Any(p => p.Tab):
                 // Gaps are the places where a piece ends in a space and another piece follows.
                 var gaps = 0;
                 for (var i = 0; i < pieces.Count - 1; i++)
