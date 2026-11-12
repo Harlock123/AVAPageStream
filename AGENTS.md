@@ -19,6 +19,7 @@ dotnet run --project src/AVAPageStream         # the program
 AVAPAGESTREAM_SHOTS=/some/folder dotnet test AVAPageStream.slnx
                                                # also saves the README's screenshots and the sample PDF there
 python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.png and .ico
+./make-guide.sh                                # rebuilds USERGUIDE.pdf from USERGUIDE.md (Tools/GuideBuilder)
 ```
 
 ## Layout
@@ -60,7 +61,14 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   `FixedMeasurer` (every character half its size wide, so layouts are easy sums); `WindowTests` drives the window
   with the mouse and keys and real fonts; `Sample.cs` builds the newsletter in the screenshots.
 
+- `USERGUIDE.md` is the user guide (`USERGUIDE.pdf` is made from it by `make-guide.sh`); its pictures in
+  `docs/images/guide` come from the `Guide_` tests in `GuideShots.cs`. `Tools/GuideBuilder` is no part of the
+  solution or the program.
+
 ## Rules that keep it working
+
+- **A change to what the program does wants a line in `USERGUIDE.md` and the README**, its picture retaken if it
+  shows, and `./make-guide.sh` run again.
 
 - **Nothing in Core touches a window.** Anything that can be tested without one goes in Core, with tests.
 - **Every change goes through `Editor`.** `Change` makes one undo step (consecutive changes with the same `merge` key,

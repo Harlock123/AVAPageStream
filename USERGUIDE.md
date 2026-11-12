@@ -1,0 +1,437 @@
+# AVAPageStream User Guide
+
+## Getting started
+
+AVAPageStream is a desktop publishing program: newsletters, leaflets, booklets, posters, menus, programmes and
+anything else that is a page of words and pictures laid out with care. You draw frames on a page, pour text into
+them and link them so the text flows from frame to frame, then export a PDF or print it.
+
+There is nothing to install. Download the file for your computer from the releases page, unpack it and run it: the
+.NET runtime and everything else it needs are inside the one file.
+
+- On Linux and macOS the archive keeps the executable bit. If it goes missing on the way, `chmod +x AVAPageStream`.
+- macOS will want the file cleared from quarantine before it opens something downloaded from the web.
+- To open a document straight away, give it on the command line: `AVAPageStream newsletter.avps`.
+
+Your work is saved in `.avps` files. A document file holds everything, its pictures included, so it opens the same
+on another computer. Liberation Serif and Liberation Sans are built into the program for the same reason: text set
+in them looks the same everywhere. You can use the fonts installed on your computer too, but whoever opens the file
+needs them as well.
+
+## The window
+
+![The window, with a newsletter page](docs/images/guide/overview.png)
+
+Down the left is the **toolbox**: the tools for selecting, typing, drawing and moving about (each has a key, shown
+when you hover over it). In the middle is the **page**, on a grey pasteboard, with **rulers** along the top and left
+and scroll bars along the right and bottom. Down the right is the **side panel**, in four tabs:
+
+- **Object**: the selected object's position and size, colours, and everything else about it.
+- **Text**: fonts and type, paragraph settings, and paragraph styles.
+- **Pages**: the pages and the master pages.
+- **Document**: page size, margins, columns, the grid, colour swatches, spelling and units.
+
+The **tool bar** above the page holds the things you reach for most: new, open, save and PDF, undo and redo, zoom,
+and moving between pages. The **status bar** along the bottom says what is selected (with its position and size),
+what just happened, and where the mouse is on the page.
+
+The pasteboard is yours to work on. Leave things half on and half off the page while you decide; only what is on
+the page is printed or exported.
+
+**Moving about.** The mouse wheel scrolls (Shift+wheel sideways), Ctrl+wheel zooms in and out about the mouse,
+Ctrl+0 fits the page in the window and Ctrl+1 shows it at actual size. Hold Space, or use the Hand tool (H), and
+drag to slide the page about. Page Up and Page Down go to the previous and next page.
+
+**Measures** can be typed in any unit, whatever the document's unit is: `54`, `0.75in`, `20mm`, `2.5cm`, `4p6` (4
+picas and 6 points) or `18pt`, and simple sums such as `1in + 6pt`. A box shows the measure back in the document's
+unit, which you choose at the foot of the Document tab.
+
+## Setting up a document
+
+![The Document tab, with a facing document's spread](docs/images/guide/document.png)
+
+A new document is one Letter page with half-inch margins and one column. Change it in the **Document** tab:
+
+- **Size**: Letter, Legal, Tabloid, A3, A4, A5, B5, or type your own width and height. **Orientation** turns it.
+- **Margins** and **Columns** (with the **Gutter** between them) are the guides drawn on every page: margins in
+  magenta, columns in violet. They are only guides, for snapping to; text frames are what text flows in.
+- **Apply** puts the size, margins and columns into effect, as one step you can undo.
+
+Tick **Facing pages** for anything that will be printed both sides and bound: a booklet, a magazine, a book. Odd
+pages are then right-hand pages and even pages left-hand ones, page 1 on its own on the right, the way a printed
+book opens. The view shows a **spread**, the left and right pages side by side with the spine between, and you work
+on either by clicking it. The left and right margins become the **inside** (by the spine) and the **outside**, so a
+left page has them the other way round.
+
+## Pages and master pages
+
+![A master page with a footer and a page number, and the Pages tab](docs/images/guide/masters.png)
+
+The **Pages** tab lists the pages. **Add before** and **Add after** put a page in beside the one shown, **Delete**
+takes the one shown out (never the last), and **Move up** and **Move down**, or dragging a page in the list, change
+the order. Click a page to show it.
+
+Every page uses a **master page**, "A-Master" to start with. Whatever is on a master is drawn under every page that
+uses it: a running head, a footer, a rule, a logo, a page number. Pick a master in the list of master pages to edit
+it (or Page › Edit this page's master); what you draw there appears on its pages, which can't select it. Choose a
+page's master under the page list, or none.
+
+**Page numbers.** Put a text frame on the master, type the words round it, and choose Text › Insert page number
+(Ctrl+Shift+3). On the master it shows as "#", and on each page that page's own number. Text › Insert page count
+adds the number of pages, for "Page 3 of 12". A page number in a frame on a page itself counts from the page the
+story starts on.
+
+A master can have **its own margins and columns** (This master's guides, in the Pages tab), for the pages that use
+it: an index set in three columns, say, in a document of two. In a facing document each master has a left side and
+a right side, drawn under left and right pages, so page numbers can sit on the outside corners of both.
+
+## Drawing
+
+![Shapes, and a turned rectangle selected with its handles](docs/images/guide/drawing.png)
+
+| Tool | Key | |
+| --- | --- | --- |
+| Select | V | Click to select, Shift+click to add or take away, drag across the page to select everything inside. |
+| Text | T | Drag a text frame and type in it; click in a frame to put the caret there. |
+| Rectangle | R | Drag to draw. Shift makes a square. |
+| Ellipse | E | Drag to draw. Shift makes a circle. |
+| Line | L | Drag to draw. Shift keeps it to 45° steps. |
+| Picture | P | Drag a frame, then pick a picture for it. |
+| Pen | B | Polygons and curves: see below. |
+| Table | G | Drag a table: see Tables. |
+| Link | K | Link text frames so text flows from one to the next. |
+| Hand | H | Drag to slide the page about (or hold Space with any tool). |
+
+**Moving and resizing.** Drag an object to move it, or one of the eight handles round it to resize it (Shift keeps
+its shape). The arrow keys nudge the selection by a point, ten with Shift. Moving and resizing snap to the margins,
+columns, guides and the page's edges and middle (see Rulers, guides and the grid). Or type exact figures into
+**X**, **Y**, **W** and **H** in the Object tab, in any unit.
+
+**Colour.** Fill and stroke are set in the Object tab: type a colour's name, a value like `#2050D0`, or `none`, or
+click a swatch below them (Shift+click for the stroke). **Width** is the stroke's thickness. A new object is drawn
+with the fill and stroke last set on one of its kind. Rectangles have rounded **Corners**; lines have **Arrowheads**
+at either end.
+
+**Turning.** Drag the round handle above a selected object to turn it about its middle (Shift for 15° steps), or
+type the angle into **Rotation**. A turned text frame still takes typing and clicks the right way up for it.
+
+**Arranging.** Objects are drawn in order, the last on top. Object › Bring to front and Send to back, or Bring
+forward and Send backward (Ctrl+] and Ctrl+[, with Shift for all the way), change the order. The Object tab's
+**Align** buttons line selected objects up by their edges or middles (one object, with the page); **Space across**
+and **Space down** spread three or more evenly.
+
+**Grouping.** Ctrl+G makes the selected objects one group, which moves, resizes and arranges as one; Ctrl+Shift+G
+takes it apart. You can still type in a text frame inside a group: double-click it.
+
+**Copying and deleting.** Ctrl+D duplicates the selection a little down and to the right; Ctrl+C and Ctrl+V copy and
+paste it, on this page or another; Delete takes it away. **Lock** (in the Object tab or menu) keeps an object from
+being moved, resized or deleted by accident.
+
+## Text frames and how text flows
+
+![Two linked frames: the text runs from the first into the second, and the red mark shows there is more](docs/images/guide/flowing.png)
+
+Text lives in **stories**. A story flows through one text frame, or through a chain of them linked together, column
+by column and frame by frame, and reflows whenever you type, resize a frame or change the type.
+
+Draw a text frame with the Text tool and start typing. When there is more text than the frame holds, a small red
+square with a plus in it appears at its bottom-right corner and the status bar says how many characters are **overset**: there, but not
+showing. To give the text somewhere to go:
+
+1. Draw another text frame, empty, on this page or any other.
+2. Click the red mark with the Select tool (or pick the Link tool, K, and click the first frame).
+3. Click the new frame. The text flows on into it.
+
+When a linked frame is selected, arrows show the way the text goes from frame to frame. Link as many frames as you
+like; a story can run through a whole book. **Unlink** in the Object tab (or Alt+click with the Link tool) takes a
+frame out of its chain, and the text flows on through the rest.
+
+A frame can have several **Columns** of its own, with a **Gutter** between them, and an **Inset** that keeps the text
+in from its edges (Object tab › Text frame).
+
+## Typing and editing
+
+Double-click a text frame with Select, or click in it with the Text tool, to put the caret in it. The caret moves
+through the whole story, from frame to frame and page to page; the view follows it.
+
+| Keys | |
+| --- | --- |
+| Arrows, Home, End | Move by a character or line, to the start or end of the line. |
+| Ctrl+Left, Ctrl+Right | Move by a word. |
+| Ctrl+Home, Ctrl+End | The start or end of the story. |
+| Page Up, Page Down | The start of the previous or next frame in the chain. |
+| Shift with any of those | Select as you go. |
+| Double-click, triple-click | Select a word, a paragraph. |
+| Ctrl+A | Select the whole story. |
+| Backspace, Delete | Delete a character (with Ctrl, a word). |
+| Enter | A new paragraph. |
+| Escape | Leave the text; the frame stays selected. |
+
+Cut, copy and paste work on the text as you would expect. Text copied and pasted within AVAPageStream keeps its fonts,
+sizes and styles; text from other programs comes in plain, taking the look of where it lands.
+
+## Formatting text
+
+![The Text tab, with a heading and a selection made italic](docs/images/guide/text.png)
+
+The **Text** tab sets the type of what is selected. With the caret in some text, its character settings change the
+selected characters (or, with nothing selected, the next you type) and its paragraph settings change the paragraphs
+the selection touches. With text frames selected and no caret, they change all the frames' text.
+
+- **Font**, **Size**, and **B**, **I** and **U** (Ctrl+B, Ctrl+I, Ctrl+U) for bold, italic and underline.
+- **Sc** sets small capitals; **x²** and **x₂** superscript and subscript.
+- **Colour** of the text, by a swatch's name or a value.
+- **Tracking** loosens or tightens the spacing, in thousandths of an em. To kern a pair of letters by hand, put the
+  caret between them and press Alt+Left or Alt+Right (Shift for bigger steps).
+- **Align**: left, centre, right or justified.
+- **Leading**: the distance from one line to the next, or `auto` (120% of the largest type on the line).
+- **Left** and **Right** indents, the **First line** indent (a negative one makes a hanging indent), and space
+  **Before** and **After** the paragraph.
+
+### Paragraph styles
+
+A paragraph style is a named set of all of that: Body, Heading, Subheading and Caption to start with. Pick one from
+**Style** to set the paragraph the caret is in. Styles are what keep a long document consistent, and what make it
+quick to change: to make every heading a size bigger, change one heading, then **Redefine**, and they all follow.
+
+- **Add from text**: type a name and click it, and the paragraph the caret is in becomes a new style.
+- **Rename** and **Delete** do as they say; deleting a style leaves its paragraphs looking as they did.
+
+## Tabs, drop caps and hyphenation
+
+![A drop cap with justified, hyphenated text, and a list of contents with dot leaders](docs/images/guide/type.png)
+
+**Tabs.** Press Tab in the text and it jumps to the next tab stop: every half inch, unless the paragraph has stops of
+its own. Type them in the Text tab's **Tabs** box, separated by commas: a measure, then left, right, centre or
+decimal, then a leader character to fill the gap if you want one. `1in, 4in right .` puts a left tab at an inch and
+a right tab at four inches with dots leading to it, as in a list of contents. Decimal tabs line figures up on their
+decimal points. A hanging indent's left indent is a stop too, so a bullet, a tab and the text line up.
+
+**Drop caps.** **Drop cap** sets how many lines deep and how many letters wide. The capital stands from the last of
+those lines' baseline up to the top of the first line's capitals, and the lines beside it make room.
+
+**Hyphenation.** Tick **Hyphenate** and words are broken at the ends of lines where the hyphenation patterns allow,
+with at least two letters before the break and three after it. Justified text looks far better with it.
+
+## Placing text
+
+Text written elsewhere doesn't need typing again. Select a text frame (or put the caret where the text should go)
+and choose Object › Place text…, then pick a `.txt` or `.md` file.
+
+- Plain text comes in a paragraph a line, in the Body style.
+- **Markdown** comes in styled: `#` headings take the Heading style and `##` and smaller Subheading, paragraphs take
+  Body, list items get a bullet or number on a hanging indent, quotes are indented and in italic, and `**bold**` and
+  `*italic*` carry over.
+
+What doesn't fit is overset, with the red mark showing: link more frames to flow it on.
+
+## Pictures
+
+Draw a frame with the Picture tool and pick a picture, or select a picture frame and choose Object › Place picture….
+Click a picture with the Picture tool to replace it. Pictures can be:
+
+- **PNG, JPEG, GIF, BMP and WebP**: the usual kinds.
+- **SVG** drawings: kept as drawings, so they stay sharp at any size, on screen and in PDFs.
+- **EPS** (Encapsulated PostScript): sized from the file. With [Ghostscript](https://ghostscript.com) installed it is
+  shown and printed in full; without it, by the preview many EPS files carry, or as a labelled box.
+
+The picture is stored inside the document, so moving or deleting the original file does no harm.
+
+**Fit** (Object tab) decides how a picture fills its frame: **Fit** shows all of it, **Fill** fills the frame and
+crops what spills over, **Stretch** fills it out of shape, and **Actual** is the picture's own size. To crop a
+different part into view, Alt+drag the picture with Select, or type an **Offset**.
+
+## Text wrap
+
+![Text flowing round a circle, following its curve](docs/images/guide/wrap.png)
+
+Tick **Text flows round this** for any object (a picture, a box, a frame, a shape) and the text in the frames under
+it keeps out of its way, the **Standoff** from its edge. Where there is room on both sides, the text runs on either
+side; where there isn't, it moves on below. For an ellipse or a closed path, **Follow its shape** makes the text hug
+its outline rather than its frame.
+
+Wrap affects only the text **under** the object, in the drawing order. So a pull quote's own text frame, sitting on
+top of its tinted box, keeps its text, while the columns underneath flow round both. Use Bring forward and Send
+backward to decide which is which. Objects on a master page wrap the text on every page that uses it.
+
+## Polygons and curves
+
+![A curve being edited: its points and the handles that shape it](docs/images/guide/points.png)
+
+The **Pen** (B) draws shapes of your own, point by point:
+
+- **Click** for a corner point, and **drag** for a smooth one: the handle comes out to where you let go and sets the
+  curve through the point. Shift keeps a point to 45° steps from the last.
+- **Click the first point** again to close the shape (only a closed shape is filled).
+- **Double-click**, or press Enter, to finish an open path; Escape gives up the one you're drawing.
+
+Double-click a path with Select to change it: drag its points (squares) and their handles (dots). Delete takes out
+the last point you dragged. Escape, or a click elsewhere, finishes.
+
+## Tables
+
+![A table of tide times with a shaded header row, and the table's settings in the Object tab](docs/images/guide/tables.png)
+
+Draw a table with the **Table** tool (G): it starts with four rows and three columns, the first a shaded header row,
+and the caret in the first cell. Each cell holds its own text, formatted like any other.
+
+- **Tab** moves to the next cell (Shift+Tab back). Tab in the last cell adds a row.
+- Double-click a cell (or click it with the Text tool) to type in it, and click another cell to move there.
+- The Object tab sets **Rows** and **Cols** (added or taken from the end), **Header rows** and their **Header fill**,
+  the **Cell inset**, and the **Widths** of the columns (`1in, 2in, 1in`). **Even columns** shares the width out.
+- Object › Table puts a row in above or below the caret's cell, or a column to its left or right, and deletes the
+  caret's row or column.
+- Rows keep the height they have. A cell whose text doesn't fit gets a red mark in its corner: **Fit rows to text**
+  makes each row as tall as its fullest cell needs.
+- The table's stroke draws the rules between and round the cells. Resizing the table scales its rows and columns.
+
+## Colour and swatches
+
+![Swatches in the Document tab: a spot colour, and it used at full strength and as a 40% tint](docs/images/guide/swatches.png)
+
+The document keeps a list of named colours, its **swatches** (Document tab › Swatches). Pick a colour by a swatch's
+name, by typing it or clicking a swatch button, and it stays tied to the swatch: change the swatch's colour and
+everything using it changes. Add **40%** (or any per cent) after the name for a lighter **tint** of it: "Navy 40%".
+
+- **Add** makes a swatch from a name and a colour. The colour can be `#RRGGBB`, or **CMYK** inks in per cents, such as
+  `0 60 80 0` (cyan, magenta, yellow, black).
+- Tick **Spot ink** for a colour printed as an ink of its own, such as a Pantone colour.
+- **Change colour**, **Rename** and **Delete** do as they say. Renaming takes everything using the swatch with it;
+  deleting one leaves its colour where it was used.
+- **Inks used** tells you what the document needs on press: process colour (CMYK) and the name of each spot ink.
+
+CMYK colours are shown on screen by a plain conversion, and PDFs are written in RGB. For exact print colour, tell
+your printer which spot inks and CMYK values you mean.
+
+## Rulers, guides and the grid
+
+![The document grid, with a guide dragged from each ruler](docs/images/guide/grid.png)
+
+The **rulers** measure from the top-left corner of the page you are working on, in the document's unit, with a mark
+following the mouse.
+
+- Drag from a ruler onto the page to make a **guide**: from the top ruler a level one, from the left an upright one.
+  Drag a guide to move it, and back onto its ruler to remove it. Guides belong to their page; a master's guides show
+  on its pages.
+- **Snap** (View › Snap to guides) makes moving, resizing and drawing land on the margins, column edges, guides and
+  the page's edges and middle, when within a few pixels of them.
+- View › **Show grid** draws the document grid, and **Snap to grid** makes things land on it too. Set its spacing
+  in the Document tab (18 pt to start with).
+- View › Show guides hides and shows them all.
+
+## Find and replace
+
+![The find bar, with a word found and shown selected](docs/images/guide/find.png)
+
+Ctrl+F opens the find bar under the page. Type what to find and press Enter (or F3) for the next, Shift+Enter for
+the one before. It looks through every story in reading order, page by page and then the master pages, and shows
+each one selected on its page, with how many there are. **Match case** and **Whole word** narrow it down.
+
+**Replace** changes the one found and finds the next; **Replace all** changes every one at once, as a single step to
+undo. Each replacement takes the look of the text it replaces. Escape closes the bar.
+
+## Spelling
+
+![The spelling window, with a misspelt word and its suggestions](docs/images/guide/spelling.png)
+
+Misspelt words are underlined in red as you type (on screen only, never in print). View › Check spelling as you type
+turns that off. The Document tab's **Spelling** sets the language: American or British English.
+
+Text › Check spelling (F7) goes through the document from the caret, word by misspelt word, showing each on its
+page:
+
+- **Change** puts in the suggestion picked (or what you type in Change to); **Change all** changes it everywhere.
+- **Ignore** passes this one; **Ignore all** passes the word everywhere in this document (and remembers it with the
+  document).
+- **Add to dictionary** puts the word in your own dictionary, for every document: names, places, words of your
+  trade.
+
+Capitalised words and words in capitals are checked as the dictionary has them in lower case, and a name keeps its
+capital: "London" is right, "london" isn't.
+
+## The story editor
+
+![The story editor: a story's text in a window of its own](docs/images/guide/story-editor.png)
+
+For writing and correcting without the layout in the way, Text › Story editor (Ctrl+Shift+E) opens the story of the
+selected frame (or the one you're typing in) as plain text in a window of its own. Type there and the page changes
+as you go, the formatting round your changes kept; change the page and it shows there. The paragraph style of the
+paragraph you're in is shown at the top, to see and to set, with the story's word count and how much is overset.
+
+## A table of contents
+
+Put the caret where the contents should go (or select an empty text frame) and choose Text › Table of contents….
+Tick the paragraph styles to list, the first ticked as the top level: Heading and Subheading, usually. Each
+paragraph in those styles becomes a line of the contents, with its page number at the right after a row of dots.
+The contents are set in styles of their own, Contents 1, Contents 2 and so on, which you can change like any other.
+
+The page numbers are the pages as they are now. After the pages move about, make the contents again.
+
+## Templates
+
+A template is a document to start others from: a newsletter's masthead and columns, a parish magazine's masters and
+styles. File › Save as template… saves the document as one, and File › New from template starts a new, untitled
+document from it. Two come with the program:
+
+- **Newsletter**: a Letter page with a masthead, two linked columns and page numbers in the footer.
+- **Booklet**: eight A5 facing pages with one story running through them all, and page numbers on the outside
+  corners.
+
+Templates saved in the templates folder (where Save as template starts) are listed on the menu; any `.avpt` file can
+be opened as a template with A template file….
+
+## Saving, exporting and printing
+
+![The export dialog: all pages, this page or a range, the resolution, and a booklet](docs/images/AVAPageStream-export.png)
+
+**Saving.** Ctrl+S saves, Ctrl+Shift+S saves under a new name. Saving writes the new file before it replaces the old
+one, so a failed save never damages your work. The title bar shows a dot while there are changes not saved, and
+closing asks first. File › Open recent lists the last ten documents. Undo (Ctrl+Z) and redo (Ctrl+Y) go all the way
+back to when the document was opened.
+
+**PDF.** File › Export PDF… (Ctrl+E) writes the pages as a PDF, with its fonts inside it, ready to send to a printer
+or post online. Choose all the pages, the one shown, or a range such as `1-3, 7`.
+
+**PNG.** File › Export PNG… writes each page as a picture, at a resolution from 72 to 600 dots an inch. Several pages
+go to numbered files: `leaflet-1.png`, `leaflet-2.png`.
+
+**Printing.** File › Print… (Ctrl+P) sends the pages to your printer through the computer's own printing (on Linux
+and macOS, the `lp` command).
+
+**Booklets.** Tick **As a booklet** when exporting a PDF or printing, and the pages are arranged two to a sheet in the
+order that folds into a stapled booklet. Page 8 goes beside page 1, page 2 beside page 7, and so on, with blank pages
+added to make a multiple of four. Print both sides of the paper, flipping on the short edge, fold the stack in half
+and staple it on the fold.
+
+## Keyboard
+
+| Keys | |
+| --- | --- |
+| V, T, R, E, L, P, B, G, K, H | The tools (when not typing) |
+| Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S | New, open, save, save as |
+| Ctrl+E, Ctrl+P | Export PDF, print |
+| Ctrl+Z, Ctrl+Y | Undo, redo |
+| Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste (objects, or text while typing) |
+| Ctrl+D | Duplicate |
+| Ctrl+G, Ctrl+Shift+G | Group, ungroup |
+| Ctrl+], Ctrl+[ | Bring forward, send backward (with Shift: to the front, to the back) |
+| Arrows | Nudge by a point (with Shift: ten) |
+| Ctrl+A | Select everything on the page (or the whole story while typing) |
+| Ctrl+0, Ctrl+1, Ctrl+wheel | Fit the page, actual size, zoom |
+| Page Up, Page Down | The previous and next page (while typing, the previous and next frame) |
+| Ctrl+B, Ctrl+I, Ctrl+U | Bold, italic, underline |
+| Alt+Left, Alt+Right | Kern tighter, looser |
+| Ctrl+Shift+3 | Insert a page number |
+| Ctrl+F, F3, Shift+F3 | Find and replace, find the next, the one before |
+| F7 | Check spelling |
+| Ctrl+Shift+E | The story editor |
+| Tab | In a table, the next cell |
+| Space (held) | Slide the page about |
+| Escape | Stop typing; then let go of the selection; or give up a drag |
+
+Help › Keys and tools has the short version.
+
+## Where things are kept
+
+Your settings, your own dictionary (`words.txt`) and your templates are kept in the AVAPageStream folder of your
+user settings: `~/.config/AVAPageStream` on Linux and macOS, and `%APPDATA%\AVAPageStream` on Windows.

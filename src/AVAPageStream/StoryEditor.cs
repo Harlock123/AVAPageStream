@@ -47,8 +47,9 @@ public sealed class StoryEditor : Window
         Info.Margin = new Thickness(14, 0, 0, 0);
         bar.Children.AddRange([label, StyleChoice, Info]);
         var dock = new DockPanel();
-        DockPanel.SetDock(bar, Dock.Top);
-        dock.Children.Add(new Border { Child = bar, Background = Look.Bar, BorderBrush = Look.Border, BorderThickness = new Thickness(0, 0, 0, 1) });
+        var top = new Border { Child = bar, Background = Look.Bar, BorderBrush = Look.Border, BorderThickness = new Thickness(0, 0, 0, 1) };
+        DockPanel.SetDock(top, Dock.Top);
+        dock.Children.Add(top);
         dock.Children.Add(Text);
         Content = dock;
 

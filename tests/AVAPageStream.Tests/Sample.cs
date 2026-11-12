@@ -35,6 +35,7 @@ internal static class Sample
         var e = w.Editor;
         var page = SheetRef.PageAt(0);
         var serif = new CharFormat(Fonts.Serif, 11);
+        e.Change("British", d => d.Language = "en-GB"); // harbour, colour
 
         // The master: a rule and a footer on every page.
         e.Add(SheetRef.MasterAt(0), new LineObject { X = 36, Y = 742, W = 540, H = 0, Stroke = "#1C2433", StrokeWidth = 0.75 });

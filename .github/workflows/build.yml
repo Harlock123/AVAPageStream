@@ -75,6 +75,7 @@ jobs:
           name="AVAPageStream-${{ matrix.rid }}"
           cd publish/${{ matrix.rid }}
           cp ../../README.md .
+          cp ../../USERGUIDE.pdf .
           if [ -f ../../LICENSE ]; then cp ../../LICENSE .; fi
           if [[ "${{ matrix.rid }}" == win-* ]]; then
             zip -9 -r "../../artifacts/$name.zip" .

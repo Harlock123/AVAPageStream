@@ -6,6 +6,10 @@ text into them, link them so a story flows from column to column and page to pag
 
 ![AVAPageStream with a newsletter page: a masthead, a headline, a two-column story flowing from the left column into a second frame under a picture, the left column wrapping round a pull quote set across the gutter, and a footer from the master page numbering the page, with rulers, margin guides and the Object tab open](docs/images/AVAPageStream-layout.png)
 
+**[USERGUIDE.pdf](USERGUIDE.pdf)** is the guide to using it: setting up a document, frames and flowing text, type,
+pictures, tables, colour, spelling, and exporting and printing, with a picture for each. It is made from
+[USERGUIDE.md](USERGUIDE.md), which reads as well on GitHub.
+
 ## What it does
 
 - **Pages and master pages.** Letter, Legal, Tabloid, A3, A4, A5, B5 or any size, portrait or landscape, with
@@ -110,6 +114,20 @@ dotnet run --project src/AVAPageStream
 
 The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures are shown in full when
 [Ghostscript](https://ghostscript.com) is installed (otherwise by their preview), and PDFs are written in RGB.
+
+## The user guide
+
+`USERGUIDE.md` is the guide for someone using the program rather than reading about it; `USERGUIDE.pdf` is made from
+it by `./make-guide.sh` (with `Tools/GuideBuilder`, which needs only the .NET SDK) and kept in the repository, so
+anyone wanting the guide doesn't have to build it. Its pictures in `docs/images/guide` come from the window tests:
+
+```bash
+AVAPAGESTREAM_SHOTS=/tmp/shots dotnet test AVAPageStream.slnx --filter "FullyQualifiedName~Guide_"
+for f in /tmp/shots/guide-*.png; do cp "$f" "docs/images/guide/${f##*/guide-}"; done
+./make-guide.sh
+```
+
+Edit the Markdown, never the PDF. A change to the program wants a line in `USERGUIDE.md`, and the PDF made again.
 
 ## Licence
 
