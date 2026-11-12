@@ -46,6 +46,46 @@ internal sealed class AskDialog : Window
     }
 }
 
+/// <summary>Asks for a protected PDF's password.</summary>
+internal sealed class PasswordDialog : Window
+{
+    private PasswordDialog(string file, bool wrong)
+    {
+        Title = "Password";
+        Width = 420;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = Look.Window;
+        var box = new TextBox { PasswordChar = '•', PlaceholderText = "Password", FontSize = 14 };
+        var ok = new Button { Content = "Open", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        ok.Classes.Add("accent");
+        ok.Click += (_, _) => Close(box.Text ?? "");
+        var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        cancel.Click += (_, _) => Close(null);
+        box.KeyDown += (_, e) => { if (e.Key == Avalonia.Input.Key.Enter) Close(box.Text ?? ""); };
+        Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 14,
+            Children =
+            {
+                new TextBlock
+                {
+                    Text = (wrong ? "That isn't its password. " : "") + $"{file} is protected by a password. Type it to place the page; it is kept with the picture, in the document, so the page can be drawn again.",
+                    TextWrapping = TextWrapping.Wrap, Foreground = Look.Text, FontSize = 14,
+                },
+                box,
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } },
+            },
+        };
+        Opened += (_, _) => box.Focus();
+    }
+
+    /// <summary>The password typed, or null if cancelled.</summary>
+    public static Task<string?> Show(Window owner, string file, bool wrong) => new PasswordDialog(file, wrong).ShowDialog<string?>(owner);
+}
+
 /// <summary>What to export or print: the pages (counting from 0), for PNG the resolution, and for PDF or print whether as a booklet.</summary>
 public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false, bool Marks = false, bool Cmyk = false);
 

@@ -119,6 +119,9 @@ public sealed class PageView : Control
     /// <summary>Asks for a picture file: its bytes and where it is.</summary>
     public Func<Task<(byte[] Bytes, string Path)?>>? PickImage { get; set; }
 
+    /// <summary>Asks for a protected PDF's password (its file's name, whether one already given was wrong); null if cancelled.</summary>
+    public Func<string, bool, Task<string?>>? AskPassword { get; set; }
+
     /// <summary>The footnote at a point on the sheet being worked on, if there is one.</summary>
     public string? NoteAt(Pt p)
     {
@@ -1785,8 +1788,22 @@ public sealed class PageView : Control
             Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP, WebP, SVG, EPS or PDF).");
             return;
         }
+        string? password = null;
+        if (PdfPages.IsPdf(bytes) && PdfPages.NeedsPassword(bytes))
+        {
+            // Asked until it opens, or the person gives up.
+            for (var wrong = false; ; wrong = true)
+            {
+                if (AskPassword is null || await AskPassword(Path.GetFileName(path), wrong) is not { } typed) { Status?.Invoke("Not placed: the PDF needs its password."); return; }
+                if (PdfPages.Opens(bytes, typed)) { password = typed; break; }
+            }
+        }
         var key = Doc.Images.Add(bytes);
-        _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) { p.Image = key; p.Source = path; p.Page = 1; } });
+        _editor.Change("Place picture", d =>
+        {
+            if (password is not null) d.Passwords[key] = password;
+            if (d.Find(pictureId) is PictureObject p) { p.Image = key; p.Source = path; p.Page = 1; }
+        });
         Select([pictureId]);
         if (_renderer.Describe(Doc, key) is { } what) Status?.Invoke($"Placed {what}.");
     }

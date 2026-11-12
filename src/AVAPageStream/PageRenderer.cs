@@ -522,7 +522,8 @@ internal sealed class PageRenderer
         if (_pictures.TryGetValue(key, out var picture)) return picture;
         var hash = key.IndexOf('#');
         var page = hash > 0 && int.TryParse(key[(hash + 1)..], out var n) ? n : 1;
-        picture = doc.Images.Get(hash > 0 ? key[..hash] : key) is { } bytes ? Pictures.Load(bytes, page) : null;
+        var image = hash > 0 ? key[..hash] : key;
+        picture = doc.Images.Get(image) is { } bytes ? Pictures.Load(bytes, page, doc.Passwords.GetValueOrDefault(image)) : null;
         _pictures[key] = picture;
         return picture;
     }

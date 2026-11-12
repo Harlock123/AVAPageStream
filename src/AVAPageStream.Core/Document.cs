@@ -89,6 +89,9 @@ public sealed class Document
     /// <summary>The language spelling is checked in ("en-US", "en-GB").</summary>
     public string Language { get; set; } = "en-US";
 
+    /// <summary>The passwords of protected PDFs placed in it, by the image's key, so their pages can be drawn.</summary>
+    public Dictionary<string, string> Passwords { get; set; } = [];
+
     /// <summary>Words the spelling checker passes in this document (Ignore all).</summary>
     public List<string> IgnoredWords { get; set; } = [];
 

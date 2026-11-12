@@ -29,13 +29,14 @@ internal static class Pictures
     public static Func<byte[], byte[]?> Ghostscript { get; set; } = eps => Core.Ghostscript.Render(eps);
 
     /// <param name="page">For a PDF, the page (from 1).</param>
-    public static PictureSource? Load(byte[] bytes, int page = 1)
+    /// <param name="password">For a protected PDF that needs one, its password.</param>
+    public static PictureSource? Load(byte[] bytes, int page = 1, string? password = null)
     {
         try
         {
             if (ImageStore.IsSvg(bytes)) return Svg(bytes);
             if (ImageStore.IsEps(bytes)) return PostScript(bytes);
-            if (PdfPages.IsPdf(bytes)) return Pdf(bytes, page);
+            if (PdfPages.IsPdf(bytes)) return Pdf(bytes, page, password);
             var bitmap = new Bitmap(new MemoryStream(bytes));
             // Its size in points: its pixels at the resolution it says it was made for.
             return new RasterPicture(bitmap, new Size(bitmap.PixelSize.Width * 72 / bitmap.Dpi.X, bitmap.PixelSize.Height * 72 / bitmap.Dpi.Y));
@@ -72,13 +73,13 @@ internal static class Pictures
     }
 
     /// <summary>A PDF's page, drawn by AVAPageStream's own reader, so it stays vector; or a labelled box if it can't be read.</summary>
-    private static PictureSource Pdf(byte[] bytes, int page)
+    private static PictureSource Pdf(byte[] bytes, int page, string? password)
     {
         EpsRender.Ready();
-        if (PdfPages.Draw(bytes, page, out var why, out var notes) is not { } drawing)
+        if (PdfPages.Draw(bytes, page, out var why, out var notes, password) is not { } drawing)
             return new PostScriptPicture(null, new Size(144, 144), why ?? "it couldn't be read", "PDF");
         var box = drawing.BoundingBox;
-        var count = PdfPages.Count(bytes);
+        var count = PdfPages.Count(bytes, password);
         var what = count > 1 ? $"page {Math.Clamp(page, 1, count)} of {count} of a PDF" : "a PDF page";
         if (notes.Count > 0) what += " (" + string.Join("; ", notes) + ")";
         return new VectorPicture(EpsRender.Record(drawing), new SKRect(0, 0, (float)box.W, (float)box.H), new Size(Math.Max(1, box.W), Math.Max(1, box.H)), what, EpsRender.PixelsPerPoint(drawing));

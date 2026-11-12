@@ -258,14 +258,30 @@ public sealed class PdfReader
 
     public List<PsDict> Pages { get; } = [];
 
-    public PdfReader(byte[] pdf)
+    private PdfSecurity? _security;
+    private int _encryptNumber = -1;
+
+    /// <summary>Whether the file is protected (and was opened with its password, or the empty one).</summary>
+    public bool Protected => _security is not null;
+
+    /// <param name="password">For a protected file: its password (null tries the empty one, as most open with).</param>
+    public PdfReader(byte[] pdf, string? password = null)
     {
         _b = pdf;
         if (PdfLexer.Find(pdf, "%PDF-", 0, Math.Min(pdf.Length, 1024)) < 0) throw new PdfException("it isn't a PDF");
         try { ReadXref(); }
         catch (Exception e) when (e is IndexOutOfRangeException or ArgumentException or InvalidCastException or PdfException or InvalidDataException) { _xref.Clear(); }
         if (Trailer.Get("Root") is null || Catalog() is null) Repair();
-        if (Trailer.Get("Encrypt") is { } enc && enc is not PsNull) throw new PdfException("it is encrypted");
+        if (Trailer.Get("Encrypt") is { } enc && enc is not PsNull)
+        {
+            if (enc is PdfRef er) _encryptNumber = er.Number;
+            if (Fetch(enc) is not PsDict encrypt) throw new PdfException("its protection is damaged");
+            var id = Trailer.Get("ID") is PsArray { Length: > 0 } ids && ids[0] is PsString first ? first.Span.ToArray() : [];
+            _security = PdfSecurity.Open(encrypt, id, password);
+            // What was read before the key was known is read again, decrypted.
+            _objects.Clear();
+            _deep.Clear();
+        }
         if (Catalog() is not { } catalog) throw new PdfException("it has no catalogue of its pages");
         CollectPages(Fetch(catalog.Get("Pages")) as PsDict, null, new HashSet<object>(ReferenceEqualityComparer.Instance), 0);
         if (Pages.Count == 0) throw new PdfException("it has no pages");
@@ -441,7 +457,7 @@ public sealed class PdfReader
             return null;
         }
         var lex = new PdfLexer(_b, e.Offset);
-        if (lex.Next() is int got && lex.Next() is int && lex.Next() is PdfKeyword { Value: "obj" } && got == number) return ReadBody(lex);
+        if (lex.Next() is int got && lex.Next() is int && lex.Next() is PdfKeyword { Value: "obj" } && got == number) return Decrypted(ReadBody(lex), number, e.Offset);
         // The offset is wrong: look for the object where it really is.
         if (_scanned is null)
         {
@@ -452,9 +468,48 @@ public sealed class PdfReader
         if (_scanned!.TryGetValue(number, out var at) && at != e.Offset)
         {
             lex = new PdfLexer(_b, at);
-            if (lex.Next() is int && lex.Next() is int && lex.Next() is PdfKeyword { Value: "obj" }) return ReadBody(lex);
+            if (lex.Next() is int && lex.Next() is int && lex.Next() is PdfKeyword { Value: "obj" }) return Decrypted(ReadBody(lex), number, at);
         }
         return null;
+    }
+
+    /// <summary>
+    /// An object read from the file, its strings and stream decrypted if the file is protected: all but the
+    /// protection's own dictionary, cross-reference streams, and metadata left plain.
+    /// </summary>
+    private object? Decrypted(object? o, int number, int offset)
+    {
+        if (_security is not { } s || number == _encryptNumber || o is null) return o;
+        var generation = new PdfLexer(_b, offset) is var l && l.Next() is int && l.Next() is int g ? g : 0;
+        if (o is PsDict d && (d.Get("Type") as PsName)?.Value is "XRef") return o;
+        if (o is PsDict md && (md.Get("Type") as PsName)?.Value is "Metadata" && s.PlainMetadata) return o;
+        object Walk(object x) => x switch
+        {
+            PsString str => PsString.Of(s.Decrypt(str.Span.ToArray(), number, generation, stream: false)),
+            PsArray a => DoArray(a),
+            PsDict dict => DoDict(dict),
+            _ => x,
+        };
+        PsArray DoArray(PsArray a)
+        {
+            for (var i = 0; i < a.Length; i++) a[i] = Walk(a[i]);
+            return a;
+        }
+        PsDict DoDict(PsDict dict)
+        {
+            foreach (var (k, v) in dict.Entries)
+            {
+                if (v is PdfStreamBytes raw)
+                {
+                    // A stream with an Identity crypt filter of its own is left as it is.
+                    var identity = dict.Get("Filter") is PsArray fs && fs.All().Any(f => f is PsName { Value: "Crypt" });
+                    if (!identity) { var plain = s.Decrypt(raw.ToArray(), number, generation, stream: true); dict.Put(k, new PdfStreamBytes(plain, 0, plain.Length)); }
+                }
+                else dict.Put(k, Walk(v));
+            }
+            return dict;
+        }
+        return Walk(o);
     }
 
     /// <summary>An object's body after "obj": the object, and its stream's bytes if it has one.</summary>

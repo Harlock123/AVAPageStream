@@ -690,3 +690,29 @@ Compared against Poppler's drawing of PDFs from Skia, cairo, ReportLab, Ghostscr
 pdf-lib and TeX, the pages match but for smoothing. Not done: encryption (even with an empty password), JPEG 2000,
 JBIG2 and CCITT pictures, predefined CMaps other than Identity (non-embedded CJK text), knockout groups, and Type 3
 glyphs as a clip.
+
+### Milestone 8: PDF in full
+
+What it takes for any PDF to be placed, and for the PDFs AVAPageStream makes to go straight to a print shop. In
+stages, each usable on its own:
+
+1. **Protected PDFs.** The standard security handler, every revision: RC4 of 40 to 128 bits (revisions 2 to 4),
+   AES-128 (4) and AES-256 (5 and 6), with crypt filters and unencrypted metadata. Most protected PDFs open with an
+   empty password (they only restrict copying or editing): those are placed as any other. One that needs a password
+   asks for it when placed, and keeps it with the picture so the page can be drawn again when the document opens.
+2. **Scanned pictures.** Decoders of AVAPageStream's own for the three formats scanners and archives write: CCITT
+   fax (Group 3 and 4), JBIG2 (generic, refinement, text and halftone regions, with global segments) and JPEG 2000
+   (codestreams and JP2 files: tiles, both wavelets, colour transforms, any number of components and bit depths).
+3. **Asian text in PDFs.** Adobe's predefined CMaps (BSD-licensed, bundled and compressed), so text in fonts a PDF
+   only names is set from its CIDs and drawn with a CJK font installed on the computer (Noto CJK, Source Han,
+   MS Gothic and the like), found as other fonts are.
+4. **PDF/X-4 export.** An output intent with an ICC profile AVAPageStream writes for its own CMYK conversion (so the
+   file says exactly how its colours were made), every colour and picture (JPEGs too) in CMYK or a spot ink, the
+   trim and bleed boxes, fonts embedded, XMP metadata naming the standard; and preflight's checks for what PDF/X
+   doesn't allow. With it, the reader's last gaps: knockout groups and Type 3 glyphs as a clip.
+
+**Status (12 November 2026):** started. Stage 1 done: `PdfSecurity` opens files of every revision with the empty
+password, the user's or the owner's (AES-256 by revision 6's hash), and `PdfReader` decrypts objects as it loads
+them (not the protection's dictionary, cross-reference streams, objects inside object streams, or metadata left
+plain). Passwords are kept in `Document.Passwords`, by image. The tests protect PDFs with an encryptor of their
+own (`PdfCrypt`) and check each file against Poppler as well, when it is installed.

@@ -79,11 +79,11 @@ public class PdfReaderTests
     }
 
     [Fact]
-    public void An_encrypted_pdf_is_refused_saying_so()
+    public void A_pdf_protected_by_another_security_handler_is_refused_saying_so()
     {
-        var pdf = System.Text.Encoding.Latin1.GetString(PdfMaker.Page(Square).Build()).Replace("/Root 1 0 R", "/Root 1 0 R /Encrypt << /Filter /Standard >>");
+        var pdf = System.Text.Encoding.Latin1.GetString(PdfMaker.Page(Square).Build()).Replace("/Root 1 0 R", "/Root 1 0 R /Encrypt << /Filter /Adobe.PubSec >>");
         Assert.Null(PdfPages.Draw(System.Text.Encoding.Latin1.GetBytes(pdf), 1, out var why, out _));
-        Assert.Equal("it is encrypted", why);
+        Assert.Equal("it is protected by the Adobe.PubSec security handler, which AVAPageStream can't open", why);
     }
 
     [Fact]

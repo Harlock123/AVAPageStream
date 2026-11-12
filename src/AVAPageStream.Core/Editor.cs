@@ -48,7 +48,13 @@ public sealed class Editor
         Change("Update linked pictures", d =>
         {
             foreach (var (id, path, key) in keys)
-                if (d.Find(id) is PictureObject p) { p.Image = key; p.Source = path; }
+                if (d.Find(id) is PictureObject p)
+                {
+                    // A protected PDF's new version keeps its password.
+                    if (d.Passwords.TryGetValue(p.Image, out var password)) d.Passwords.TryAdd(key, password);
+                    p.Image = key;
+                    p.Source = path;
+                }
         });
         return changed.Count;
     }
@@ -286,6 +292,7 @@ public sealed class Editor
         foreach (var (o, original) in Shapes.Flatten([copy]).Zip(Shapes.Flatten([obj])))
         {
             o.Id = d.NewId(o is TextFrame ? "frame" : "object");
+            if (o is PictureObject pic && from is not null && from.Passwords.TryGetValue(pic.Image, out var password)) d.Passwords.TryAdd(pic.Image, password);
             if (o is TextFrame frame && original is TextFrame f && (from ?? d).StoryOf(f) is { } story)
             {
                 var copied = System.Text.Json.JsonSerializer.Deserialize<Story>(System.Text.Json.JsonSerializer.Serialize(story, Document.Json), Document.Json)!;

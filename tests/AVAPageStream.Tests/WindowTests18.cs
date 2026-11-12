@@ -329,4 +329,37 @@ public partial class WindowTests
         Assert.DoesNotContain("/Subtype /Image", exported);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void A_protected_pdf_asks_for_its_password_and_keeps_it()
+    {
+        var m = Core.Pdf.PdfMaker.Page("1 0 0 rg 0 0 100 50 re f", box: "[0 0 100 50]");
+        var file = Path.Combine(Folder(), "locked.pdf");
+        File.WriteAllBytes(file, m.Build(crypt: new Core.Pdf.PdfCrypt(4, user: "harbour")));
+        var w = Open();
+        var e = w.Editor;
+        e.Change("Page", d => d.Setup = d.Setup with { PageWidth = 200, PageHeight = 100 });
+        var pic = e.Add(SheetRef.PageAt(0), new PictureObject { X = 50, Y = 25, W = 100, H = 50, Fit = Fit.Actual });
+        w.PickOpen = _ => Task.FromResult<string?>(file);
+        var asked = new List<bool>();
+        var answers = new Queue<string?>(["lighthouse", "harbour"]);
+        w.View.AskPassword = (name, wrong) => { asked.Add(wrong); Assert.Equal("locked.pdf", name); return Task.FromResult(answers.Dequeue()); };
+        Wait(w.View.ReplaceImage(pic.Id));
+        Assert.Equal([false, true], asked); // asked again after the wrong one
+        var placed = (PictureObject)e.Doc.Find(pic.Id)!;
+        Assert.Equal("harbour", e.Doc.Passwords[placed.Image]);
+        using (var page = DrawPage(e.Doc)) Assert.Equal((255, 0, 0), Pixel(page, 100, 50));
+        // Saved and opened again, it draws with the password it kept.
+        using var ms = new MemoryStream();
+        DocumentFile.Write(e.Doc, ms);
+        ms.Position = 0;
+        using (var again = DrawPage(DocumentFile.Read(ms))) Assert.Equal((255, 0, 0), Pixel(again, 100, 50));
+        // Cancelled: nothing is placed.
+        var other = e.Add(SheetRef.PageAt(0), new PictureObject { X = 0, Y = 0, W = 10, H = 10 });
+        w.View.AskPassword = (_, _) => Task.FromResult<string?>(null);
+        Wait(w.View.ReplaceImage(other.Id));
+        Assert.Equal("", ((PictureObject)e.Doc.Find(other.Id)!).Image);
+        Assert.Contains("needs its password", w.Message.Text);
+        Done(w);
+    }
 }

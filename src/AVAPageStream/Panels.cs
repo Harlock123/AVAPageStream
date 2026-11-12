@@ -162,7 +162,7 @@ public sealed class SidePanel : TabControl
     private int PageCount(string key)
     {
         if (_pageCounts.TryGetValue(key, out var n)) return n;
-        n = Doc.Images.Get(key) is { } bytes && PdfPages.IsPdf(bytes) ? PdfPages.Count(bytes) : 0;
+        n = Doc.Images.Get(key) is { } bytes && PdfPages.IsPdf(bytes) ? PdfPages.Count(bytes, Doc.Passwords.GetValueOrDefault(key)) : 0;
         return _pageCounts[key] = n;
     }
     private readonly StackPanel _pathTextRows = new();

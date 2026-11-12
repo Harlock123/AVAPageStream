@@ -212,6 +212,7 @@ public sealed class MainWindow : Window
         View.SpellingWords = SpellingWords;
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
+        View.AskPassword = (file, wrong) => PasswordDialog.Show(this, file, wrong);
         View.PickImage = async () => await PickOpen("image") is { } path ? (await File.ReadAllBytesAsync(path), path) : null;
         View.SelectionChanged += Refresh;
         View.ViewChanged += () => ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";

@@ -10,6 +10,9 @@ namespace AVAPageStream.Tests.Core.Pdf;
 internal sealed class PdfMaker
 {
     private readonly SortedDictionary<int, (string Body, byte[]? Stream)> _objects = [];
+    private int _encrypt = -1;
+
+    private string TrailerExtra => _encrypt < 0 ? "" : $" /Encrypt {_encrypt} 0 R /ID [<{Convert.ToHexString(PdfCrypt.Id)}> <{Convert.ToHexString(PdfCrypt.Id)}>]";
 
     public PdfMaker Add(int n, string body, byte[]? stream = null) { _objects[n] = (body, stream); return this; }
 
@@ -33,8 +36,26 @@ internal sealed class PdfMaker
         return o.ToArray();
     }
 
-    public byte[] Build(bool xrefStream = false)
+    /// <summary>
+    /// The file, protected by <paramref name="crypt"/> if given: every stream's data and the strings written as
+    /// (…) in the objects (not in the protection's own dictionary) are encrypted.
+    /// </summary>
+    public byte[] Build(bool xrefStream = false, PdfCrypt? crypt = null)
     {
+        if (crypt is not null)
+        {
+            var protectedMaker = new PdfMaker();
+            var encryptNumber = _objects.Keys.Max() + 1;
+            foreach (var (n, (body, stream)) in _objects)
+            {
+                // Literal strings (…) in the body, as hex strings of their encrypted bytes.
+                var b = System.Text.RegularExpressions.Regex.Replace(body, @"\(([^()\\]*)\)", m => "<" + Convert.ToHexString(crypt.Encrypt(Encoding.Latin1.GetBytes(m.Groups[1].Value), n)) + ">");
+                protectedMaker.Add(n, b, stream is null ? null : crypt.Encrypt(stream, n));
+            }
+            protectedMaker.Add(encryptNumber, crypt.Dictionary);
+            protectedMaker._encrypt = encryptNumber;
+            return protectedMaker.Build(xrefStream);
+        }
         var o = new MemoryStream();
         void W(string s) { var b = Encoding.Latin1.GetBytes(s); o.Write(b); }
         W("%PDF-1.7\n%\xe2\xe3\xcf\xd3\n");
@@ -57,7 +78,7 @@ internal sealed class PdfMaker
             var at = o.Position;
             W($"xref\n0 {max + 1}\n0000000000 65535 f \n");
             for (var n = 1; n <= max; n++) W(offsets.TryGetValue(n, out var off) ? $"{off:D10} 00000 n \n" : "0000000000 65535 f \n");
-            W($"trailer\n<< /Size {max + 1} /Root 1 0 R >>\nstartxref\n{at}\n%%EOF\n");
+            W($"trailer\n<< /Size {max + 1} /Root 1 0 R{TrailerExtra} >>\nstartxref\n{at}\n%%EOF\n");
             return o.ToArray();
         }
         // Objects that aren't streams go in an object stream; the cross-reference is a stream too.
@@ -86,7 +107,7 @@ internal sealed class PdfMaker
             else rows.Write([0, 0, 0, 0, 0]);
         }
         var rowBytes = rows.ToArray();
-        var xdict = $"<< /Type /XRef /Size {xref + 1} /W [1 3 1] /Root 1 0 R /Filter /FlateDecode >>";
+        var xdict = $"<< /Type /XRef /Size {xref + 1} /W [1 3 1] /Root 1 0 R{TrailerExtra} /Filter /FlateDecode >>";
         var at2 = o.Position;
         Write(xref, xdict, Deflate(rowBytes));
         W($"startxref\n{at2}\n%%EOF\n");

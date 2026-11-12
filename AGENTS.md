@@ -188,6 +188,9 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   it). `PdfCompare` (a test that does nothing unless `AVAPAGESTREAM_PDFS` and `AVAPAGESTREAM_PDF_OUT` are set) draws
   PDFs beside Poppler's `pdftoppm` for checking. Printer-font outlines need Avalonia running: such tests are
   `[AvaloniaFact]`.
+- **Protected PDFs**: `PdfSecurity` (Core's PostScript folder) and `PdfReader(bytes, password)`; a placed PDF's
+  password is in `Document.Passwords` by image key, carried to a linked file's new version. The tests' `PdfCrypt`
+  makes protected files (only with a cross-reference table, not `Build(xrefStream: true)`).
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

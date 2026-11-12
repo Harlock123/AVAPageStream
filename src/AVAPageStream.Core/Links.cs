@@ -51,7 +51,10 @@ public static class Links
         foreach (var (id, path, bytes) in Changed(doc, folder))
             if (doc.Find(id) is PictureObject p)
             {
-                p.Image = doc.Images.Add(bytes);
+                var key = doc.Images.Add(bytes);
+                // A protected PDF's new version keeps its password.
+                if (doc.Passwords.TryGetValue(p.Image, out var password)) doc.Passwords.TryAdd(key, password);
+                p.Image = key;
                 p.Source = path;
             }
     }
