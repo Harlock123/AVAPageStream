@@ -11,7 +11,64 @@ internal static class EpsRender
 {
     /// <summary>The drawing as a picture of its bounding box's size, y down from its top-left, kept inside the box.</summary>
     /// <summary>Gives the interpreter a JPEG decoder (for DCTDecode): SkiaSharp's.</summary>
-    static EpsRender() => Interpreter.Jpeg = DecodeJpeg;
+    static EpsRender()
+    {
+        Interpreter.Jpeg = DecodeJpeg;
+        Interpreter.SystemGlyphs = SystemGlyph;
+    }
+
+    private static readonly Dictionary<string, SKFont?> Typefaces = [];
+
+    /// <summary>A glyph of a bundled Liberation font, at 1000 to the em, y up, as the interpreter wants it.</summary>
+    private static SystemGlyph? SystemGlyph(string family, bool bold, bool italic, int character)
+    {
+        var file = family.Replace(" ", "") + "-" + (bold ? italic ? "BoldItalic" : "Bold" : italic ? "Italic" : "Regular") + ".ttf";
+        SKFont? font;
+        lock (Typefaces)
+        {
+            if (!Typefaces.TryGetValue(file, out font))
+            {
+                try
+                {
+                    using var stream = Avalonia.Platform.AssetLoader.Open(new Uri("avares://AVAPageStream/Assets/Fonts/" + file));
+                    var typeface = SKTypeface.FromStream(stream);
+                    font = typeface is null ? null : new SKFont(typeface, 1000);
+                }
+                catch (Exception e) when (e is IOException or FileNotFoundException or InvalidOperationException)
+                {
+                    font = null;
+                }
+                Typefaces[file] = font;
+            }
+        }
+        if (font is null) return null;
+        var glyph = font.Typeface.GetGlyph(character);
+        if (glyph == 0 && character != 0) return null;
+        using var path = font.GetGlyphPath(glyph);
+        var advance = font.GetGlyphWidths([glyph])[0];
+        var ps = new PsPath();
+        if (path is not null)
+        {
+            using var iterator = path.CreateRawIterator();
+            var pts = new SKPoint[4];
+            SKPathVerb verb;
+            while ((verb = iterator.Next(pts)) != SKPathVerb.Done)
+                switch (verb)
+                {
+                    case SKPathVerb.Move: ps.Segs.Add(new PsSeg(SegKind.Move, X3: pts[0].X, Y3: -pts[0].Y)); break;
+                    case SKPathVerb.Line: ps.Segs.Add(new PsSeg(SegKind.Line, X3: pts[1].X, Y3: -pts[1].Y)); break;
+                    case SKPathVerb.Quad:
+                        ps.Segs.Add(new PsSeg(SegKind.Curve,
+                            pts[0].X + 2f / 3 * (pts[1].X - pts[0].X), -(pts[0].Y + 2f / 3 * (pts[1].Y - pts[0].Y)),
+                            pts[2].X + 2f / 3 * (pts[1].X - pts[2].X), -(pts[2].Y + 2f / 3 * (pts[1].Y - pts[2].Y)),
+                            pts[2].X, -pts[2].Y));
+                        break;
+                    case SKPathVerb.Cubic: ps.Segs.Add(new PsSeg(SegKind.Curve, pts[1].X, -pts[1].Y, pts[2].X, -pts[2].Y, pts[3].X, -pts[3].Y)); break;
+                    case SKPathVerb.Close: ps.Segs.Add(new PsSeg(SegKind.Close)); break;
+                }
+        }
+        return new SystemGlyph(ps, advance);
+    }
 
     public static AVAPageStream.Core.ColourImage? DecodeJpeg(byte[] jpeg)
     {

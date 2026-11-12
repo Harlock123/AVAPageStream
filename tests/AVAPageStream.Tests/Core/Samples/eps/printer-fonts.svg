@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="90">
+  <rect width="240" height="90" fill="#fff"/>
+  <text x="10" y="28" font-family="Liberation Serif" font-size="22">Harbour lamps, 1926</text>
+  <text x="10" y="54" font-family="Liberation Sans" font-weight="bold" font-size="18" fill="#2050d0">Tide tables</text>
+  <text x="10" y="78" font-family="Liberation Mono" font-style="italic" font-size="14">x = f(y) + 42;</text>
+</svg>

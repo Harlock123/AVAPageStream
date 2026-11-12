@@ -298,11 +298,12 @@ Click a picture with the Picture tool to replace it. Pictures can be:
 - **PNG, JPEG, GIF, BMP and WebP**: the usual kinds.
 - **SVG** drawings: kept as drawings, so they stay sharp at any size, on screen and in PDFs.
 - **EPS** (Encapsulated PostScript): sized from the file, and drawn by AVAPageStream itself, which reads the
-  PostScript in it: its shapes, lines, colours, gradients and the pictures inside it, kept as vector so it prints
-  sharp. That covers the EPS files plotting and drawing programs write (Inkscape, Cairo, matplotlib, R, gnuplot,
-  pdftops, ImageMagick). EPS files with text in them aren't drawn this way yet: for those, and anything else it
-  can't read, [Ghostscript](https://ghostscript.com) draws it if it is installed, or the preview the file carries
-  shows: in colour for the EPS files Illustrator, CorelDRAW and most Windows programs save (a TIFF preview), in grey
+  PostScript in it: its shapes, lines, colours, gradients, the pictures inside it and its text, kept as vector so it
+  prints sharp. Fonts the file carries (TrueType, Type 1 and Type 3) are drawn from it; fonts it only names, as
+  printers have built in (Times, Helvetica, Courier and their bold and italic), are drawn with the Liberation fonts,
+  made to the same widths, so the text sets as it was meant to. For the rare file that uses something it can't read
+  (the Symbol font, Asian composite fonts, tiling patterns), [Ghostscript](https://ghostscript.com) draws it if it
+  is installed, or the preview the file carries shows: in colour for the EPS files Illustrator, CorelDRAW and most Windows programs save (a TIFF preview), in grey
   for EPSI previews. With neither, it is a labelled box. The status bar says which drew it when it is placed.
 
 The picture is stored inside the document, so moving or deleting the original file does no harm.

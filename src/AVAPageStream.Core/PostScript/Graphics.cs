@@ -17,7 +17,7 @@ public sealed class GState
     public double[] Dash = [];
     public double DashOffset;
     public List<PsClip> Clips = [];
-    public object? Font;
+    public PsDict? Font;
     public PsDict? Pattern;  // a shading pattern being painted with
     public bool StrokeAdjust;
     public double Flat = 1;
@@ -603,8 +603,7 @@ public sealed partial class Interpreter
         Op("currentuserparams", i => i.Push(new PsDict()));
         Op("setsystemparams", i => i.Pop());
         Op("currentsystemparams", i => i.Push(new PsDict()));
-        Op("setcachedevice", i => { for (var k = 0; k < 6; k++) i.Pop(); });
-        Op("setcharwidth", i => { i.Pop(); i.Pop(); });
+
         Op("setcachelimit", i => i.Pop());
         Op("setucacheparams", i => { while (i.Pop() is not PsMark) { } });
         Op("resourcestatus", i => { i.Pop(); i.Pop(); i.Push(false); });
@@ -618,7 +617,8 @@ public sealed partial class Interpreter
                 i.Push(i.Resources(category).Get(key) ?? throw new PsError("undefinedresource", Show(key)));
                 return;
             }
-            throw new PsError(category == "Font" ? "unsupported" : "undefinedresource", category == "Font" ? "text" : Show(key));
+            if (category == "Font") { i.Push(i.FindFont(key)); return; }
+            throw new PsError("undefinedresource", Show(key));
         });
         Op("defineresource", i =>
         {
@@ -630,9 +630,7 @@ public sealed partial class Interpreter
         });
         Op("undefineresource", i => { var category = i.Pop<PsName>("undefineresource").Value; i.Resources(category).Remove(i.Pop()); });
 
-        // ---- Text: not yet (milestone 6, stage 3)
-        foreach (var name in new[] { "findfont", "definefont", "selectfont", "show", "ashow", "widthshow", "awidthshow", "kshow", "xshow", "yshow", "xyshow", "glyphshow", "charpath", "stringwidth", "makefont", "scalefont", "setfont", "currentfont", "composefont" })
-            Op(name, _ => throw new PsError("unsupported", "text"));
+        RegisterFonts();
 
         RegisterImages();
     }

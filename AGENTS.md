@@ -158,7 +158,10 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   Anything it doesn't do throws `PsError("unsupported")`, and `Eps.Draw` returns null so Ghostscript or the
   preview take over: never draw half an EPS. Filters read lazily (their data often comes after the image
   dictionary). The sample EPS files in `tests/.../Samples/eps` come with the PNG of the same picture to compare
-  with; add one for each new producer or feature.
+  with; add one for each new producer or feature. Text: `Fonts.cs` (operators and showing), `TrueType.cs`
+  (Type 42), `Type1.cs` (eexec and charstrings), `Encodings.cs`; printer fonts come from the window through
+  `Interpreter.SystemGlyphs` (Liberation, by `EpsRender`), and a test gives its own with `Glyphs` (an interpreter's
+  hooks are copied from the static ones when it is made, so tests running at once don't meet).
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever

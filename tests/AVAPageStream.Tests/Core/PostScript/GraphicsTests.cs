@@ -105,7 +105,6 @@ public class GraphicsTests
     [Fact]
     public void What_isnt_drawn_yet_is_an_error_to_fall_back_on()
     {
-        Assert.Equal("unsupported", new Interpreter().Run("/Helvetica findfont")!.Name);
         Assert.Equal("unsupported", new Interpreter().Run("<< /PatternType 1 /PaintType 1 >> matrix makepattern")!.Name);
         Assert.Equal("unsupported", new Interpreter().Run("<< /ShadingType 4 >> shfill")!.Name);
         Assert.Equal("unsupported", new Interpreter().Run("currentfile /FlateDecode filter")!.Name); // binary data in an EPS's text
@@ -119,7 +118,7 @@ public class GraphicsTests
         Assert.Null(why);
         Assert.Equal(new Box(10, 10, 100, 50), d.BoundingBox);
         Assert.IsType<PsFill>(Assert.Single(d.Ops));
-        Assert.Null(Eps.Draw(System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n(x) show\n"), out why));
-        Assert.Contains("text", why);
+        Assert.Null(Eps.Draw(System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n<< /PatternType 1 >> matrix makepattern\n"), out why));
+        Assert.Contains("tiling patterns", why);
     }
 }

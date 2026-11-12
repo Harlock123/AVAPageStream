@@ -23,6 +23,11 @@ public sealed class Scanner(byte[] data, int start = 0, int end = -1)
 
     public int Peek() => Position < _end ? Data[Position] : -1;
 
+    public int End => _end;
+
+    /// <summary>Ends the file (closefile): nothing more is read from it.</summary>
+    public void Close() => Position = _end;
+
     /// <summary>
     /// The next token, or null at the end. <paramref name="immediate"/> looks up a //name at once.
     /// </summary>

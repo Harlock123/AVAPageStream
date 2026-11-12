@@ -5,6 +5,9 @@ public sealed partial class Interpreter
     /// <summary>Decodes a JPEG (for DCTDecode): given by the program, since the library has no image decoder of its own.</summary>
     public static Func<byte[], ColourImage?>? Jpeg { get; set; }
 
+    /// <summary>This interpreter's JPEG decoder: <see cref="Jpeg"/> unless given another.</summary>
+    public Func<byte[], ColourImage?>? JpegDecoder { get; init; } = Jpeg;
+
     private void RegisterImages()
     {
         Op("filter", i => i.Push(i.MakeFilter()));
@@ -285,7 +288,7 @@ public sealed partial class Interpreter
             if (name is "LZWDecode" or "FlateDecode" or "LZW" or "Fl" && predictor >= 2) decoded = Predict(decoded, parameters!, predictor);
             if (name is "DCTDecode" or "DCT")
             {
-                var picture = Jpeg?.Invoke(decoded) ?? throw new PsError("unsupported", "JPEG pictures");
+                var picture = JpegDecoder?.Invoke(decoded) ?? throw new PsError("unsupported", "JPEG pictures");
                 return (new Scanner(RgbBytes(picture)), picture);
             }
             return (new Scanner(decoded), null);

@@ -54,6 +54,10 @@ public partial class WindowTests
     [InlineData("jpeg-cairo.eps", "jpeg.png")]
     [InlineData("jpeg-poppler.eps", "jpeg.png")]
     [InlineData("photo-magick.eps", "photo.png")]        // ImageMagick: hex data read by procedures
+    [InlineData("text-cairo.eps", "text.png")]           // text: Cairo turns it into outlines
+    [InlineData("text-pdftocairo.eps", "text.png")]      // TrueType fonts as Type 42
+    [InlineData("text-poppler.eps", "text.png")]
+    [InlineData("printer-fonts.eps", "printer-fonts.png")] // Times, Helvetica and Courier named, drawn in Liberation
     public void Eps_files_are_drawn_like_their_producers_draw_them(string eps, string reference)
     {
         using var expected = SKBitmap.Decode(EpsSample(reference));

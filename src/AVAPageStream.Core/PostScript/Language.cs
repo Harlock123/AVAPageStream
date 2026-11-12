@@ -516,7 +516,7 @@ public sealed partial class Interpreter
 
         // ---- Files: only the program itself, as currentfile
         Op("currentfile", i => i.Push(i.File ?? throw new PsError("undefined", "currentfile")));
-        Op("closefile", i => i.Pop());
+        Op("closefile", i => { if (i.Pop() is PsFile f) f.Scanner.Close(); });
         Op("readstring", i => i.ReadInto(hex: false));
         Op("readhexstring", i => i.ReadInto(hex: true));
         Op("readline", i =>

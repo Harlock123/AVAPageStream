@@ -633,4 +633,13 @@ pixels; and the language tested operator by operator.
 text uses, and JPEG through SkiaSharp) and axial and radial shading, both through shfill and shading patterns. Tested
 operator by operator, and on EPS files from Cairo (rsvg-convert), pdftocairo, Poppler's pdftops and ImageMagick,
 each compared with the picture rsvg-convert or ImageMagick draws of the same thing. Binary data straight in the
-program (an 8-bit Flate or JPEG stream not wrapped in ASCII85 or hex) is not read yet. Next: stage 3, text.
+program (an 8-bit Flate or JPEG stream not wrapped in ASCII85 or hex) is not read yet.
+
+Stage 3 done too: findfont, definefont, scalefont, makefont, selectfont and the show family (ashow, widthshow,
+awidthshow, kshow, xshow, yshow, xyshow, glyphshow), stringwidth and charpath; Type 42 fonts through a TrueType reader
+of our own (simple and composite glyphs), Type 1 fonts (eexec in hex or binary, charstrings with subroutines, flex,
+hint replacement and seac), Type 3 fonts (BuildGlyph and BuildChar), and the printer fonts drawn with the bundled
+Liberation fonts (Liberation Mono now bundled for Courier). Tested with a Type 1 font built and encrypted in the
+tests, a Type 3 font like matplotlib's, and EPS text from pdftocairo and pdftops compared with rsvg-convert's
+picture. Not done: the Symbol and Dingbats fonts' encodings, composite (Type 0 and CID) and CFF fonts, and
+encoded number strings for xshow. Next: stage 4, the big programs' procedure sets.

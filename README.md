@@ -125,10 +125,10 @@ dotnet test AVAPageStream.slnx
 dotnet run --project src/AVAPageStream
 ```
 
-The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures are drawn as vector by
-AVAPageStream's own PostScript interpreter; those with text in them, for now, are shown in full when
-[Ghostscript](https://ghostscript.com) is installed (otherwise by the colour or grey preview they carry). PDFs are
-written in RGB.
+The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures, text and all, are drawn
+as vector by AVAPageStream's own PostScript interpreter; the few it can't read are shown by
+[Ghostscript](https://ghostscript.com) when it is installed, otherwise by the colour or grey preview they carry.
+PDFs are written in RGB. Liberation Mono is bundled too, for EPS files set in Courier.
 
 ## The user guide
 
