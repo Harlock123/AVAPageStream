@@ -175,52 +175,6 @@ public sealed partial class Interpreter
             }
     }
 
-    /// <summary>A function of several inputs: PostScript calculator (4) or sampled (0, by its nearest sample), or one input otherwise.</summary>
-    private double[] EvaluateN(object function, double[] inputs)
-    {
-        if (inputs.Length == 1) return Evaluate(function, inputs[0]);
-        if (function is PsArray many && !many.Exec) return many.All().SelectMany(f => EvaluateN(f, inputs)).ToArray();
-        if (function is not PsDict f) throw new PsError("typecheck", "function");
-        var type = f.Get("FunctionType") is { } t ? (int)ToNum(t) : -1;
-        if (type == 4)
-        {
-            var proc = f.Get("Function") as PsArray ?? throw new PsError("unsupported", "a PostScript function from a stream");
-            var before = _stack.Count;
-            foreach (var x in inputs) Push(x);
-            RunProc(proc);
-            var result = _stack.Skip(before).Select(ToNum).ToArray();
-            _stack.RemoveRange(before, _stack.Count - before);
-            return result;
-        }
-        if (type == 0)
-        {
-            double[] Get(string key, double[] otherwise) => (f.Get(key) as PsArray)?.All().Select(ToNum).ToArray() ?? otherwise;
-            var size = Get("Size", [2, 2]).Select(v => (int)v).ToArray();
-            var domain = Get("Domain", [0, 1, 0, 1]);
-            var range = Get("Range", [0, 1]);
-            var outputs = range.Length / 2;
-            var bps = f.Get("BitsPerSample") is { } b ? (int)ToNum(b) : 8;
-            var data = f.Get("DataSource") is PsString s ? s.Span.ToArray() : throw new PsError("unsupported", "sampled functions from a file");
-            var index = 0;
-            var stride = 1;
-            for (var k = 0; k < inputs.Length && k < size.Length; k++)
-            {
-                var e = (inputs[k] - domain[2 * k]) / Math.Max(1e-12, domain[2 * k + 1] - domain[2 * k]) * (size[k] - 1);
-                index += Math.Clamp((int)Math.Round(e), 0, size[k] - 1) * stride;
-                stride *= size[k];
-            }
-            var max = (1 << bps) - 1;
-            var r = new double[outputs];
-            for (var o = 0; o < outputs; o++)
-            {
-                var bit = (index * outputs + o) * bps;
-                var v = bps == 8 ? (bit / 8 < data.Length ? data[bit / 8] : 0) : bit / 8 < data.Length ? (data[bit / 8] >> (8 - bps - bit % 8)) & max : 0;
-                r[o] = range[2 * o] + v * (range[2 * o + 1] - range[2 * o]) / max;
-            }
-            return r;
-        }
-        throw new PsError("unsupported", $"functions of type {type} with {inputs.Length} inputs");
-    }
 
     /// <summary>Reading a mesh shading's packed vertices: each a flag, x and y, and its colour (or a value for its function).</summary>
     private sealed class MeshReader

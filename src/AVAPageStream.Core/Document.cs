@@ -33,6 +33,7 @@ public sealed class ImageStore
     {
         if (IsSvg(b)) return "svg";
         if (IsEps(b)) return "eps";
+        if (PdfPages.IsPdf(b)) return "pdf";
         return Raster(b);
     }
 

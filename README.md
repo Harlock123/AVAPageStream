@@ -18,7 +18,7 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
   number (and the page count, if you like: "Page 3 of 12"). Add and delete pages from the Pages tab, and drag them to reorder.
 - **Facing pages and spreads.** Work on left and right pages side by side, with inside and outside margins, left
   and right master pages, and masters with their own margins and columns.
-- **Frames.** Text frames, pictures (PNG, JPEG, GIF, BMP, WebP, SVG kept as vector, and EPS), tables, rectangles
+- **Frames.** Text frames, pictures (PNG, JPEG, GIF, BMP, WebP, SVG kept as vector, EPS and PDF pages), tables, rectangles
   (with rounded corners), ellipses, lines (with arrowheads), and polygons and Bézier curves drawn with the Pen, each
   with a fill and a stroke. Turn any of them to any angle,
   group them, and edit a path's points and handles. A picture fits its frame four ways, and can be slid inside it (Alt+drag) to crop a different part into view. Move, resize and nudge them, line them up, bring them forward or send them back, duplicate, lock, copy and
@@ -131,7 +131,8 @@ dotnet run --project src/AVAPageStream
 The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures, text and all, are drawn
 as vector by AVAPageStream's own PostScript interpreter; the few it can't read are shown by
 [Ghostscript](https://ghostscript.com) when it is installed, otherwise by the colour or grey preview they carry.
-Liberation Mono is bundled too, for EPS files set in Courier.
+Placed PDF pages are read and drawn as vector by its own PDF reader, which shares the interpreter's graphics and
+fonts. Liberation Mono is bundled too, for EPS and PDF files set in Courier.
 
 ## The user guide
 

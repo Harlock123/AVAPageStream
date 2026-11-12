@@ -179,6 +179,15 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   `GlyphRun`'s glyphs into Skia glyph paths, reading the font file the run was shaped with through
   `GlyphTypeface.PlatformTypeface.TryGetStream` (so the glyph numbers match). A path's parts start at a node with
   `Start`; `PathObject.Parts()` splits them, and anything walking `Nodes` as one run should use it.
+- **PDF pages** are read by Core's `PdfReader` into the interpreter's own objects (`PsDict`, `PsArray`, `PsName`,
+  `PsString`; a stream's bytes under `PdfReader.StreamKey`), deep-resolved so shadings, functions and colour spaces
+  go straight to the PostScript code. `PdfContent.cs` is an `Interpreter` partial running content streams into
+  `Ops`; PDF-only state (stroke colour, alpha, blend, soft mask, text) is `GState.Pdf`. Opacity, blending and soft
+  masks are `PsGroup` ops, drawn by `EpsRender` as Skia layers. Damaged operators are passed over silently; set
+  `AVAPS_PDF_DEBUG` to see them as notes. Don't make a pattern or mask inside an expression that holds `G` (they swap
+  it). `PdfCompare` (a test that does nothing unless `AVAPAGESTREAM_PDFS` and `AVAPAGESTREAM_PDF_OUT` are set) draws
+  PDFs beside Poppler's `pdftoppm` for checking. Printer-font outlines need Avalonia running: such tests are
+  `[AvaloniaFact]`.
 - **Every colour the document uses** is listed by `Colours.Used` (fills, strokes, gradients' stops, shadows, table
   headers, text, paragraph rules) and changed by `Editor.Recolour` for swatch renames and deletes. Anything new that
   holds a colour goes in both, or it misses CMYK conversion, spot inks and swatch renames.

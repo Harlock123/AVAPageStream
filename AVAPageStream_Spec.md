@@ -668,13 +668,25 @@ What a designer laying out a page reaches for, on the program's own shapes, fram
 - **Object styles**: named sets of fill, stroke, corners, shadow, opacity and text wrap, applied to objects and
   updating them when redefined, like paragraph styles.
 - **Text to outlines**: a frame's text (or a selection of it) turned into paths that can be reshaped and filled.
-- **Placing PDF pages as pictures**, through PDFium (BSD-licensed): a page of a PDF placed like an SVG, kept as
-  vector in the exported PDF where it can be.
+- **Placing PDF pages as pictures**: a page of a PDF placed like an SVG, kept as vector in the exported PDF.
+  (Planned through PDFium; done instead with AVAPageStream's own reader, on the EPS interpreter's graphics and fonts,
+  as PDFium would only give a bitmap and needs a native library for each platform.)
 
-**Status (12 November 2026):** started. Done: gradients, transparency and blend modes, drop shadows and glows,
+**Status (12 November 2026):** done. Gradients, transparency and blend modes, drop shadows and glows,
 rounded and cut corners, paragraph rules (column, text or set length; they take no room, so space before and
 after makes room for them), and object styles (an object keeps its style's name when changed by hand, shown as
 changed; redefining puts every object in the style back to its look), and text to outlines (paths can now have
-several parts and fill by the non-zero rule; a selection's letters stay in the text, clear). Gradients are set in the Object tab, or dragged on the page with the Gradient tool (D); an object
-with opacity, a blend mode or a shadow is drawn as a Skia layer of its own, opened and closed round Avalonia's own
-drawing of it, so its text and pictures are in it too.
+several parts and fill by the non-zero rule; a selection's letters stay in the text, clear), and placed PDF pages.
+Gradients are set in the Object tab, or dragged on the page with the Gradient tool (D); an object with opacity, a
+blend mode or a shadow is drawn as a Skia layer of its own, opened and closed round Avalonia's own drawing of it, so
+its text and pictures are in it too.
+
+The PDF reader (`PdfReader`, `PdfContent`, `PdfFonts` in Core's PostScript folder) reads cross-reference tables and
+streams, object streams, and damaged files (by finding their objects); it draws a page's content, forms,
+annotations' appearances, optional content, pictures (Flate, LZW, JPEG and the rest, with soft and stencil masks),
+shadings and patterns, transparency groups, blend modes and soft masks (with transfer functions), and text in
+embedded Type 1, CFF, TrueType, OpenType, Type 3 and composite fonts, or the Liberation fonts for those only named.
+Compared against Poppler's drawing of PDFs from Skia, cairo, ReportLab, Ghostscript, LibreOffice, OpenOffice,
+pdf-lib and TeX, the pages match but for smoothing. Not done: encryption (even with an empty password), JPEG 2000,
+JBIG2 and CCITT pictures, predefined CMaps other than Identity (non-embedded CJK text), knockout groups, and Type 3
+glyphs as a clip.

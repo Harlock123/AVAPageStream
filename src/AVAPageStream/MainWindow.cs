@@ -1364,7 +1364,7 @@ public sealed class MainWindow : Window
             AllowMultiple = false,
             FileTypeFilter = kind switch
             {
-                "image" => [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp", "*.svg", "*.eps"] }],
+                "image" => [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp", "*.svg", "*.eps", "*.pdf"] }],
                 "text" => [new FilePickerFileType("Text and Markdown") { Patterns = ["*.txt", "*.md", "*.markdown", "*.text"] }],
                 "template" => [new FilePickerFileType("AVAPageStream templates") { Patterns = ["*" + Templates.Extension] }],
                 _ => [new FilePickerFileType("AVAPageStream documents") { Patterns = ["*" + DocumentFile.Extension] }],

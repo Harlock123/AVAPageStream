@@ -411,7 +411,7 @@ internal sealed class PageRenderer
 
     private void DrawPicture(DrawingContext dc, Document doc, PictureObject picture, Rect frame)
     {
-        var source = PictureOf(doc, picture.Image);
+        var source = PictureOf(doc, picture.Shown);
         if (source is null || source is PostScriptPicture { Shown: null })
         {
             if (!Screen) return;
@@ -421,7 +421,7 @@ internal sealed class PageRenderer
             dc.DrawLine(pen, frame.TopRight, frame.BottomLeft);
             if (source is PostScriptPicture eps)
             {
-                var label = FontSupport.Format("EPS: " + eps.How, new CharFormat(Fonts.Sans, 8), new SolidColorBrush(Color.Parse("#5A6478")));
+                var label = FontSupport.Format(eps.Kind + ": " + eps.How, new CharFormat(Fonts.Sans, 8), new SolidColorBrush(Color.Parse("#5A6478")));
                 label.MaxTextWidth = Math.Max(20, frame.Width - 8);
                 using (dc.PushClip(frame)) dc.DrawText(label, new Point(frame.X + 4, frame.Y + 4));
             }
@@ -449,6 +449,7 @@ internal sealed class PageRenderer
     public string? Describe(Document doc, string key) => PictureOf(doc, key) switch
     {
         VectorPicture v => v.What + ", kept as vector",
+        PostScriptPicture { Kind: "PDF" } pdf => "a PDF page, not drawn: " + pdf.How,
         PostScriptPicture eps => "an EPS picture, shown by " + eps.How,
         RasterPicture r => $"a picture of {r.Bitmap.PixelSize.Width} × {r.Bitmap.PixelSize.Height} pixels",
         _ => null,
@@ -514,11 +515,14 @@ internal sealed class PageRenderer
         _ => null,
     };
 
+    /// <param name="key">The image's key, with "#" and a page after it for a PDF's page other than its first.</param>
     private PictureSource? PictureOf(Document doc, string key)
     {
         if (key.Length == 0) return null;
         if (_pictures.TryGetValue(key, out var picture)) return picture;
-        picture = doc.Images.Get(key) is { } bytes ? Pictures.Load(bytes) : null;
+        var hash = key.IndexOf('#');
+        var page = hash > 0 && int.TryParse(key[(hash + 1)..], out var n) ? n : 1;
+        picture = doc.Images.Get(hash > 0 ? key[..hash] : key) is { } bytes ? Pictures.Load(bytes, page) : null;
         _pictures[key] = picture;
         return picture;
     }

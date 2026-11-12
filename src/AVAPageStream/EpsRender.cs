@@ -86,7 +86,11 @@ internal static class EpsRender
                     var typeface = SKTypeface.FromStream(stream);
                     font = typeface is null ? null : new SKFont(typeface, 1000);
                 }
-                catch (Exception e) when (e is IOException or FileNotFoundException or InvalidOperationException)
+                catch (InvalidOperationException)
+                {
+                    return null; // Avalonia isn't running yet (a test): not remembered, so it is tried again
+                }
+                catch (Exception e) when (e is IOException or FileNotFoundException)
                 {
                     font = null;
                 }
@@ -283,6 +287,31 @@ internal static class EpsRender
                     canvas.DrawVertices(vertices, SKBlendMode.Dst, vp);
                     break;
                 }
+                case PsGroup g when depth < 32:
+                {
+                    using var layer = new SKPaint
+                    {
+                        Color = new SKColor(255, 255, 255, (byte)Math.Round(Math.Clamp(g.Alpha, 0, 1) * 255)),
+                        BlendMode = Blend(g.Blend),
+                    };
+                    canvas.SaveLayer(layer);
+                    Draw(canvas, g.Ops, only, depth + 1);
+                    if (g.Mask is { } mask)
+                    {
+                        // The mask drawn over the group, keeping the group only as much as the mask's luminosity (or alpha) says.
+                        using var keep = new SKPaint { BlendMode = SKBlendMode.DstIn };
+                        using var luma = mask.Luminosity ? SKColorFilter.CreateLumaColor() : null;
+                        using var table = mask.Transfer is { Length: 256 } tr ? SKColorFilter.CreateTable(tr, Identity, Identity, Identity) : null;
+                        using var both = luma is not null && table is not null ? SKColorFilter.CreateCompose(table, luma) : null;
+                        keep.ColorFilter = both ?? table ?? luma;
+                        canvas.SaveLayer(keep);
+                        if (mask.Luminosity && mask.Backdrop is { } bc) canvas.DrawColor(Colour(bc));
+                        Draw(canvas, mask.Ops, null, depth + 1);
+                        canvas.Restore();
+                    }
+                    canvas.Restore();
+                    break;
+                }
                 case PsImage img:
                 {
                     // The image's unit square, its first row at the top as PostScript's image space has it.
@@ -324,6 +353,29 @@ internal static class EpsRender
         }
         return seamless;
     }
+
+    private static readonly byte[] Identity = Enumerable.Range(0, 256).Select(i => (byte)i).ToArray();
+
+    /// <summary>A PDF blend mode as Skia's.</summary>
+    private static SKBlendMode Blend(string name) => name switch
+    {
+        "Multiply" => SKBlendMode.Multiply,
+        "Screen" => SKBlendMode.Screen,
+        "Overlay" => SKBlendMode.Overlay,
+        "Darken" => SKBlendMode.Darken,
+        "Lighten" => SKBlendMode.Lighten,
+        "ColorDodge" => SKBlendMode.ColorDodge,
+        "ColorBurn" => SKBlendMode.ColorBurn,
+        "HardLight" => SKBlendMode.HardLight,
+        "SoftLight" => SKBlendMode.SoftLight,
+        "Difference" => SKBlendMode.Difference,
+        "Exclusion" => SKBlendMode.Exclusion,
+        "Hue" => SKBlendMode.Hue,
+        "Saturation" => SKBlendMode.Saturation,
+        "Color" => SKBlendMode.Color,
+        "Luminosity" => SKBlendMode.Luminosity,
+        _ => SKBlendMode.SrcOver,
+    };
 
     private static SKPath ToSkia(PsPath p, bool evenOdd)
     {

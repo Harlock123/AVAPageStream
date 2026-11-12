@@ -115,7 +115,7 @@ public static class Preflight
             issues.Add(new Issue(Problem.NoPicture, sheet, p.Id, $"{name}: a picture frame has no picture in it."));
             return;
         }
-        if (o.Pixels(p.Image) is not { Width: > 0, Height: > 0 } px) return; // a drawing: any size
+        if (o.Pixels(p.Shown) is not { Width: > 0, Height: > 0 } px) return; // a drawing: any size
         var drawn = Fitting.Place(p.Fit, px.Points, px.PointsHigh, p.Bounds);
         var dpi = Math.Min(px.Width / (drawn.W / 72), px.Height / (drawn.H / 72));
         if (dpi < o.MinDpi - 0.5)

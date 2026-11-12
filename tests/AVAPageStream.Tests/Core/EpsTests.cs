@@ -20,7 +20,7 @@ public class EpsTests
             0 0 20 20 rectfill
             %%EOF
             """.Replace("\r\n", "\n");
-        if (text) ps = ps.Replace("%%EOF", "[/Lab << >>] setcolorspace\n%%EOF");
+        if (text) ps = ps.Replace("%%EOF", "[/DeviceFoo] setcolorspace\n%%EOF");
         var bytes = Encoding.ASCII.GetBytes(ps);
         if (!binary) return bytes;
         // The DOS binary form: a 30-byte header pointing at the PostScript.

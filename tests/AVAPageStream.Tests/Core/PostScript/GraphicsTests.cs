@@ -106,7 +106,13 @@ public class GraphicsTests
     public void What_isnt_drawn_yet_is_an_error_to_fall_back_on()
     {
         Assert.Equal("unsupported", new Interpreter().Run("<< /PatternType 3 >> matrix makepattern")!.Name);
-        Assert.Equal("unsupported", new Interpreter().Run("[/Lab << >>] setcolorspace")!.Name);
+        Assert.Equal("unsupported", new Interpreter().Run("[/DeviceFoo] setcolorspace")!.Name);
+        // Lab is drawn: mid-grey for L* 50 (D50), and its a* toward red.
+        var grey = Run("[/Lab << /WhitePoint [0.9642 1 0.8249] >>] setcolorspace 50 0 0 setcolor").G.Colour;
+        Assert.InRange(grey.R, 0.44, 0.5);
+        Assert.InRange(grey.G - grey.R, -0.02, 0.02);
+        var red = Run("[/Lab << >>] setcolorspace 50 60 0 setcolor").G.Colour;
+        Assert.True(red.R > red.G + 0.3, red.ToString());
         Assert.Equal("unsupported", new Interpreter().Run("<< /ShadingType 8 >> shfill")!.Name);
     }
 
@@ -118,7 +124,7 @@ public class GraphicsTests
         Assert.Null(why);
         Assert.Equal(new Box(10, 10, 100, 50), d.BoundingBox);
         Assert.IsType<PsFill>(Assert.Single(d.Ops));
-        Assert.Null(Eps.Draw(System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n[/Lab << >>] setcolorspace\n"), out why));
-        Assert.Contains("Lab colour", why);
+        Assert.Null(Eps.Draw(System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n[/DeviceFoo] setcolorspace\n"), out why));
+        Assert.Contains("colour space DeviceFoo", why);
     }
 }

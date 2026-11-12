@@ -519,4 +519,24 @@ public partial class WindowTests
         Guide(w, "gradienttool");
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_pdf_page()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var file = Path.Combine(AppContext.BaseDirectory, "Core", "Samples", "pdf", "cairo-art.pdf");
+        var pic = e.Add(SheetRef.PageAt(0), new PictureObject { X = 72, Y = 160, W = 420, H = 315, Fit = Fit.Fill });
+        w.PickOpen = _ => Task.FromResult<string?>(file);
+        Wait(w.View.ReplaceImage(pic.Id));
+        var caption = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 90, W = 420, H = 60 });
+        e.ReplaceText(caption.StoryId, 0, 0, "A PDF page placed as a picture: its gradients, transparency and text, drawn as vector.", new CharFormat(Fonts.Serif, 16, Italic: true));
+        w.View.Select([pic.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0, 420);
+        w.Refresh();
+        Guide(w, "pdfpage");
+        Assert.Contains("kept as vector", w.Message.Text);
+        Done(w);
+    }
 }

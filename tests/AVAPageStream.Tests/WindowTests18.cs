@@ -246,4 +246,87 @@ public partial class WindowTests
         Assert.Contains("Drag across a shape", w.Message.Text);
         Done(w);
     }
+
+    /// <summary>A PDF of two pages: a red square on the first, a blue one on the second.</summary>
+    private static byte[] TwoPagePdf()
+    {
+        var m = new Core.Pdf.PdfMaker();
+        m.Add(1, "<< /Type /Catalog /Pages 2 0 R >>");
+        m.Add(2, "<< /Type /Pages /Kids [3 0 R 5 0 R] /Count 2 /MediaBox [0 0 100 50] >>");
+        m.Add(3, "<< /Type /Page /Parent 2 0 R /Resources << >> /Contents 4 0 R >>");
+        m.Add(4, "<< >>", "1 0 0 rg 0 0 100 50 re f");
+        m.Add(5, "<< /Type /Page /Parent 2 0 R /Resources << >> /Contents 6 0 R >>");
+        m.Add(6, "<< >>", "0 0 1 rg 0 0 100 50 re f");
+        return m.Build();
+    }
+
+    [AvaloniaFact]
+    public void A_pdf_page_is_placed_as_a_picture_and_its_page_chosen()
+    {
+        var dir = Folder();
+        var file = Path.Combine(dir, "two.pdf");
+        File.WriteAllBytes(file, TwoPagePdf());
+        var w = Open();
+        var e = w.Editor;
+        e.Change("Page", d => d.Setup = d.Setup with { PageWidth = 200, PageHeight = 100 });
+        var pic = e.Add(SheetRef.PageAt(0), new PictureObject { X = 50, Y = 25, W = 100, H = 50, Fit = Fit.Actual });
+        w.PickOpen = _ => Task.FromResult<string?>(file);
+        Wait(w.View.ReplaceImage(pic.Id));
+        Assert.Contains("Placed page 1 of 2 of a PDF, kept as vector.", w.Message.Text);
+        Assert.Equal("pdf", ImageStore.Extension(e.Doc.Images.Get(((PictureObject)e.Doc.Find(pic.Id)!).Image)!));
+        using (var first = DrawPage(e.Doc)) Assert.Equal((255, 0, 0), Pixel(first, 100, 50));
+        w.View.Select([pic.Id]);
+        w.Panel.SelectedIndex = 0;
+        w.Refresh();
+        Pump();
+        Assert.Equal(2m, w.Panel.PdfPageBox.Maximum);
+        w.Panel.PdfPageBox.Value = 2;
+        Pump();
+        Assert.Equal(2, ((PictureObject)e.Doc.Find(pic.Id)!).Page);
+        using (var second = DrawPage(e.Doc)) Assert.Equal((0, 0, 255), Pixel(second, 100, 50));
+        // Kept in the file, page and all.
+        using var ms = new MemoryStream();
+        DocumentFile.Write(e.Doc, ms);
+        ms.Position = 0;
+        var back = (PictureObject)DocumentFile.Read(ms).Find(pic.Id)!;
+        Assert.Equal((2, "pdf"), (back.Page, ImageStore.Extension(e.Doc.Images.Get(back.Image)!)));
+        Done(w);
+    }
+
+    [AvaloniaFact]
+    public void A_page_exported_as_pdf_places_back_as_vector_text_and_all()
+    {
+        // A page of AVAPageStream's own (SkiaSharp's PDF: TrueType fonts by glyph number), placed in another document.
+        var doc = Document.New(new Setup(300, 120));
+        var f = new TextFrame { Id = "f", X = 20, Y = 20, W = 260, H = 80 };
+        doc.Pages[0].Objects.Add(f);
+        Chains.NewStory(doc, f, doc.Style("Body"));
+        doc.Stories[f.StoryId].Insert(0, "Harbour Lights", new CharFormat(Fonts.Sans, 40, Bold: true));
+        var pdf = Path.Combine(Folder(), "page.pdf");
+        Wait(Export.Pdf(doc, pdf));
+        var bytes = File.ReadAllBytes(pdf);
+        var drawing = AVAPageStream.Core.PdfPages.Draw(bytes, 1, out var why, out var notes)!;
+        Assert.True(drawing is not null, why);
+        Assert.Empty(notes);
+        Assert.Equal(new Box(0, 0, 300, 120), drawing.BoundingBox);
+        var text = drawing.Ops.OfType<AVAPageStream.Core.PostScript.PsFill>().Where(o => o.Colour == AVAPageStream.Core.PostScript.PsColour.Black).ToList();
+        Assert.NotEmpty(text); // the words, as outlines
+
+        var w = Open();
+        var e = w.Editor;
+        e.Change("Page", d => d.Setup = d.Setup with { PageWidth = 300, PageHeight = 120 });
+        var pic = e.Add(SheetRef.PageAt(0), new PictureObject { X = 0, Y = 0, W = 300, H = 120, Fit = Fit.Actual });
+        w.PickOpen = _ => Task.FromResult<string?>(pdf);
+        Wait(w.View.ReplaceImage(pic.Id));
+        using var original = DrawPage(doc);
+        using var placed = DrawPage(e.Doc);
+        var (dark, both) = Overlap(original, placed, new Avalonia.PixelRect(20, 20, 260, 60));
+        Assert.True(dark > 400 && both > dark * 0.95, $"{both} of {dark}");
+        // Exported again, it is still drawing, not a picture of it.
+        var again = Path.Combine(Folder(), "again.pdf");
+        Wait(Export.Pdf(e.Doc, again));
+        var exported = System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(again));
+        Assert.DoesNotContain("/Subtype /Image", exported);
+        Done(w);
+    }
 }

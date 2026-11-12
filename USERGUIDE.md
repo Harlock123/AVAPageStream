@@ -323,6 +323,20 @@ Click a picture with the Picture tool to replace it. Pictures can be:
   rare file that uses something it can't read, [Ghostscript](https://ghostscript.com) draws it if it
   is installed, or the preview the file carries shows: in colour for the EPS files Illustrator, CorelDRAW and most Windows programs save (a TIFF preview), in grey
   for EPSI previews. With neither, it is a labelled box. The status bar says which drew it when it is placed.
+- **PDF** pages: drawn by AVAPageStream's own PDF reader, as vector, so a page of a brochure, an advert from a
+  client or a logo saved as PDF prints as sharp as the original. A placed PDF shows its first page; for one with
+  more, choose another with **Page** in the Object tab's Picture section. The page is shown in its crop box, turned
+  as the PDF says.
+
+![A PDF page placed as a picture, with its gradients, transparency, pattern and text](docs/images/guide/pdfpage.png)
+
+It reads what PDFs from Acrobat, InDesign, Word and LibreOffice, Chrome, cairo, Ghostscript, TeX and the rest put in
+them: shapes, colours (CMYK, spot colours, ICC, Lab), gradients and meshes, patterns, transparency, blend modes and
+soft masks, pictures (JPEG among them) and their masks, and text in the fonts they carry (TrueType, Type 1, CFF and
+OpenType, Type 3, and composite fonts for Asian text) or name (drawn with the Liberation fonts, made to the same
+widths). Stamps, filled-in form fields and other notes that print are drawn too, and layers the PDF has turned off
+are left out. A damaged file is read as far as it can be. What it can't do: encrypted PDFs, and pictures in JPEG
+2000, JBIG2 or CCITT fax (the kinds scanners make) are left out; the status bar says so when the page is placed.
 
 The picture is stored inside the document, so moving or deleting the original file does no harm.
 

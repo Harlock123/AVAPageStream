@@ -153,6 +153,18 @@ public sealed class SidePanel : TabControl
     private readonly StackPanel _rotationRow = new();
     private readonly StackPanel _frameRows = new();
     private readonly StackPanel _pictureRows = new();
+    public NumericUpDown PdfPageBox { get; } = new() { Minimum = 1, Maximum = 1, Increment = 1, FormatString = "0", FontSize = 12 };
+    private readonly TextBlock _pdfPages = new() { Foreground = Look.Faint, FontSize = 11, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(6, 0, 0, 0) };
+    private readonly StackPanel _pdfRow = new();
+    private readonly Dictionary<string, int> _pageCounts = [];
+
+    /// <summary>How many pages a placed PDF has (0 if it isn't one), worked out once for each.</summary>
+    private int PageCount(string key)
+    {
+        if (_pageCounts.TryGetValue(key, out var n)) return n;
+        n = Doc.Images.Get(key) is { } bytes && PdfPages.IsPdf(bytes) ? PdfPages.Count(bytes) : 0;
+        return _pageCounts[key] = n;
+    }
     private readonly StackPanel _pathTextRows = new();
     public TextBox TextOffsetBox { get; } = Ui.Box();
     private readonly WrapPanel _swatchButtons = new() { Margin = new Thickness(74, 2, 0, 4) };
@@ -448,8 +460,15 @@ public sealed class SidePanel : TabControl
                 Ui.Button("Unlink", () => _window.UnlinkSelected(), "Take this frame out of its chain; the text flows on without it"),
                 Ui.Button("Link…", () => { View.Tool = Tool.Link; _window.Say("Click a text frame to link from, then the one the text flows into."); })),
         ]);
+        PdfPageBox.ValueChanged += (_, _) =>
+        {
+            if (_refreshing || PdfPageBox.Value is not { } v) return;
+            ChangeSelected("PDF page", o => { if (o is PictureObject pic) pic.Page = (int)v; });
+        };
+        _pdfRow.Children.Add(Ui.Row(("Page", new StackPanel { Orientation = Orientation.Horizontal, Children = { PdfPageBox, _pdfPages } })));
         _pictureRows.Children.AddRange([
             Ui.Heading("Picture"),
+            _pdfRow,
             Ui.Row(("Fit", FitChoice)),
             Ui.Row(("Offset X", OffsetXBox)),
             Ui.Row(("Offset Y", OffsetYBox)),
@@ -1564,6 +1583,11 @@ public sealed class SidePanel : TabControl
         ArrowEndBox.IsChecked = selected.All(o => o is LineObject { ArrowEnd: true });
         if (one is PictureObject p)
         {
+            var pages = PageCount(p.Image);
+            _pdfRow.IsVisible = pages > 1;
+            PdfPageBox.Maximum = Math.Max(1, pages);
+            PdfPageBox.Value = Math.Clamp(p.Page, 1, Math.Max(1, pages));
+            _pdfPages.Text = $"of {pages}";
             FitChoice.SelectedIndex = (int)p.Fit;
             Set(OffsetXBox, Units.Format(p.OffsetX, Unit));
             Set(OffsetYBox, Units.Format(p.OffsetY, Unit));

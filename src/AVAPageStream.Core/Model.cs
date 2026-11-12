@@ -339,6 +339,13 @@ public sealed class PictureObject : PageObject
     /// </summary>
     public bool Linked { get; set; }
 
+    /// <summary>For a PDF: which of its pages is shown (from 1).</summary>
+    public int Page { get; set; } = 1;
+
+    /// <summary>What is shown, as the renderer and preflight look it up: the image's key, and its page if not the first.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string Shown => Page > 1 ? $"{Image}#{Page}" : Image;
+
     public override string Kind => "Picture";
 }
 

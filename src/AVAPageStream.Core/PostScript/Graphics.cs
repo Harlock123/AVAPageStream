@@ -22,6 +22,7 @@ public sealed class GState
     public PsColour? PatternColour; // for an uncoloured one, its colour
     public bool StrokeAdjust;
     public double Flat = 1;
+    internal PdfState? Pdf;  // a PDF's own state, when a PDF page is being drawn
 
     public GState Clone()
     {
@@ -242,7 +243,7 @@ public sealed partial class Interpreter
             "CIEBasedABC" or "CIEBasedDEF" => name,
             "CIEBasedA" => name,
             "CIEBasedDEFG" => name,
-            "Lab" => throw new PsError("unsupported", "Lab colour"),
+            "Lab" => "Lab",
             _ => throw new PsError("unsupported", "colour space " + name),
         };
         SetComponents(G.Space switch
@@ -252,7 +253,7 @@ public sealed partial class Interpreter
             "Separation" => [1],
             "DeviceN" => Enumerable.Repeat(1.0, ((PsArray)((PsArray)array)[1]).Length).ToArray(),
             "ICCBased" => new double[IccComponents((PsArray)array)],
-            "CIEBasedABC" or "CIEBasedDEF" => [0, 0, 0],
+            "CIEBasedABC" or "CIEBasedDEF" or "Lab" => [0, 0, 0],
             "CIEBasedDEFG" => [0, 0, 0, 0],
             _ => [0],
         });
@@ -303,6 +304,8 @@ public sealed partial class Interpreter
             }
             case "CIEBasedA" or "CIEBasedABC" or "CIEBasedDEF" or "CIEBasedDEFG":
                 return Cie(space, (PsArray)array, c);
+            case "Lab":
+                return Lab(array, c);
             case "Separation" or "DeviceN":
             {
                 // The colour its alternative space gives: the tint run through the tint transform.
@@ -321,6 +324,31 @@ public sealed partial class Interpreter
             default:
                 return PsColour.Black;
         }
+    }
+
+    /// <summary>
+    /// A PDF Lab colour (L* from 0 to 100, a* and b* within its Range) as sRGB: through XYZ, at its white point
+    /// (D50 if it gives none), adapted to D65 by Bradford.
+    /// </summary>
+    private static PsColour Lab(object array, double[] c)
+    {
+        var d = array is PsArray a && a.Length > 1 ? a[1] as PsDict : null;
+        var white = (d?.Get("WhitePoint") as PsArray)?.All().Select(ToNum).ToArray() is { Length: 3 } wp ? wp : [0.9642, 1, 0.8249];
+        var range = (d?.Get("Range") as PsArray)?.All().Select(ToNum).ToArray() is { Length: 4 } r ? r : [-100, 100, -100, 100];
+        var l = Math.Clamp(c.Length > 0 ? c[0] : 0, 0, 100);
+        var aa = Math.Clamp(c.Length > 1 ? c[1] : 0, range[0], range[1]);
+        var bb = Math.Clamp(c.Length > 2 ? c[2] : 0, range[2], range[3]);
+        static double G(double x) => x >= 6.0 / 29 ? x * x * x : 108.0 / 841 * (x - 4.0 / 29);
+        var m = (l + 16) / 116;
+        var (x, y, z) = (white[0] * G(m + aa / 500), white[1] * G(m), white[2] * G(m - bb / 200));
+        // Bradford from the white point to D65, then XYZ to linear sRGB.
+        var (x2, y2, z2) = (x * 0.9555766 - y * 0.0230393 + z * 0.0631636, -x * 0.0282895 + y * 1.0099416 + z * 0.0210077, x * 0.0122982 - y * 0.0204830 + z * 1.3299098);
+        if (Math.Abs(white[0] - 0.9642) > 0.01 || Math.Abs(white[2] - 0.8249) > 0.01) (x2, y2, z2) = (x * 0.9505 / white[0], y, z * 1.089 / white[2]);
+        var rl = 3.2404542 * x2 - 1.5371385 * y2 - 0.4985314 * z2;
+        var gl = -0.9692660 * x2 + 1.8760108 * y2 + 0.0415560 * z2;
+        var bl = 0.0556434 * x2 - 0.2040259 * y2 + 1.0572252 * z2;
+        static double Gamma(double v) => Math.Clamp(v <= 0.0031308 ? 12.92 * v : 1.055 * Math.Pow(v, 1 / 2.4) - 0.055, 0, 1);
+        return new PsColour(Gamma(rl), Gamma(gl), Gamma(bl));
     }
 
     private static PsColour Hsb(double h, double s, double b)
@@ -592,7 +620,7 @@ public sealed partial class Interpreter
                 }
                 return;
             }
-            var n = i.G.Space switch { "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" => 3, "DeviceCMYK" or "CIEBasedDEFG" => 4, "DeviceN" => ((PsArray)((PsArray)i.G.SpaceArray)[1]).Length, "ICCBased" => IccComponents((PsArray)i.G.SpaceArray), _ => 1 };
+            var n = i.G.Space switch { "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" or "Lab" => 3, "DeviceCMYK" or "CIEBasedDEFG" => 4, "DeviceN" => ((PsArray)((PsArray)i.G.SpaceArray)[1]).Length, "ICCBased" => IccComponents((PsArray)i.G.SpaceArray), _ => 1 };
             var c = new double[n];
             for (var k = n - 1; k >= 0; k--) c[k] = i.Num();
             i.SetComponents(c);

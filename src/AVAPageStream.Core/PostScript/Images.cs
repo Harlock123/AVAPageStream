@@ -150,7 +150,7 @@ public sealed partial class Interpreter
         }
         var n = space switch
         {
-            "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" => 3,
+            "DeviceRGB" or "CIEBasedABC" or "CIEBasedDEF" or "Lab" => 3,
             "DeviceCMYK" or "CIEBasedDEFG" => 4,
             "DeviceN" => ((PsArray)((PsArray)spaceArray)[1]).Length,
             "ICCBased" => IccComponents((PsArray)spaceArray),
@@ -394,7 +394,7 @@ public sealed partial class Interpreter
     }
 
     /// <summary>The TIFF and PNG predictors LZW and Flate data may be encoded with.</summary>
-    private static byte[] Predict(byte[] d, PsDict p, int predictor)
+    internal static byte[] Predict(byte[] d, PsDict p, int predictor)
     {
         var colors = p.Get("Colors") is { } c ? (int)ToNum(c) : 1;
         var bpc = p.Get("BitsPerComponent") is { } b ? (int)ToNum(b) : 8;

@@ -98,7 +98,7 @@ public partial class WindowTests
         Pictures.Ghostscript = _ => null; // as on a computer without it
         try
         {
-            var ps = System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 80 40\n[/Lab << >>] setcolorspace\n"); // Lab colour: not drawn by AVAPageStream
+            var ps = System.Text.Encoding.ASCII.GetBytes("%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 80 40\n[/DeviceFoo] setcolorspace\n"); // a colour space there is no such thing as: not drawn by AVAPageStream
             var tiff = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "Core", "Samples", "rgb-lzw.tif"));
             var header = new byte[30];
             (header[0], header[1], header[2], header[3]) = (0xC5, 0xD0, 0xD3, 0xC6);

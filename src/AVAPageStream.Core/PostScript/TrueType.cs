@@ -42,6 +42,103 @@ public sealed class TrueType
     private short S16(int at) => (short)U16(at);
     private long U32(int at) => at + 3 < _b.Length ? (uint)(_b[at] << 24 | _b[at + 1] << 16 | _b[at + 2] << 8 | _b[at + 3]) : 0;
 
+    /// <summary>
+    /// The font's character map for a platform and encoding (3,1 Windows Unicode; 3,0 symbol; 1,0 Mac Roman): code to
+    /// glyph number, from a table of format 0, 4, 6 or 12. Null if it has none.
+    /// </summary>
+    public Dictionary<int, int>? Cmap(int platform, int encoding)
+    {
+        if (!_tables.TryGetValue("cmap", out var cmap)) return null;
+        var count = U16(cmap + 2);
+        for (var i = 0; i < count; i++)
+        {
+            var rec = cmap + 4 + i * 8;
+            if (U16(rec) != platform || U16(rec + 2) != encoding) continue;
+            var at = cmap + (int)U32(rec + 4);
+            var map = new Dictionary<int, int>();
+            switch (U16(at))
+            {
+                case 0:
+                    for (var c = 0; c < 256; c++) if (at + 6 + c < _b.Length && _b[at + 6 + c] != 0) map[c] = _b[at + 6 + c];
+                    break;
+                case 4:
+                {
+                    var segs = U16(at + 6) / 2;
+                    var ends = at + 14;
+                    var starts = ends + segs * 2 + 2;
+                    var deltas = starts + segs * 2;
+                    var offsets = deltas + segs * 2;
+                    for (var s = 0; s < segs; s++)
+                    {
+                        var (end, start, delta, ro) = (U16(ends + s * 2), U16(starts + s * 2), S16(deltas + s * 2), U16(offsets + s * 2));
+                        for (var c = start; c <= end && c != 0xFFFF; c++)
+                        {
+                            int g;
+                            if (ro == 0) g = (c + delta) & 0xFFFF;
+                            else
+                            {
+                                var ga = offsets + s * 2 + ro + (c - start) * 2;
+                                g = U16(ga);
+                                if (g != 0) g = (g + delta) & 0xFFFF;
+                            }
+                            if (g != 0) map[c] = g;
+                        }
+                    }
+                    break;
+                }
+                case 6:
+                {
+                    var (first, n) = (U16(at + 6), U16(at + 8));
+                    for (var k = 0; k < n; k++) if (U16(at + 10 + k * 2) is var g and not 0) map[first + k] = g;
+                    break;
+                }
+                case 12:
+                {
+                    var groups = (int)U32(at + 12);
+                    for (var k = 0; k < groups && k < 100000; k++)
+                    {
+                        var g0 = at + 16 + k * 12;
+                        var (start, end, glyph) = ((int)U32(g0), (int)U32(g0 + 4), (int)U32(g0 + 8));
+                        for (var c = start; c <= end && c - start < 70000; c++) map[c] = glyph + c - start;
+                    }
+                    break;
+                }
+                default:
+                    continue;
+            }
+            return map;
+        }
+        return null;
+    }
+
+    /// <summary>The glyph numbers the font's post table names, by name (for a font set by glyph names).</summary>
+    public Dictionary<string, int> PostNames()
+    {
+        var names = new Dictionary<string, int>();
+        if (!_tables.TryGetValue("post", out var post) || U32(post) != 0x00020000) return names;
+        var count = U16(post + 32);
+        var extra = new List<string>();
+        var p = post + 34 + count * 2;
+        while (p < _b.Length && extra.Count < 65536)
+        {
+            var len = _b[p];
+            if (p + 1 + len > _b.Length) break;
+            extra.Add(System.Text.Encoding.Latin1.GetString(_b, p + 1, len));
+            p += 1 + len;
+        }
+        for (var g = 0; g < count; g++)
+        {
+            var i = U16(post + 34 + g * 2);
+            var name = i < 258 ? MacGlyphNames.Value[i] : i - 258 < extra.Count ? extra[i - 258] : null;
+            if (name is not null) names.TryAdd(name, g);
+        }
+        return names;
+    }
+
+    /// <summary>The 258 standard Macintosh glyph names a post table numbers from.</summary>
+    private static readonly Lazy<string[]> MacGlyphNames = new(() => (".notdef .null nonmarkingreturn space exclam quotedbl numbersign dollar percent ampersand quotesingle parenleft parenright asterisk plus comma hyphen period slash zero one two three four five six seven eight nine colon semicolon less equal greater question at A B C D E F G H I J K L M N O P Q R S T U V W X Y Z bracketleft backslash bracketright asciicircum underscore grave a b c d e f g h i j k l m n o p q r s t u v w x y z braceleft bar braceright asciitilde " +
+        "Adieresis Aring Ccedilla Eacute Ntilde Odieresis Udieresis aacute agrave acircumflex adieresis atilde aring ccedilla eacute egrave ecircumflex edieresis iacute igrave icircumflex idieresis ntilde oacute ograve ocircumflex odieresis otilde uacute ugrave ucircumflex udieresis dagger degree cent sterling section bullet paragraph germandbls registered copyright trademark acute dieresis notequal AE Oslash infinity plusminus lessequal greaterequal yen mu partialdiff summation product pi integral ordfeminine ordmasculine Omega ae oslash questiondown exclamdown logicalnot radical florin approxequal Delta guillemotleft guillemotright ellipsis nonbreakingspace Agrave Atilde Otilde OE oe endash emdash quotedblleft quotedblright quoteleft quoteright divide lozenge ydieresis Ydieresis fraction currency guilsinglleft guilsinglright fi fl daggerdbl periodcentered quotesinglbase quotedblbase perthousand Acircumflex Ecircumflex Aacute Edieresis Egrave Iacute Icircumflex Idieresis Igrave Oacute Ocircumflex apple Ograve Uacute Ucircumflex Ugrave dotlessi circumflex tilde macron breve dotaccent ring cedilla hungarumlaut ogonek caron Lslash lslash Scaron scaron Zcaron zcaron brokenbar Eth eth Yacute yacute Thorn thorn minus multiply onesuperior twosuperior threesuperior onehalf onequarter threequarters franc Gbreve gbreve Idotaccent Scedilla scedilla Cacute cacute Ccaron ccaron dcroat").Split(' '));
+
     /// <summary>A glyph's advance, in ems.</summary>
     public double Advance(int glyph)
     {

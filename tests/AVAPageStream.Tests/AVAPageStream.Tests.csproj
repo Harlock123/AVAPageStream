@@ -22,5 +22,6 @@
     <None Include="Core\Samples\*.tif" CopyToOutputDirectory="PreserveNewest" />
     <!-- EPS files from real producers, each with the PNG its producer draws of the same picture to compare with. -->
     <None Include="Core\Samples\eps\*.eps;Core\Samples\eps\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="Core\Samples\pdf\*.pdf" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

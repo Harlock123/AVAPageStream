@@ -114,5 +114,18 @@ public sealed record PsTiling(IReadOnlyList<PsOp> Cell, Box BBox, double XStep, 
 /// <summary>Triangles with a colour at each corner, blended across them (smooth shading of types 1 and 4 to 7), in device space.</summary>
 public sealed record PsMesh(double[] Points, PsColour[] Colours, PsPath? Area, bool EvenOdd, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
 
+/// <summary>
+/// A soft mask (a PDF's): what its group draws, its luminosity (or its alpha) making where the masked drawing shows,
+/// over a backdrop colour (a luminosity mask's outside, black unless given), through a transfer function (as a table
+/// of 256 values) if it has one.
+/// </summary>
+public sealed record PsMask(IReadOnlyList<PsOp> Ops, bool Luminosity, PsColour? Backdrop, byte[]? Transfer = null);
+
+/// <summary>
+/// Drawing that is put on the page together (a PDF's transparency): at an opacity, mixed with what is under it by a
+/// blend mode (Normal, Multiply, Screen and the others PDF names), and through a soft mask if it has one.
+/// </summary>
+public sealed record PsGroup(IReadOnlyList<PsOp> Ops, double Alpha, string Blend, PsMask? Mask, IReadOnlyList<PsClip> Clips) : PsOp(Clips);
+
 /// <summary>What an EPS draws: its bounding box (in its own points) and the drawing, in order.</summary>
 public sealed record PsDrawing(Box BoundingBox, IReadOnlyList<PsOp> Ops);

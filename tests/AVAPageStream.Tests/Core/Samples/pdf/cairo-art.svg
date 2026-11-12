@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300" viewBox="0 0 400 300">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="0.6" stop-color="#22d3ee"/><stop offset="1" stop-color="#fff"/></linearGradient>
+    <radialGradient id="g2"><stop offset="0" stop-color="#facc15"/><stop offset="1" stop-color="#dc2626" stop-opacity="0"/></radialGradient>
+    <pattern id="p" width="12" height="12" patternUnits="userSpaceOnUse"><rect width="6" height="6" fill="#16a34a"/></pattern>
+    <clipPath id="c"><circle cx="320" cy="220" r="60"/></clipPath>
+    <filter id="blur"><feGaussianBlur stdDeviation="4"/></filter>
+  </defs>
+  <rect x="10" y="10" width="250" height="160" rx="16" fill="url(#g1)"/>
+  <circle cx="230" cy="120" r="90" fill="url(#g2)" opacity="0.8"/>
+  <rect x="260" y="160" width="140" height="140" fill="url(#p)" clip-path="url(#c)"/>
+  <text x="24" y="60" font-family="Liberation Serif" font-size="36" fill="#fff">Harbour Lights</text>
+  <text x="24" y="100" font-family="Liberation Sans" font-weight="bold" font-size="20" fill="#0f172a" fill-opacity="0.6">Tide tables · 2026</text>
+  <path d="M20 250 C 80 180, 140 300, 220 230" stroke="#9333ea" stroke-width="6" fill="none" stroke-dasharray="14 6" stroke-linecap="round"/>
+  <ellipse cx="120" cy="215" rx="40" ry="20" fill="#000" filter="url(#blur)" opacity="0.5"/>
+</svg>

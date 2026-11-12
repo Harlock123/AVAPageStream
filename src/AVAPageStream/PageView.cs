@@ -1782,11 +1782,11 @@ public sealed class PageView : Control
         if (await PickImage() is not var (bytes, path)) return;
         if (!ImageStore.IsImage(bytes))
         {
-            Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP, WebP, SVG or EPS).");
+            Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP, WebP, SVG, EPS or PDF).");
             return;
         }
         var key = Doc.Images.Add(bytes);
-        _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) { p.Image = key; p.Source = path; } });
+        _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) { p.Image = key; p.Source = path; p.Page = 1; } });
         Select([pictureId]);
         if (_renderer.Describe(Doc, key) is { } what) Status?.Invoke($"Placed {what}.");
     }
