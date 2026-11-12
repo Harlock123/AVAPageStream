@@ -402,13 +402,10 @@ through columns and frames with character and paragraph formats and paragraph st
 move, resize, nudge, arrange, duplicate, delete; rulers, guides and snapping; zoom and scrolling; the four side panel
 tabs; undo and redo; `.avps` files; PDF and PNG export; tests and CI publishing for eight platforms.
 
-**Status (11 November 2026):** built and tested, except for these parts of milestone 1, still to do:
-
-- Scroll bars on the page view (it scrolls with the wheel, the Hand tool and Space-drag).
-- Page Up and Page Down moving the caret a frame at a time while editing text (they change page otherwise).
-- Choosing a page range for PDF export, and the PNG resolution, in the window (PNG uses `ExportDpi` in the
-  settings, 150 dpi by default).
-- Dragging a page in the Pages tab to move it (Move up and Move down do it now).
+**Status (11 November 2026):** done. Everything above is built and tested, along with scroll bars, Page Up/Down by
+frame while editing, the export dialog (a page range for PDF and PNG; the PNG resolution), dragging pages in the
+Pages tab, renaming styles, cropping pictures by offset (Alt+drag or the Object tab), and layout redone only for the
+stories a change reaches.
 
 ### Milestone 2: a publishing program
 

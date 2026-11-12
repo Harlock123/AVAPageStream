@@ -46,7 +46,7 @@ public sealed class PageView : Control
     private Tool _tool;
 
     // The drag under way.
-    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text }
+    private enum Drag { None, Pan, Move, Resize, Marquee, Create, Guide, Text, Crop }
     private Drag _drag;
     private Point _dragStartScreen;
     private Pt _dragStart;
@@ -58,6 +58,7 @@ public sealed class PageView : Control
     private bool _guideVertical;
     private double _guidePosition;
     private bool _shift;
+    private (double X, double Y) _cropFrom;
 
     public PageView(Editor editor)
     {
@@ -176,7 +177,6 @@ public sealed class PageView : Control
 
     private void OnDocumentChanged()
     {
-        _layouts.Clear();
         _selection.RemoveAll(id => Doc.Find(id) is null);
         if (_sheet.IsMaster ? _sheet.Index >= Doc.Masters.Count : _sheet.Index >= Doc.Pages.Count)
             _sheet = _sheet.IsMaster ? SheetRef.MasterAt(Math.Max(0, Doc.Masters.Count - 1)) : SheetRef.PageAt(Doc.Pages.Count - 1);
@@ -236,6 +236,15 @@ public sealed class PageView : Control
         var pw = Doc.Setup.PageWidth * Scale;
         var ph = Doc.Setup.PageHeight * Scale;
         Origin = new Point(RulerSize + Math.Max(24, (Bounds.Width - RulerSize - pw) / 2), RulerSize + Math.Max(24, (Bounds.Height - RulerSize - ph) / 2));
+        ViewChanged?.Invoke();
+        InvalidateVisual();
+    }
+
+    /// <summary>Scrolls so the page's top-left corner is at <paramref name="origin"/> in the view.</summary>
+    public void ScrollTo(Point origin)
+    {
+        if (origin == Origin) return;
+        Origin = origin;
         ViewChanged?.Invoke();
         InvalidateVisual();
     }
@@ -406,6 +415,22 @@ public sealed class PageView : Control
         MoveCaret(layout.IndexAtX(target, t.GoalX.Value), extend, keepGoal: true);
     }
 
+    /// <summary>
+    /// Moves the caret to the start of the next (or previous) frame in the chain, or to the story's end (or start)
+    /// from its last (or first) frame. The page with that frame is shown.
+    /// </summary>
+    private void MoveFrame(int delta, bool extend)
+    {
+        if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout || !Doc.Stories.TryGetValue(t.StoryId, out var story)) return;
+        var frames = story.Frames;
+        var here = CaretFrame() is { } f ? frames.IndexOf(f) : -1;
+        var target = here + delta;
+        if (here < 0 || target < 0) { MoveCaret(0, extend); return; }
+        if (target >= frames.Count) { MoveCaret(story.Length, extend); return; }
+        var first = layout.Lines.FirstOrDefault(l => layout.Areas[l.Area].FrameId == frames[target]);
+        MoveCaret(first?.Start ?? (delta > 0 ? story.Length : 0), extend);
+    }
+
     private void LineEdge(bool end, bool extend)
     {
         if (Editing is not { } t || LayoutOf(t.StoryId) is not { } layout) return;
@@ -509,6 +534,8 @@ public sealed class PageView : Control
                 case Key.Right: MoveCaret(!shift && t.Length > 0 ? t.Start + t.Length : t.Caret + 1, shift); break;
                 case Key.Up: MoveLine(-1, shift); break;
                 case Key.Down: MoveLine(1, shift); break;
+                case Key.PageUp: MoveFrame(-1, shift); break;
+                case Key.PageDown: MoveFrame(1, shift); break;
                 case Key.Home when command: MoveCaret(0, shift); break;
                 case Key.End when command: MoveCaret(story.Length, shift); break;
                 case Key.Home: LineEdge(false, shift); break;
@@ -685,7 +712,7 @@ public sealed class PageView : Control
 
     private Rect? OversetMark(TextFrame frame)
     {
-        if (LayoutOf(frame.StoryId) is not { Overset: true } layout || layout.Story.Frames.LastOrDefault() != frame.Id) return null;
+        if (LayoutOf(frame.StoryId) is not { Overset: true } || Doc.StoryOf(frame)?.Frames.LastOrDefault() != frame.Id) return null;
         var corner = ToView(new Pt(frame.X + frame.W, frame.Y + frame.H));
         return new Rect(corner.X - 6, corner.Y - 6, 12, 12);
     }
@@ -753,6 +780,16 @@ public sealed class PageView : Control
                 {
                     _handle = h;
                     StartObjects(Drag.Resize, [only], e);
+                    return;
+                }
+                if (alt && HitObject(p) is PictureObject { Locked: false } cropped)
+                {
+                    // Alt+drag slides the picture within its frame.
+                    Select([cropped.Id]);
+                    _cropFrom = (cropped.OffsetX, cropped.OffsetY);
+                    _originals = new() { [cropped.Id] = cropped.Bounds };
+                    _editor.Begin();
+                    Begin(Drag.Crop, e);
                     return;
                 }
                 if (HitObject(p) is { } hit)
@@ -915,6 +952,14 @@ public sealed class PageView : Control
             case Drag.Resize:
                 ResizeObject(p);
                 break;
+            case Drag.Crop:
+                if (Doc.Find(_originals.Keys.First()) is PictureObject pic)
+                {
+                    pic.OffsetX = Math.Round(_cropFrom.X + p.X - _dragStart.X, 2);
+                    pic.OffsetY = Math.Round(_cropFrom.Y + p.Y - _dragStart.Y, 2);
+                    _editor.Preview();
+                }
+                break;
             case Drag.Create:
                 _dragNow = Snapped(p);
                 if (_shift) _dragNow = Constrain(_dragStart, _dragNow, _tool == Tool.Line);
@@ -1019,6 +1064,9 @@ public sealed class PageView : Control
             case Drag.Resize:
                 _editor.Commit("Resize");
                 break;
+            case Drag.Crop:
+                _editor.Commit("Crop picture");
+                break;
             case Drag.Create:
                 FinishCreate();
                 break;
@@ -1039,7 +1087,7 @@ public sealed class PageView : Control
 
     private void CancelDrag()
     {
-        if (_drag is Drag.Move or Drag.Resize) _editor.Cancel();
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop) _editor.Cancel();
         _drag = Drag.None;
         InvalidateVisual();
     }
@@ -1390,7 +1438,7 @@ public sealed class PageView : Control
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
-        if (_drag is Drag.Move or Drag.Resize && _editor.Busy) _editor.Commit("Move");
+        if (_drag is Drag.Move or Drag.Resize or Drag.Crop && _editor.Busy) _editor.Commit("Move");
         _drag = Drag.None;
     }
 }

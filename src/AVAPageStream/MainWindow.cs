@@ -27,6 +27,7 @@ public sealed class MainWindow : Window
     public Editor Editor { get; private set; }
     public PageView View { get; }
     public SidePanel Panel { get; }
+    public PageScroller Scroller { get; }
 
     /// <summary>The file the document was opened from or last saved to, or null for a new one.</summary>
     public string? FilePath { get; private set; }
@@ -43,6 +44,9 @@ public sealed class MainWindow : Window
 
     /// <summary>Asks a question (title, message, buttons) and returns the button pressed; tests answer it themselves.</summary>
     public Func<string, string, string[], Task<int>> Ask { get; set; }
+
+    /// <summary>Asks which pages to export (kind "pdf" or "png") and at what resolution; tests answer it themselves.</summary>
+    public Func<string, Task<ExportChoice?>> AskExport { get; set; }
 
     /// <summary>Asks for a file to open (by kind: "document" or "image"); tests answer it themselves.</summary>
     public Func<string, Task<string?>> PickOpen { get; set; }
@@ -67,6 +71,7 @@ public sealed class MainWindow : Window
         Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://AVAPageStream/Assets/AVAPageStream.png")));
 
         View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides };
+        AskExport = kind => ExportDialog.Show(this, kind == "png", Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         View.PickImage = async () => await PickOpen("image") is { } path ? await File.ReadAllBytesAsync(path) : null;
         View.SelectionChanged += Refresh;
         View.ViewChanged += () => ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";
@@ -78,7 +83,8 @@ public sealed class MainWindow : Window
         Panel = new SidePanel(this);
 
         var centre = new Grid { ColumnDefinitions = new ColumnDefinitions("*,4,330") };
-        centre.Children.Add(new Border { Child = View, BorderBrush = Look.Border, BorderThickness = new Thickness(1, 1, 1, 0) });
+        Scroller = new PageScroller(View);
+        centre.Children.Add(new Border { Child = Scroller, BorderBrush = Look.Border, BorderThickness = new Thickness(1, 1, 1, 0) });
         var splitter = new GridSplitter { Background = Look.Window, ResizeDirection = GridResizeDirection.Columns };
         Grid.SetColumn(splitter, 1);
         var side = new Border { Child = Panel, Background = Look.Bar, BorderBrush = Look.Border, BorderThickness = new Thickness(1, 1, 0, 0) };
@@ -153,8 +159,7 @@ public sealed class MainWindow : Window
                         Item("Save _as…", () => _ = SaveAs(), "Ctrl+Shift+S"),
                         new Separator(),
                         Item("Export _PDF…", () => _ = ExportPdf(), "Ctrl+E"),
-                        Item("Export this page as P_NG…", () => _ = ExportPng(all: false)),
-                        Item("Export every page as PN_G…", () => _ = ExportPng(all: true)),
+                        Item("Export P_NG…", () => _ = ExportPng()),
                         new Separator(),
                         Item("_Quit", Close, "Ctrl+Q"),
                     },
@@ -604,12 +609,13 @@ public sealed class MainWindow : Window
 
     public async Task ExportPdf()
     {
+        if (await AskExport("pdf") is not { } choice) return;
         if (await PickSave("pdf", BaseName + ".pdf") is not { } path) return;
         if (!path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) path += ".pdf";
         try
         {
-            await Export.Pdf(Editor.Doc, path, title: BaseName);
-            Say($"Exported {Editor.Doc.Pages.Count} page{(Editor.Doc.Pages.Count == 1 ? "" : "s")} to {Path.GetFileName(path)}.");
+            await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName);
+            Say($"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -617,23 +623,29 @@ public sealed class MainWindow : Window
         }
     }
 
-    public async Task ExportPng(bool all)
+    /// <summary>Exports pages as PNGs, one file each ("name-3.png" for page 3 when there are several).</summary>
+    public async Task ExportPng()
     {
-        if (View.Sheet.IsMaster && !all) { Say("Show a page to export it."); return; }
+        if (await AskExport("png") is not { } choice) return;
+        var dpi = Math.Clamp(choice.Dpi, 72, 600);
+        Settings.ExportDpi = dpi;
+        SaveSettings();
         if (await PickSave("png", BaseName + ".png") is not { } path) return;
         if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) path += ".png";
         var doc = Editor.Doc;
-        var pages = all ? Enumerable.Range(0, doc.Pages.Count).ToList() : [View.Sheet.Index];
         try
         {
-            foreach (var i in pages) Export.Png(doc, doc.Pages[i], Export.Numbered(path, i, all ? pages.Count : 1), Settings.ExportDpi);
-            Say(pages.Count == 1 ? $"Exported {Path.GetFileName(path)} at {Settings.ExportDpi} dpi." : $"Exported {pages.Count} pages as PNG at {Settings.ExportDpi} dpi.");
+            foreach (var i in choice.Pages)
+                Export.Png(doc, doc.Pages[i], choice.Pages.Count == 1 ? path : Export.Numbered(path, i, doc.Pages.Count), dpi);
+            Say(choice.Pages.Count == 1 ? $"Exported {Path.GetFileName(path)} at {dpi} dpi." : $"Exported {Pages(choice.Pages.Count)} as PNG at {dpi} dpi.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             Say($"Couldn't export: {e.Message}");
         }
     }
+
+    private static string Pages(int n) => n == 1 ? "1 page" : $"{n} pages";
 
     private void FillRecent()
     {

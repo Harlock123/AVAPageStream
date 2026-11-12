@@ -180,5 +180,10 @@ public sealed class PictureObject : PageObject
     /// <summary>The image's key in <see cref="Document.Images"/>, or "" for none yet.</summary>
     public string Image { get; set; } = "";
     public Fit Fit { get; set; } = Fit.Fit;
+
+    /// <summary>How far the image is moved from where its fit puts it, in points: cropping a different part into view.</summary>
+    public double OffsetX { get; set; }
+    public double OffsetY { get; set; }
+
     public override string Kind => "Picture";
 }

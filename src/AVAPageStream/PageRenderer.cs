@@ -8,22 +8,37 @@ using Page = AVAPageStream.Core.Page;
 namespace AVAPageStream;
 
 /// <summary>
-/// The layouts of a document's stories, worked out when first asked for and forgotten whenever the document changes.
+/// The layouts of a document's stories, each kept until something it depends on changes: the story's text, its
+/// formats, or the frames (and columns) it flows through. A change elsewhere, or to another story, lays nothing out
+/// again, so typing in one story costs only that story.
 /// </summary>
 internal sealed class Layouts(ITextMeasurer measurer)
 {
-    private readonly Dictionary<string, TextLayout> _layouts = [];
+    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, TextLayout Layout);
+
+    private readonly Dictionary<string, Entry> _layouts = [];
 
     public ITextMeasurer Measurer => measurer;
+
+    /// <summary>How many times a story has been laid out (for tests).</summary>
+    public int LaidOut { get; private set; }
 
     public void Clear() => _layouts.Clear();
 
     public TextLayout? Of(Document doc, string storyId)
     {
-        if (_layouts.TryGetValue(storyId, out var layout)) return layout;
-        if (!doc.Stories.TryGetValue(storyId, out var story)) return null;
-        layout = TextFlow.Layout(story, Chains.Areas(doc, story), measurer);
-        _layouts[storyId] = layout;
+        if (!doc.Stories.TryGetValue(storyId, out var story))
+        {
+            _layouts.Remove(storyId);
+            return null;
+        }
+        var areas = Chains.Areas(doc, story);
+        if (_layouts.TryGetValue(storyId, out var e) && e.Text == story.Text && e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) &&
+            e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) && e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
+            return e.Layout;
+        var layout = TextFlow.Layout(story, areas, measurer);
+        LaidOut++;
+        _layouts[storyId] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], layout);
         return layout;
     }
 }
@@ -139,7 +154,7 @@ internal sealed class PageRenderer
         }
         // The image's size in points: its pixels at the resolution it says it was made for.
         var size = new Size(bitmap.PixelSize.Width * 72 / bitmap.Dpi.X, bitmap.PixelSize.Height * 72 / bitmap.Dpi.Y);
-        var dest = Placement(picture.Fit, size, frame);
+        var dest = Placement(picture.Fit, size, frame).Translate(new Vector(picture.OffsetX, picture.OffsetY));
         using (dc.PushClip(frame))
             dc.DrawImage(bitmap, new Rect(0, 0, bitmap.Size.Width, bitmap.Size.Height), dest);
     }

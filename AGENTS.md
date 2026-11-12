@@ -33,14 +33,16 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   - `TextFlow.cs`: `ITextMeasurer`, and `TextFlow.Layout`, which sets a story through its `Area`s (each column of each
     frame in its chain) as `Line`s of `Piece`s; `TextLayout` answers caret positions, hit tests and selection boxes.
   - `Chains.cs` (a story's frames and areas; linking and unlinking), `Editor.cs` (the document, every change, and
-    undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file), `AppSettings.cs`.
+    undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
+    `PageRanges.cs` (reading "1-3, 5"), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
-  - `PageRenderer.cs`: `Layouts` (each story's layout, worked out when first drawn and forgotten on every change),
+  - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),
     `PageRenderer` (draws a page and its master in points) and `PageVisual` (one page as a control, for export).
-  - `PageView.cs`: the pasteboard, rulers, tools, selection, handles, guides, snapping and in-place text editing.
+  - `PageView.cs`: the pasteboard, rulers, tools, selection, handles, guides, snapping, cropping and in-place text
+    editing; `PageScroller.cs` puts scroll bars round it.
   - `Panels.cs` (`SidePanel`: the Object, Text, Pages and Document tabs), `MainWindow.cs` (menus, tool bar, toolbox,
     status bar, files, clipboard, keys), `Export.cs` (PDF through SkiaSharp, PNG), `FontSupport.cs` (the bundled
-    fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs`.
+    fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs` (`AskDialog`, `ExportDialog`).
   - `Assets/Fonts/`: Liberation Serif and Sans, with their licence.
 - `tests/AVAPageStream.Tests/`: xUnit v3 with Avalonia.Headless.XUnit. `Core/` tests the library with
   `FixedMeasurer` (every character half its size wide, so layouts are easy sums); `WindowTests` drives the window
@@ -60,6 +62,11 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **One renderer.** The screen, PDF and PNG all draw through `PageRenderer`, and text is measured and drawn with the
   same `FormattedText`, so they match. Screen-only things (guides, frame edges, handles, the caret) are drawn by
   `PageView` on top, never in the renderer.
+- **Layouts are cached by what they depend on.** `Layouts.Of` lays a story out again only when its text, runs,
+  paragraph formats or areas differ from last time; a test counts layouts (`Layouts.LaidOut`). Anything new that
+  changes how a story sets (text wrap, say) must join that comparison.
+- **Every question the window asks goes through a replaceable function** (`Ask`, `PickOpen`, `PickSave`,
+  `AskExport`, `PageView.PickImage`), so tests answer it; the test window fails any it didn't expect.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **PDF metadata starts from `SKDocumentPdfMetadata.Default`**: a bare initialiser zeroes the encoding quality, which

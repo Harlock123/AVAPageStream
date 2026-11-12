@@ -14,7 +14,7 @@ namespace AVAPageStream.Tests;
 /// undo, saving and opening, and exporting. Set AVAPAGESTREAM_SHOTS to a folder to save pictures of the window there
 /// (the README's screenshots come from here).
 /// </summary>
-public class WindowTests
+public partial class WindowTests
 {
     private static string? Shots => Environment.GetEnvironmentVariable("AVAPAGESTREAM_SHOTS") is { Length: > 0 } d ? d : null;
 
@@ -30,6 +30,7 @@ public class WindowTests
         w.Ask = (_, _, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked.");
         w.PickOpen = _ => throw new Xunit.Sdk.XunitException("Nothing should have asked for a file.");
         w.PickSave = (_, _) => throw new Xunit.Sdk.XunitException("Nothing should have asked where to save.");
+        w.AskExport = _ => throw new Xunit.Sdk.XunitException("Nothing should have asked what to export.");
         w.Show();
         Pump();
         w.View.ActualSize(); // 100%: one point is 4/3 of a pixel, from the page's corner at View.Origin
@@ -462,6 +463,7 @@ public class WindowTests
         var pdf = Path.Combine(dir, "out.pdf");
         var png = Path.Combine(dir, "out.png");
         w.PickSave = (kind, _) => Task.FromResult<string?>(kind == "pdf" ? pdf : png);
+        w.AskExport = kind => Task.FromResult<ExportChoice?>(kind == "pdf" ? new ExportChoice([0, 1], 150) : new ExportChoice([0, 1], 72));
 
         Wait(w.ExportPdf());
         var bytes = File.ReadAllBytes(pdf);
@@ -473,11 +475,29 @@ public class WindowTests
         Assert.Contains("Exported 2 pages", w.Message.Text);
 
         w.ShowSheet(SheetRef.PageAt(0));
-        w.Settings.ExportDpi = 72;
-        Wait(w.ExportPng(all: true));
+        Wait(w.ExportPng());
         using var page1 = new Bitmap(Path.Combine(dir, "out-1.png"));
         Assert.Equal(new PixelSize(612, 792), page1.PixelSize);
         Assert.True(File.Exists(Path.Combine(dir, "out-2.png")));
+        Assert.Equal(72, w.Settings.ExportDpi); // remembered for next time
+
+        // Just the second page, at 144 dpi: one file, named as asked, twice the size.
+        w.AskExport = _ => Task.FromResult<ExportChoice?>(new ExportChoice([1], 144));
+        var single = Path.Combine(dir, "second.png");
+        w.PickSave = (_, _) => Task.FromResult<string?>(single);
+        Wait(w.ExportPng());
+        using (var page2 = new Bitmap(single)) Assert.Equal(new PixelSize(1224, 1584), page2.PixelSize);
+
+        // A range of one page to PDF.
+        w.AskExport = _ => Task.FromResult<ExportChoice?>(new ExportChoice([1], 150));
+        w.PickSave = (_, _) => Task.FromResult<string?>(pdf);
+        Wait(w.ExportPdf());
+        Assert.Contains("/Count 1", System.Text.Encoding.Latin1.GetString(File.ReadAllBytes(pdf)));
+
+        // Cancelling the question exports nothing.
+        w.AskExport = _ => Task.FromResult<ExportChoice?>(null);
+        w.PickSave = (_, _) => throw new Xunit.Sdk.XunitException("A cancelled export shouldn't ask where to save.");
+        Wait(w.ExportPdf());
         Done(w);
     }
 
@@ -513,6 +533,7 @@ public class WindowTests
         if (Shots is { } dir)
         {
             w.PickSave = (_, _) => Task.FromResult<string?>(Path.Combine(dir, "AVAPageStream-sample.pdf"));
+            w.AskExport = _ => Task.FromResult<ExportChoice?>(new ExportChoice([0], 150));
             Wait(w.ExportPdf());
         }
         Done(w);

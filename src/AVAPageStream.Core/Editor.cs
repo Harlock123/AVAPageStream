@@ -360,6 +360,25 @@ public sealed class Editor
         foreach (var story in d.Stories.Values) story.Restyle(style);
     });
 
+    /// <summary>Renames a style, and every paragraph using it follows.</summary>
+    public string? RenameStyle(string old, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0) return "Type the style's new name first.";
+        if (name == old) return null;
+        if (Doc.Styles.All(s => s.Name != old)) return $"There is no style called {old}.";
+        if (Doc.Styles.Any(s => s.Name == name)) return $"There is already a style called {name}.";
+        Change("Rename style " + old, d =>
+        {
+            var i = d.Styles.FindIndex(s => s.Name == old);
+            d.Styles[i] = d.Styles[i] with { Name = name, Para = d.Styles[i].Para with { Style = name } };
+            foreach (var story in d.Stories.Values)
+                for (var p = 0; p < story.Paras.Count; p++)
+                    if (story.Paras[p].Style == old) story.Paras[p] = story.Paras[p] with { Style = name };
+        });
+        return null;
+    }
+
     public string? DeleteStyle(string name)
     {
         if (Doc.Styles.Count <= 1) return "A document needs at least one style.";

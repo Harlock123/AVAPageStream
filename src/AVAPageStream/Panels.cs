@@ -122,6 +122,8 @@ public sealed class SidePanel : TabControl
     public NumericUpDown ColumnsBox { get; } = new() { Minimum = 1, Maximum = 12, Increment = 1, FormatString = "0", FontSize = 12 };
     public TextBox GutterBox { get; } = Ui.Box();
     public TextBox InsetBox { get; } = Ui.Box();
+    public TextBox OffsetXBox { get; } = Ui.Box();
+    public TextBox OffsetYBox { get; } = Ui.Box();
     public ComboBox FitChoice { get; } = new() { ItemsSource = Enum.GetNames<Fit>(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
     public CheckBox LockedBox { get; } = new() { Content = "Locked", FontSize = 12 };
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
@@ -133,6 +135,7 @@ public sealed class SidePanel : TabControl
 
     // Text
     public ComboBox StyleChoice { get; } = new() { HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public Button RenameStyleButton { get; }
     public TextBox StyleNameBox { get; } = Ui.Box("New style's name");
     public ComboBox FontChoice { get; } = new() { HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12, MaxDropDownHeight = 420 };
     public TextBox SizeBox { get; } = Ui.Box();
@@ -176,6 +179,7 @@ public sealed class SidePanel : TabControl
     public SidePanel(MainWindow window)
     {
         _window = window;
+        RenameStyleButton = Ui.Button("Rename", RenameStyle, "Give the style in the list the name typed above; its paragraphs keep it");
         Padding = new Thickness(0);
         Items.Add(Tab("Object", BuildObject()));
         Items.Add(Tab("Text", BuildText()));
@@ -264,6 +268,8 @@ public sealed class SidePanel : TabControl
         MeasureBox(CornerBox, (o, v) => { if (o is RectangleObject r) r.CornerRadius = Math.Max(0, v); }, "Corner radius");
         MeasureBox(GutterBox, (o, v) => { if (o is TextFrame f) f.Gutter = Math.Max(0, v); }, "Gutter");
         MeasureBox(InsetBox, (o, v) => { if (o is TextFrame f) f.Inset = Math.Max(0, v); }, "Inset");
+        MeasureBox(OffsetXBox, (o, v) => { if (o is PictureObject p) p.OffsetX = v; }, "Crop");
+        MeasureBox(OffsetYBox, (o, v) => { if (o is PictureObject p) p.OffsetY = v; }, "Crop");
         Commit(FillBox, t => SetColour(false, t));
         Commit(StrokeBox, t => SetColour(true, t));
         ColumnsBox.ValueChanged += (_, _) =>
@@ -297,6 +303,13 @@ public sealed class SidePanel : TabControl
         _pictureRows.Children.AddRange([
             Ui.Heading("Picture"),
             Ui.Row(("Fit", FitChoice)),
+            Ui.Row(("Offset X", OffsetXBox)),
+            Ui.Row(("Offset Y", OffsetYBox)),
+            new TextBlock
+            {
+                Text = "Move the picture within its frame to crop a different part into view. Alt+drag it with Select, too.",
+                Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            },
             Ui.Buttons(Ui.Button("Replace picture…", () => { if (View.Selected is [PictureObject p]) _ = View.ReplaceImage(p.Id); })),
         ]);
 
@@ -464,6 +477,7 @@ public sealed class SidePanel : TabControl
             Ui.Buttons(
                 Ui.Button("Add from text", NewStyle, "A new style with the settings of the paragraph the caret is in"),
                 Ui.Button("Redefine", RedefineStyle, "Make the style match this paragraph; every paragraph in it changes"),
+                RenameStyleButton,
                 Ui.Button("Delete", DeleteStyle)),
             Ui.Heading("Character"),
             Ui.Row(("Font", FontChoice)),
@@ -515,6 +529,15 @@ public sealed class SidePanel : TabControl
         _window.Say($"Redefined {p.Style}: every paragraph in it now matches.");
     }
 
+    private void RenameStyle()
+    {
+        if (StyleChoice.SelectedItem is not string old) { _window.Say("Pick the style to rename first."); return; }
+        var name = StyleNameBox.Text?.Trim() ?? "";
+        if (Editor.RenameStyle(old, name) is { } why) { _window.Say(why); return; }
+        StyleNameBox.Text = "";
+        _window.Say($"Renamed the style {old} to {name}.");
+    }
+
     private void DeleteStyle()
     {
         if (StyleChoice.SelectedItem is not string name) return;
@@ -525,6 +548,23 @@ public sealed class SidePanel : TabControl
 
     private Control BuildPages()
     {
+        PageList.AddHandler(PointerPressedEvent, (_, e) =>
+        {
+            if (!e.GetCurrentPoint(PageList).Properties.IsLeftButtonPressed) return;
+            _dragPage = PageIndexAt(e);
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        PageList.AddHandler(PointerMovedEvent, (_, e) =>
+        {
+            if (_dragPage is null) return;
+            PageList.Cursor = PageIndexAt(e) is { } over && over != _dragPage ? new Cursor(StandardCursorType.DragMove) : null;
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+        PageList.AddHandler(PointerReleasedEvent, (_, e) =>
+        {
+            var from = _dragPage;
+            _dragPage = null;
+            PageList.Cursor = null;
+            if (from is { } f && PageIndexAt(e) is { } to && to != f) DropPage(f, to);
+        }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
         PageList.SelectionChanged += (_, _) =>
         {
             if (_refreshing || PageList.SelectedIndex < 0) return;
@@ -569,6 +609,24 @@ public sealed class SidePanel : TabControl
                 },
             },
         };
+    }
+
+    private int? _dragPage;
+
+    /// <summary>The page whose row in the list is under the pointer.</summary>
+    private int? PageIndexAt(PointerEventArgs e)
+    {
+        for (var i = 0; i < Doc.Pages.Count; i++)
+            if (PageList.ContainerFromIndex(i) is Control row && new Rect(row.Bounds.Size).Contains(e.GetPosition(row))) return i;
+        return null;
+    }
+
+    /// <summary>Moves a page dropped on another page's row to that place, and shows it.</summary>
+    public void DropPage(int from, int to)
+    {
+        Editor.MovePage(from, to);
+        _window.ShowSheet(SheetRef.PageAt(to));
+        _window.Say($"Moved page {from + 1} to page {to + 1}.");
     }
 
     private void MovePage(int delta)
@@ -744,7 +802,12 @@ public sealed class SidePanel : TabControl
             Set(InsetBox, Units.Format(f.Inset, Unit));
         }
         _pictureRows.IsVisible = one is PictureObject;
-        if (one is PictureObject p) FitChoice.SelectedIndex = (int)p.Fit;
+        if (one is PictureObject p)
+        {
+            FitChoice.SelectedIndex = (int)p.Fit;
+            Set(OffsetXBox, Units.Format(p.OffsetX, Unit));
+            Set(OffsetYBox, Units.Format(p.OffsetY, Unit));
+        }
         LockedBox.IsChecked = selected.All(o => o.Locked);
     }
 
@@ -782,11 +845,18 @@ public sealed class SidePanel : TabControl
         Set(SpaceAfterBox, Units.Format(p.SpaceAfter, Unit));
     }
 
+    /// <summary>Gives a list new items only when they differ, so its items (and a drag among them) survive a refresh.</summary>
+    private static void Fill(ListBox list, List<string> items)
+    {
+        if (list.ItemsSource is IEnumerable<string> old && old.SequenceEqual(items)) return;
+        list.ItemsSource = items;
+    }
+
     private void RefreshPages()
     {
-        PageList.ItemsSource = Doc.Pages.Select((pg, i) => $"Page {i + 1}   ·   {pg.Master ?? "no master"}").ToList();
+        Fill(PageList, Doc.Pages.Select((pg, i) => $"Page {i + 1}   ·   {pg.Master ?? "no master"}").ToList());
         PageList.SelectedIndex = View.Sheet.IsMaster ? -1 : View.Sheet.Index;
-        MasterList.ItemsSource = Doc.Masters.Select(m => m.Name).ToList();
+        Fill(MasterList, Doc.Masters.Select(m => m.Name).ToList());
         MasterList.SelectedIndex = View.Sheet.IsMaster ? View.Sheet.Index : -1;
         MasterChoice.ItemsSource = Doc.Masters.Select(m => m.Name).Prepend("(none)").ToList();
         MasterChoice.IsEnabled = !View.Sheet.IsMaster;
