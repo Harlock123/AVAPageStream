@@ -1082,6 +1082,36 @@ public sealed class Editor
         story.Insert(index, Fields.Reference.ToString(), story.TypingFormat(index) with { Ref = References.Key(place, kind) });
     });
 
+    /// <summary>Marks an index entry at a place in the text.</summary>
+    public string? MarkIndex(string storyId, int index, IndexMark mark)
+    {
+        if (mark.Topic.Trim().Length == 0) return "An index entry needs a topic.";
+        if ((mark.Topic + mark.Sub + mark.See).Contains('\t')) return "An index entry can't have a tab in it.";
+        Change("Index entry", d =>
+        {
+            var story = d.Stories[storyId];
+            index = Math.Clamp(index, 0, story.Length);
+            story.Insert(index, Fields.IndexEntry.ToString(), story.TypingFormat(index) with { Index = mark.Key });
+        });
+        return null;
+    }
+
+    /// <summary>Puts an index made from the document's entries at a place in a story, with its styles. Gives where it ends.</summary>
+    public int InsertIndex(string storyId, int index, IReadOnlyList<PlacedPara> paragraphs)
+    {
+        if (paragraphs.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
+        return Change("Index", d =>
+        {
+            foreach (var style in Indexes.MakeStyles(d))
+            {
+                var i = d.Styles.FindIndex(s => s.Name == style.Name);
+                if (i >= 0) d.Styles[i] = style;
+                else d.Styles.Add(style);
+            }
+            return PlaceInto(d, storyId, index, paragraphs);
+        });
+    }
+
     /// <summary>Gives objects an object style's look, or (with null) takes them out of their style, keeping their look.</summary>
     public string? ApplyObjectStyle(IEnumerable<string> ids, string? style)
     {

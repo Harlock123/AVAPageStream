@@ -552,4 +552,44 @@ public partial class WindowTests
         Assert.Contains("/Link", text);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Index_entries_marked_from_the_selection_make_an_index()
+    {
+        var w = Open();
+        var e = w.Editor;
+        e.AddPage(1);
+        var a = e.Add(SheetRef.PageAt(0), new TextFrame { X = 72, Y = 72, W = 300, H = 300 });
+        var b = e.Add(SheetRef.PageAt(1), new TextFrame { X = 72, Y = 72, W = 300, H = 300 });
+        e.ReplaceText(a.StoryId, 0, 0, "Tides follow the moon.");
+        e.ReplaceText(b.StoryId, 0, 0, "Spring tides are the highest.");
+        // Nothing marked yet: it says how.
+        w.View.StartEditing((TextFrame)e.Doc.Find(b.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[b.StoryId].Length;
+        w.MakeIndex();
+        Assert.Contains("Mark index entry", w.Message.Text);
+        // The selected word starts the topic.
+        w.View.StartEditing((TextFrame)e.Doc.Find(a.Id)!);
+        (w.View.Editing!.Anchor, w.View.Editing.Caret) = (0, 5);
+        string? offered = null;
+        w.AskIndex = topic => { offered = topic; return Task.FromResult<IndexMark?>(new IndexMark(topic)); };
+        Wait(w.MarkIndexEntry());
+        Assert.Equal("Tides", offered);
+        Assert.Equal((1, 6), (w.View.Editing.Anchor, w.View.Editing.Caret)); // the selection still the word
+        Assert.Equal("Tides follow the moon.", w.View.Layouts.Of(e.Doc, a.StoryId)!.Display(0, e.Doc.Stories[a.StoryId].Length));
+        w.View.StartEditing((TextFrame)e.Doc.Find(b.Id)!);
+        (w.View.Editing!.Anchor, w.View.Editing.Caret) = (7, 12);
+        w.AskIndex = _ => Task.FromResult<IndexMark?>(new IndexMark("Tides", "spring"));
+        Press(w, Key.I, RawInputModifiers.Control | RawInputModifiers.Alt); // the key, not italic
+        Pump();
+        Assert.False(e.Doc.Stories[b.StoryId].FormatAt(8).Italic);
+        Assert.Equal(2, e.Doc.Stories.Values.Sum(s => s.Text.Count(c => c == Fields.IndexEntry)));
+        // The index, made at the end of the second page's text.
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[b.StoryId].Length;
+        w.MakeIndex();
+        Assert.Contains("index of 1 topic.", w.Message.Text);
+        var text = Fields.Expand(e.Doc.Stories[b.StoryId].Text, null);
+        Assert.EndsWith("T\nTides, 1\nspring, 2", text);
+        Done(w);
+    }
 }

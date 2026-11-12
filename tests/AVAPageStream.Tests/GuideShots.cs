@@ -572,4 +572,51 @@ public partial class WindowTests
         Assert.NotNull(e.Doc.Find(signId)!.PlacedIn);
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_index()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        string[][] pages =
+        [
+            ["Harbour", "Quay", "Tides|neap", "Lifeboat"],
+            ["Harbour", "Tides|spring", "Moorings", "Bridge"],
+            ["Harbour", "Tides", "Lamps", "Moorings"],
+            ["Bridge", "Fishing boats", "Launch|See:Harbour master"],
+        ];
+        for (var p = 0; p < pages.Length; p++)
+        {
+            if (p > 0) e.AddPage(p);
+            var f = e.Add(SheetRef.PageAt(p), new TextFrame { X = 72, Y = 72, W = 468, H = 600 });
+            e.ReplaceText(f.StoryId, 0, 0, Prose);
+            foreach (var m in pages[p])
+            {
+                var parts = m.Split('|');
+                var mark = parts.Length == 1 ? new IndexMark(parts[0])
+                    : parts[1].StartsWith("See:", StringComparison.Ordinal) ? new IndexMark(parts[0], See: parts[1][4..])
+                    : new IndexMark(parts[0], parts[1]);
+                e.MarkIndex(f.StoryId, 10, mark);
+            }
+        }
+        e.MarkIndex(e.Doc.Pages[0].Objects.OfType<TextFrame>().Single().StoryId, 20, new IndexMark("Harbour master"));
+        var last = e.AddPage(pages.Length);
+        var index = e.Add(SheetRef.PageAt(last), new TextFrame { X = 72, Y = 72, W = 468, H = 300, Columns = 2, Gutter = 24 });
+        e.ReplaceText(index.StoryId, 0, 0, "Index\n");
+        e.ApplyStyle(index.StoryId, 0, 0, "Heading");
+        w.View.Sheet = SheetRef.PageAt(last);
+        w.View.StartEditing((TextFrame)e.Doc.Find(index.Id)!);
+        w.View.Editing!.Caret = w.View.Editing.Anchor = e.Doc.Stories[index.StoryId].Length;
+        w.MakeIndex();
+        w.View.StopEditing();
+        // Close on the index: 125%, its frame's corner near the view's.
+        w.View.SetZoom(1.25);
+        var s = 1.25 * 96 / 72;
+        w.View.ScrollTo(new Point(60 - 50 * s, 40 - 50 * s));
+        ShowTab(w, 1, 0);
+        w.Refresh();
+        Guide(w, "index");
+        Assert.Contains("Tides, 3", e.Doc.Stories[index.StoryId].Text);
+        Done(w);
+    }
 }

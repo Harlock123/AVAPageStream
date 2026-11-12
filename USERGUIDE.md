@@ -622,6 +622,26 @@ The contents are set in styles of their own, Contents 1, Contents 2 and so on, w
 
 The page numbers are the pages as they are now. After the pages move about, make the contents again.
 
+## An index
+
+Mark each place a topic is discussed, then make the index from the marks.
+
+- Select the word or words the entry is for (or just put the caret there) and choose Text › **Mark index
+  entry…** (Ctrl+Alt+I). The topic starts as the selected words; change it if you like, so that "tidal" and
+  "tides" can both be filed under Tides. Give a **sub-topic** to file the entry under the topic, indented: Tides,
+  then neap and spring. Give a **see** topic to send the reader elsewhere instead of to a page: "Launch. See
+  Harbour master." The mark itself is invisible and takes no room.
+- Put the caret where the index should go (in a frame of two or three columns, usually) or select its frame, and
+  choose Text › **Index**.
+
+![An index in two columns: a letter heading for each letter, topics with their pages, ranges such as 1–3, sub-topics indented, and a see reference](docs/images/guide/index.png)
+
+Topics are sorted alphabetically under a heading for each letter (topics that don't start with a letter go under
+#), whatever their capitals. A topic found on pages 1, 2 and 3 shows as 1–3, by the pages' own numbering. A topic
+with pages and a see shows "See also". The index is set in styles of its own, Index Heading, Index 1 and Index 2,
+which you can change like any other. Like a table of contents, its pages are the pages as they are now: after the
+pages move about, delete the old index and make it again.
+
 ## Templates
 
 A template is a document to start others from: a newsletter's masthead and columns, a parish magazine's masters and

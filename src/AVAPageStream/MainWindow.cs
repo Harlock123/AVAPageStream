@@ -65,6 +65,9 @@ public sealed class MainWindow : Window
     /// <summary>Asks for a line of text (title, message, what it starts as); null if cancelled.</summary>
     public Func<string, string, string, Task<string?>> AskText { get; set; }
 
+    /// <summary>Asks for an index entry, starting from the words given.</summary>
+    public Func<string, Task<IndexMark?>> AskIndex { get; set; }
+
     /// <summary>Asks what to refer to, from a list of headings and places, and how.</summary>
     public Func<IReadOnlyList<string>, Task<ReferenceChoice?>> AskReference { get; set; }
 
@@ -218,6 +221,7 @@ public sealed class MainWindow : Window
         View.SpellingWords = SpellingWords;
         AskText = (title, message, start) => TextDialog.Show(this, title, message, start);
         AskReference = targets => ReferenceDialog.Show(this, targets);
+        AskIndex = topic => IndexDialog.Show(this, topic);
         AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
         AskContents = styles => ContentsDialog.Show(this, styles);
         View.AskPassword = (file, wrong) => PasswordDialog.Show(this, file, wrong);
@@ -437,6 +441,7 @@ public sealed class MainWindow : Window
                         new Separator(),
                         Item("_Story editor…", () => OpenStoryEditor(), "Ctrl+Shift+E"),
                         Item("Table of _contents…", () => _ = MakeContents()),
+                        Item("In_dex", MakeIndex),
                         Item("Check _spelling…", () => OpenSpelling(), "F7"),
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
@@ -444,6 +449,7 @@ public sealed class MainWindow : Window
                         Item("Insert _footnote", () => InsertFootnote(), "Ctrl+Alt+F"),
                         Item("_Name this place…", () => _ = NamePlace()),
                         Item("Insert _cross-reference…", () => _ = InsertCrossReference()),
+                        Item("Mark _index entry…", () => _ = MarkIndexEntry(), "Ctrl+Alt+I"),
                         Item("_Edit footnote", () => EditFootnote()),
                         new Separator(),
                         Item("Align _left", () => View.ApplyPara(p => p with { Align = Align.Left }, "Alignment")),
@@ -856,6 +862,36 @@ public sealed class MainWindow : Window
         bool IsHeadingPlace(NamedPlace p) =>
             doc.Stories.TryGetValue(p.StoryId, out var s) && PdfExtras.OutlineStyles(doc).Contains(s.Paras[s.ParagraphAt(p.Index)].Style)
             && s.Text[s.ParagraphRange(s.ParagraphAt(p.Index)).Start..p.Index].All(Fields.IsField);
+    }
+
+    /// <summary>Marks an index entry where the caret is (or the selection starts), its topic the selected words.</summary>
+    public async Task MarkIndexEntry()
+    {
+        if (View.Editing is not { } t) { Say("Put the caret in the text the entry is for, or select its words."); return; }
+        var words = t.Length > 0 ? Fields.Expand(Editor.Doc.Stories[t.StoryId].Slice(t.Start, t.Length), null).Trim() : "";
+        if (await AskIndex(words) is not { } mark) return;
+        if (Editor.MarkIndex(t.StoryId, t.Start, mark) is { } why) { Say(why); return; }
+        if (t.Caret >= t.Start) t.Caret++;
+        if (t.Anchor >= t.Start) t.Anchor++;
+        Say($"Marked an index entry for {mark.Topic.Trim()}{(mark.Sub.Trim().Length > 0 ? ", " + mark.Sub.Trim() : "")}. Text › Index makes the index.");
+    }
+
+    /// <summary>Puts an index of the document's entries at the caret, or at the end of the selected frame's story.</summary>
+    public void MakeIndex()
+    {
+        string storyId;
+        int at;
+        if (View.Editing is { } t) (storyId, at) = (t.StoryId, t.Caret);
+        else if (View.Selected is [TextFrame f] && Editor.Doc.StoryOf(f) is { } s) (storyId, at) = (s.Id, s.Length);
+        else { Say("Put the caret in a text frame, or select one, for the index to go in."); return; }
+        var entries = Indexes.Entries(Editor.Doc, FontMeasurer.Shared);
+        if (entries.Count == 0) { Say("Nothing is marked for the index yet: Text › Mark index entry marks it."); return; }
+        var paras = Indexes.Paragraphs(Editor.Doc, entries);
+        var caret = Editor.InsertIndex(storyId, at, paras);
+        View.Reveal(storyId, caret, 0);
+        var topics = paras.Count(p => p.Style == Indexes.StyleFor(0));
+        Say($"Made an index of {topics} topic{(topics == 1 ? "" : "s")}. Make it again to bring its page numbers up to date.");
+        Refresh();
     }
 
     public bool InsertFootnote()
@@ -1565,6 +1601,7 @@ public sealed class MainWindow : Window
         switch (e.Key)
         {
             case Key.F when (e.KeyModifiers & KeyModifiers.Alt) != 0: InsertFootnote(); break;
+            case Key.I when (e.KeyModifiers & KeyModifiers.Alt) != 0: _ = MarkIndexEntry(); break;
             case Key.N: _ = New(); break;
             case Key.O when shift && !inBox: TextToOutlines(); break;
             case Key.O: _ = OpenWithPicker(); break;

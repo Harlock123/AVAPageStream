@@ -766,3 +766,9 @@ Stage 2 done: a named place is a marker (`Fields.Place`, `CharFormat.Mark`); a c
 from the layouts, and `Layouts.Of` lays a story out again until its references to itself stop changing (each story
 being worked out gives its last layout to the others, so there is no endless loop). Referring to a heading names
 its start. PDFs get a named destination for each place and a link for each reference.
+
+Stage 3 done: an entry is a marker (`Fields.IndexEntry`, `CharFormat.Index` = "topic, sub-topic, see" separated by
+tabs). `Indexes.Entries` finds each one's page from its story's layout (a footnote's from its reference's),
+`Indexes.Paragraphs` makes the index (topics grouped regardless of case and spelt as most of their entries spell
+them), and `Editor.InsertIndex` places it with its styles in one undo step. Not done: an index that updates itself
+(it is made again by hand, like the contents), and sub-sub-topics.

@@ -79,6 +79,9 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
 - **Print and booklets.** Print straight from the program (through the system's printing), and print or export a
   booklet: pages paired on each sheet in the order that folds into a stapled booklet.
 - **A table of contents** from your headings' paragraph styles, with dot leaders to the page numbers.
+- **Cross-references and an index.** "See page 12" pointing at a heading or a named place, kept right as pages
+  move and a link in the PDF; and an index made from entries marked in the text, topics and sub-topics under a
+  letter each, with page ranges and *see* references.
 - **Templates.** Save any document as a template, and start new ones from it, or from the built-in newsletter and
   booklet.
 - **Self-contained files.** A `.avps` document carries its pictures with it.

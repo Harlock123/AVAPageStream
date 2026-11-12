@@ -120,6 +120,44 @@ internal sealed class ReferenceDialog : Window
     public static Task<ReferenceChoice?> Show(Window owner, IReadOnlyList<string> targets) => new ReferenceDialog(targets).ShowDialog<ReferenceChoice?>(owner);
 }
 
+/// <summary>Asks for an index entry: its topic, a sub-topic under it, and another topic to see instead.</summary>
+internal sealed class IndexDialog : Window
+{
+    private IndexDialog(string topic)
+    {
+        Title = "Index entry";
+        Width = 440;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = Look.Window;
+        var t = new TextBox { Text = topic, FontSize = 14 };
+        var s = new TextBox { PlaceholderText = "none", FontSize = 14 };
+        var see = new TextBox { PlaceholderText = "none: the page this is on", FontSize = 14 };
+        var ok = new Button { Content = "Mark", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        ok.Classes.Add("accent");
+        ok.Click += (_, _) => Close(new IndexMark(t.Text ?? "", s.Text ?? "", see.Text ?? ""));
+        var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        cancel.Click += (_, _) => Close(null);
+        StackPanel Row(string label, Control c) => new() { Spacing = 4, Children = { new TextBlock { Text = label, Foreground = Look.Text }, c } };
+        Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                Row("Topic", t),
+                Row("Sub-topic (under the topic)", s),
+                Row("See (another topic, instead of a page)", see),
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { ok, cancel } },
+            },
+        };
+        Opened += (_, _) => { t.Focus(); t.SelectAll(); };
+    }
+
+    public static Task<IndexMark?> Show(Window owner, string topic) => new IndexDialog(topic).ShowDialog<IndexMark?>(owner);
+}
+
 /// <summary>Asks for a protected PDF's password.</summary>
 internal sealed class PasswordDialog : Window
 {
