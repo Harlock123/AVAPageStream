@@ -137,6 +137,17 @@ public sealed class StoryEditor : Window
     {
         if (Story is not { } story) return;
         var words = story.Text.Split([' ', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries).Length;
+        if (story.NoteOf is not null)
+        {
+            Info.Text = $"{words} words · a footnote";
+            return;
+        }
+        if (story.OnPath is { } pathId && _window.Editor.Doc.Find(pathId) is PathObject path)
+        {
+            var (_, from) = PathText.Place(story, PathText.Points(path), _window.View.Layouts.Measurer, path.TextOffset);
+            Info.Text = $"{words} words · on a path" + (from < story.Length ? $" · {story.Length - from} characters past its end" : "");
+            return;
+        }
         var layout = _window.View.LayoutOf(StoryId);
         var over = layout is { Overset: true } ? $" · {story.Length - layout.OversetFrom} characters overset" : "";
         Info.Text = $"{words} words · {story.ParagraphCount} paragraphs · {story.Frames.Count} frame{(story.Frames.Count == 1 ? "" : "s")}{over}";

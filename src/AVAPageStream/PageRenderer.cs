@@ -14,7 +14,7 @@ namespace AVAPageStream;
 /// </summary>
 internal sealed class Layouts(ITextMeasurer measurer)
 {
-    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, BaselineGrid? Grid, TextLayout Layout);
+    private sealed record Entry(string Text, Run[] Runs, ParaFormat[] Paras, Area[] Areas, FieldContext Fields, BaselineGrid? Grid, string Notes, TextLayout Layout);
 
     // By story, and by the page a master's story is drawn on: its page-number fields differ from page to page.
     private readonly Dictionary<(string, int), Entry> _layouts = [];
@@ -38,13 +38,30 @@ internal sealed class Layouts(ITextMeasurer measurer)
         var key = (storyId, page ?? -1);
         var areas = Chains.Areas(doc, story);
         var grid = story.Table is null ? doc.Setup.Baselines : null; // a table's cells keep to their rows
-        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid &&
+        Func<string, double, double>? heights = null;
+        var notes = "";
+        if (story.NoteOf is { } parentId)
+        {
+            // A footnote: set in the box its story's layout keeps for it, numbered as it numbers it.
+            if (Of(doc, parentId, page) is not { } parent || parent.Notes.FirstOrDefault(n => n.Id == storyId) is not { } box) return null;
+            areas = [new Area(box.Box, parent.Areas[box.Area].FrameId, 0)];
+            fields = fields with { Note = box.Number };
+            grid = null;
+        }
+        else if (story.Table is null && story.Text.Contains(Fields.Footnote))
+        {
+            heights = Footnotes.Heights(doc, measurer);
+            // The layout depends on its notes' text too.
+            notes = string.Join("\u0001", Footnotes.Numbers(story).Keys.Select(id => doc.Stories.TryGetValue(id, out var n)
+                ? n.Text + string.Concat(n.Runs) + string.Concat(n.Paras) : ""));
+        }
+        if (_layouts.TryGetValue(key, out var e) && e.Text == story.Text && e.Fields == fields && e.Grid == grid && e.Notes == notes &&
             e.Runs.AsSpan().SequenceEqual(story.Runs.ToArray()) && e.Paras.AsSpan().SequenceEqual(story.Paras.ToArray()) &&
             e.Areas.AsSpan().SequenceEqual(areas.ToArray()))
             return e.Layout;
-        var layout = TextFlow.Layout(story, areas, measurer, fields, grid);
+        var layout = TextFlow.Layout(story, areas, measurer, fields, grid, heights);
         LaidOut++;
-        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, grid, layout);
+        _layouts[key] = new Entry(story.Text, [.. story.Runs], [.. story.Paras], [.. areas], fields, grid, notes, layout);
         return layout;
     }
 }
@@ -113,6 +130,7 @@ internal sealed class PageRenderer
             case TextFrame frame:
                 if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
                 DrawStory(dc, doc, frame.StoryId, id => id == frame.Id, page);
+                DrawNotes(dc, doc, frame, page);
                 break;
             case TableObject table:
                 DrawTable(dc, doc, table, fill, pen, page);
@@ -122,6 +140,7 @@ internal sealed class PageRenderer
                 break;
             case PathObject path:
                 if (path.Nodes.Count > 1) dc.DrawGeometry(path.Closed ? fill : null, pen is null ? null : new Pen(pen.Brush, pen.Thickness, lineJoin: PenLineJoin.Round, lineCap: PenLineCap.Round), PathGeometry(path));
+                if (path.StoryId is { } onPath) DrawPathText(dc, doc, path, onPath, page);
                 break;
             case PictureObject picture:
                 if (fill is not null) dc.FillRectangle(fill, rect);
@@ -203,6 +222,44 @@ internal sealed class PageRenderer
                     var y = baseline + f.Size * 0.12;
                     dc.DrawLine(new Pen(brush, Math.Max(0.5, f.Size * 0.06)), new Point(piece.X, y), new Point(piece.X + w, y));
                 }
+            }
+        }
+    }
+
+    /// <summary>A frame's footnotes, at the foot of each of its columns that has any, under a short rule.</summary>
+    private void DrawNotes(DrawingContext dc, Document doc, TextFrame frame, int? page)
+    {
+        if (Layouts.Of(doc, frame.StoryId, page) is not { Notes.Count: > 0 } layout) return;
+        var rule = new Pen(Brushes.Black, 0.5);
+        foreach (var group in layout.Notes.GroupBy(n => n.Area))
+        {
+            var area = layout.Areas[group.Key];
+            if (area.FrameId != frame.Id) continue;
+            var top = group.Min(n => n.Box.Y) - Footnotes.Gap / 2;
+            dc.DrawLine(rule, new Point(area.Box.X, top), new Point(area.Box.X + Math.Min(72, area.Box.W / 3), top));
+            foreach (var note in group) DrawStory(dc, doc, note.Id, _ => true, page);
+        }
+    }
+
+    /// <summary>The text set along a path, each character turned to the path where it sits.</summary>
+    private void DrawPathText(DrawingContext dc, Document doc, PathObject path, string storyId, int? page)
+    {
+        if (!doc.Stories.TryGetValue(storyId, out var story)) return;
+        var number = page ?? doc.Pages.FindIndex(p => p.All.Any(o => o.Id == path.Id)) + 1;
+        var fields = new FieldContext(number, doc.Pages.Count, number > 0 ? doc.PageLabel(number - 1) : null);
+        var (glyphs, _) = PathText.Place(story, PathText.Points(path), Layouts.Measurer, path.TextOffset, fields);
+        foreach (var g in glyphs)
+        {
+            var f = TextFlow.AsSet(g.Format);
+            var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
+            using (dc.PushTransform(Matrix.CreateRotation(g.Angle * Math.PI / 180) * Matrix.CreateTranslation(g.At.X, g.At.Y)))
+            {
+                foreach (var (part, pf, offset) in TextFlow.SmallCapsPieces(g.Text, f))
+                {
+                    var ft = FontSupport.Format(part, pf, brush);
+                    dc.DrawText(ft, new Point(TextFlow.Measure(Layouts.Measurer, g.Text[..offset], f), -f.Shift - ft.Baseline));
+                }
+                if (f.Underline) dc.DrawLine(new Pen(brush, Math.Max(0.5, f.Size * 0.06)), new Point(0, f.Size * 0.12), new Point(g.Width, f.Size * 0.12));
             }
         }
     }

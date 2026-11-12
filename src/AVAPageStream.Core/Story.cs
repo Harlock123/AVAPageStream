@@ -12,7 +12,8 @@ public sealed record CharFormat(
     double Shift = 0,    // baseline shift, in points up
     bool SmallCaps = false,
     Script Script = Script.Normal,
-    string? CharStyle = null); // the character style it is in, by name
+    string? CharStyle = null,  // the character style it is in, by name
+    string? Note = null);      // on a footnote reference, the note's story
 
 /// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
 public enum Script { Normal, Super, Sub }
@@ -149,6 +150,12 @@ public sealed class Story
     /// <summary>The table whose cell this story is, or null for a story in text frames.</summary>
     public string? Table { get; set; }
 
+    /// <summary>The path this story is set along, or null.</summary>
+    public string? OnPath { get; set; }
+
+    /// <summary>For a footnote's story, the story its reference is in.</summary>
+    public string? NoteOf { get; set; }
+
     public static Story Create(string id, ParagraphStyle style) => new()
     {
         Id = id,
@@ -174,7 +181,9 @@ public sealed class Story
 
     /// <summary>The format new text typed at <paramref name="index"/> takes: the character before's, or at a paragraph's start the one after.</summary>
     public CharFormat TypingFormat(int index) =>
-        index > 0 && Text[index - 1] != '\n' ? FormatAt(index - 1) : FormatAt(index);
+        (index > 0 && Text[index - 1] != '\n' ? FormatAt(index - 1) : FormatAt(index)) is var f && f.Note is not null
+            ? f with { Note = null, Script = Script.Normal } // typing after a footnote's reference makes no reference
+            : f;
 
     /// <summary>The paragraph the character at <paramref name="index"/> is in.</summary>
     public int ParagraphAt(int index)

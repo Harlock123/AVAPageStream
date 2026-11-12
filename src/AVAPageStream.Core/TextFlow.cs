@@ -80,7 +80,8 @@ public sealed record Area(Box Box, string FrameId, int Column, IReadOnlyList<Kee
 /// What the page-number and page-count fields show: the page a story is drawn on (0 on a master page itself), how
 /// many pages there are, and the page's number as printed, if its section numbers it otherwise (iv, A-3).
 /// </summary>
-public sealed record FieldContext(int Page, int Pages, string? Label = null);
+/// For a footnote's own text, <see cref="Note"/> is its number.
+public sealed record FieldContext(int Page, int Pages, string? Label = null, int Note = 0);
 
 /// <summary>
 /// Fields: characters in a story that stand for something worked out when it is set, such as the number of the page
@@ -91,11 +92,20 @@ public static class Fields
     public const char PageNumber = '\uE000';
     public const char PageCount = '\uE001';
 
-    public static bool IsField(char c) => c is PageNumber or PageCount;
+    /// <summary>A footnote's reference in the text: shown as the note's number, its format naming the note.</summary>
+    public const char Footnote = '\uE002';
+
+    /// <summary>In a footnote's own text, its number.</summary>
+    public const char NoteNumber = '\uE003';
+
+    public static bool IsField(char c) => c is PageNumber or PageCount or Footnote or NoteNumber;
 
     /// <summary>Text with its fields replaced by what they show ("#" for a page number on a master page itself).</summary>
     public static string Expand(string text, FieldContext? context)
     {
+        if (text.IndexOfAny([PageNumber, PageCount, Footnote, NoteNumber]) < 0) return text;
+        if (text.IndexOfAny([Footnote, NoteNumber]) >= 0)
+            text = text.Replace(Footnote.ToString(), "").Replace(NoteNumber.ToString(), context is { Note: > 0 } n ? n.Note.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#");
         if (text.IndexOfAny([PageNumber, PageCount]) < 0) return text;
         var page = context is { Page: > 0 } c ? c.Label ?? c.Page.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#";
         var pages = context is { Pages: > 0 } d ? d.Pages.ToString(System.Globalization.CultureInfo.InvariantCulture) : "#";
@@ -134,9 +144,12 @@ public sealed class TextLayout
 {
     private readonly ITextMeasurer _measurer;
 
-    internal TextLayout(Story story, IReadOnlyList<Area> areas, List<Line> lines, int oversetFrom, ITextMeasurer measurer, FieldContext? fields)
+    internal TextLayout(Story story, IReadOnlyList<Area> areas, List<Line> lines, int oversetFrom, ITextMeasurer measurer, FieldContext? fields,
+        IReadOnlyList<NoteBox>? notes = null, IReadOnlyDictionary<string, int>? numbers = null)
     {
         Story = story;
+        Notes = notes ?? [];
+        NoteNumbers = numbers ?? new Dictionary<string, int>();
         Fields = fields;
         Areas = areas;
         Lines = lines;
@@ -149,8 +162,19 @@ public sealed class TextLayout
     /// <summary>What this layout's fields show.</summary>
     public FieldContext? Fields { get; }
 
-    /// <summary>A stretch of the story as it is set: its fields replaced by what they show.</summary>
-    public string Display(int start, int length) => Core.Fields.Expand(Story.Slice(start, length), Fields);
+    /// <summary>The footnotes set at the foot of the areas their references are in, each in its box.</summary>
+    public IReadOnlyList<NoteBox> Notes { get; }
+
+    /// <summary>The footnotes' numbers, by their stories' ids.</summary>
+    public IReadOnlyDictionary<string, int> NoteNumbers { get; }
+
+    /// <summary>A stretch of the story as it is set: its fields replaced by what they show, footnotes by their numbers.</summary>
+    public string Display(int start, int length)
+    {
+        var text = Story.Slice(start, length);
+        if (text.Contains(Core.Fields.Footnote)) text = Footnotes.Number(Story, start, text, NoteNumbers);
+        return Core.Fields.Expand(text, Fields);
+    }
 
     public IReadOnlyList<Area> Areas { get; }
     public IReadOnlyList<Line> Lines { get; }
@@ -315,9 +339,12 @@ public static class TextFlow
     }
 
     /// <summary>Measuring through a story's fields.</summary>
-    private readonly record struct Ctx(ITextMeasurer M, FieldContext? Fields)
+    private readonly record struct Ctx(ITextMeasurer M, FieldContext? Fields, IReadOnlyDictionary<string, int> Numbers)
     {
-        public double Measure(string text, CharFormat f) => TextFlow.Measure(M, Core.Fields.Expand(text, Fields), f);
+        // A footnote's reference is a run of its own, its format naming the note.
+        public double Measure(string text, CharFormat f) => TextFlow.Measure(M, Core.Fields.Expand(
+            f.Note is { } note && text.Contains(Core.Fields.Footnote) ? text.Replace(Core.Fields.Footnote.ToString(), Numbers.TryGetValue(note, out var n) ? n.ToString(System.Globalization.CultureInfo.InvariantCulture) : "") : text,
+            Fields), f);
     }
 
     private readonly record struct Slot(double X, double W);
@@ -328,9 +355,22 @@ public static class TextFlow
     /// Sets a story through its areas. Lines keep out of each area's exclusions: a line beside one may be set in
     /// pieces on either side of it, and where no word fits beside it the text moves on below it.
     /// </summary>
-    public static TextLayout Layout(Story story, IReadOnlyList<Area> areas, ITextMeasurer measurer, FieldContext? fields = null, BaselineGrid? grid = null)
+    /// <param name="noteHeight">
+    /// How tall a footnote's text is set at a width, by its story's id: with it, each footnote goes at the foot of the
+    /// area its reference's line is set in, and the area's text stops above them.
+    /// </param>
+    public static TextLayout Layout(Story story, IReadOnlyList<Area> areas, ITextMeasurer measurer, FieldContext? fields = null, BaselineGrid? grid = null,
+        Func<string, double, double>? noteHeight = null)
     {
-        var ctx = new Ctx(measurer, fields);
+        var numbers = Footnotes.Numbers(story);
+        var ctx = new Ctx(measurer, fields, numbers);
+        var notes = new List<(int Area, string Id, double Height)>();
+        double NotesIn(int area)
+        {
+            var h = 0.0;
+            foreach (var n in notes) if (n.Area == area) h += n.Height;
+            return h > 0 ? h + Footnotes.Gap : 0;
+        }
         var lines = new List<Line>();
         var text = story.Text;
         var areaIndex = 0;
@@ -342,14 +382,14 @@ public static class TextFlow
 
         // Keeping text together sets a paragraph again: from where things stood before it (a snapshot of the state),
         // starting in the next area, or with a break forced after so many of its lines.
-        var snaps = new (int Lines, int Area, double? Baseline, double? Jump, double Pending, int Overset, bool Done)[story.ParagraphCount];
+        var snaps = new (int Lines, int Area, double? Baseline, double? Jump, double Pending, int Overset, bool Done, int Notes)[story.ParagraphCount];
         var plans = new Dictionary<int, (bool NextArea, int BreakAfter)>();
         var tries = new Dictionary<int, int>();
 
         var back = 0; // the paragraph a retry goes back to
         for (var p = 0; p < story.ParagraphCount && !done; p++)
         {
-            snaps[p] = (lines.Count, areaIndex, previousBaseline, jumpTo, pendingSpace, oversetFrom, done);
+            snaps[p] = (lines.Count, areaIndex, previousBaseline, jumpTo, pendingSpace, oversetFrom, done, notes.Count);
             (bool NextArea, int BreakAfter) plan = plans.GetValueOrDefault(p, (false, -1));
             if (plan.NextArea && areaIndex < areas.Count) NextArea();
             var para = story.Paras[p];
@@ -403,7 +443,8 @@ public static class TextFlow
                     var trial = previousBaseline is { } pb0 ? pb0 + Leading(para, f0.Size) + pendingSpace : box.Y + a0;
                     if (jumpTo is { } j0 && j0 > trial) trial = j0;
                     if (para.OnGrid && grid is { } g0) trial = g0.Snap(trial);
-                    if (trial + d0 > box.Bottom + Slack) { NextArea(); continue; }
+                    var bottom = box.Bottom - NotesIn(areaIndex);
+                    if (trial + d0 > bottom + Slack) { NextArea(); continue; }
                     var slots = Room(area.Keep, left, width, trial - a0, trial + d0);
                     var clear = slots.Count == 1 && slots[0] == new Slot(left, width);
 
@@ -439,7 +480,23 @@ public static class TextFlow
                     var baseline = previousBaseline is { } pb ? pb + Leading(para, largest) + pendingSpace : box.Y + ascent;
                     if (jumpTo is { } j && j > baseline) baseline = j - a0 + ascent;
                     if (para.OnGrid && grid is { } g) baseline = g.Snap(baseline);
-                    if (baseline + descent > box.Bottom + Slack) { NextArea(); continue; }
+                    if (baseline + descent > bottom + Slack) { NextArea(); continue; }
+
+                    // Its footnotes go at the foot of this area: if they don't fit there with it, the line goes on to
+                    // the next (unless it is the area's first, which takes them however tall they are).
+                    List<(int, string, double)>? itsNotes = null;
+                    if (noteHeight is not null)
+                        foreach (var seg in made)
+                            foreach (var pc in seg.Pieces)
+                                if (pc.Format.Note is { } noteId && numbers.ContainsKey(noteId) && text[pc.Start] == Core.Fields.Footnote)
+                                    (itsNotes ??= []).Add((areaIndex, noteId, noteHeight(noteId, box.W)));
+                    if (itsNotes is not null)
+                    {
+                        var room = box.Bottom - (NotesIn(areaIndex) > 0 ? NotesIn(areaIndex) : Footnotes.Gap) - itsNotes.Sum(n => n.Item3);
+                        var first = lines.Count == 0 || lines[^1].Area != areaIndex;
+                        if (baseline + descent > room + Slack && !first) { NextArea(); continue; }
+                        notes.AddRange(itsNotes);
+                    }
 
                     if (drop > 0 && linesInPara == 0)
                     {
@@ -481,7 +538,19 @@ public static class TextFlow
             pendingSpace = para.SpaceAfter;
         }
 
-        return new TextLayout(story, areas, lines, oversetFrom, measurer, fields);
+        // The footnotes, stacked up from the foot of each area in the order of their references.
+        var boxes = new List<NoteBox>();
+        foreach (var group in notes.GroupBy(n => n.Area))
+        {
+            var area = areas[group.Key].Box;
+            var y = area.Bottom - group.Sum(n => n.Height);
+            foreach (var n in group)
+            {
+                boxes.Add(new NoteBox(n.Area, n.Id, numbers[n.Id], new Box(area.X, y, area.W, n.Height)));
+                y += n.Height;
+            }
+        }
+        return new TextLayout(story, areas, lines, oversetFrom, measurer, fields, boxes, numbers);
 
         // Whether paragraph p broke the rules for keeping text together; if so, things are put back as they were before
         // it (or before the paragraph kept with it), with a plan for setting it again, and the loop goes back to it.
@@ -522,6 +591,7 @@ public static class TextFlow
             var s = snaps[p];
             lines.RemoveRange(s.Lines, lines.Count - s.Lines);
             (areaIndex, previousBaseline, jumpTo, pendingSpace, oversetFrom, done) = (s.Area, s.Baseline, s.Jump, s.Pending, s.Overset, s.Done);
+            notes.RemoveRange(s.Notes, notes.Count - s.Notes);
             back = p;
             return true;
         }

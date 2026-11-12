@@ -156,6 +156,7 @@ public sealed class MainWindow : Window
         View.PointerAt += p => CursorInfo.Text = p is { } pt
             ? $"{Units.Format(pt.X, Editor.Doc.Setup.Unit, false)}, {Units.Format(pt.Y, Editor.Doc.Setup.Unit)}" : "";
         View.ShowSheet += ShowSheet;
+        View.OpenStory += id => OpenStoryEditor(id);
         Editor.Changed += OnChanged;
         Panel = new SidePanel(this);
 
@@ -328,6 +329,7 @@ public sealed class MainWindow : Window
                         Item("_Place picture…", PlacePicture),
                         Item("Place _text…", () => _ = PlaceText()),
                         Item("Unlink text _frame", UnlinkSelected),
+                        Item("Te_xt on path", TextOnPath),
                         new Separator(),
                         new MenuItem
                         {
@@ -360,6 +362,8 @@ public sealed class MainWindow : Window
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
                         Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
+                        Item("Insert _footnote", () => InsertFootnote(), "Ctrl+Alt+F"),
+                        Item("_Edit footnote", () => EditFootnote()),
                         new Separator(),
                         Item("Align _left", () => View.ApplyPara(p => p with { Align = Align.Left }, "Alignment")),
                         Item("Align _centre", () => View.ApplyPara(p => p with { Align = Align.Centre }, "Alignment")),
@@ -723,11 +727,50 @@ public sealed class MainWindow : Window
         Editor.Change(locked ? "Lock" : "Unlock", d => { foreach (var id in ids) if (d.Find(id) is { } o) o.Locked = locked; });
     }
 
-    /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>
-    public StoryEditor? OpenStoryEditor()
+    /// <summary>Puts a footnote at the caret and opens its text in the story editor to write.</summary>
+    public StoryEditor? InsertFootnote()
     {
-        var storyId = View.Editing?.StoryId ?? (View.Selected is [TextFrame f] ? f.StoryId : null);
-        if (storyId is null) { Say("Select a text frame, or put the caret in one, to open its story."); return null; }
+        if (View.Editing is not { } t) { Say("Put the caret where the footnote's number goes first."); return null; }
+        if (t.Length > 0) View.Type("");
+        var at = View.Editing!.Caret;
+        if (Editor.InsertFootnote(t.StoryId, at) is not { } note) { Say("A footnote can't go in a footnote, a table's cell or text on a path."); return null; }
+        View.Editing!.Caret = View.Editing.Anchor = at + 1;
+        var se = OpenStoryEditor(note);
+        Say("Write the footnote in the story editor. It is set at the foot of the column its number is in.");
+        return se;
+    }
+
+    /// <summary>Opens the footnote whose number the caret is beside in the story editor.</summary>
+    public StoryEditor? EditFootnote()
+    {
+        if (View.Editing is not { } t || !Editor.Doc.Stories.TryGetValue(t.StoryId, out var story) || Footnotes.At(story, t.Caret) is not { } note)
+        {
+            Say("Put the caret beside a footnote's number in the text first, or double-click the footnote.");
+            return null;
+        }
+        return OpenStoryEditor(note);
+    }
+
+    /// <summary>Puts text along the selected path and opens it in the story editor to write.</summary>
+    public void TextOnPath()
+    {
+        if (View.Selected is not [PathObject path]) { Say("Select a path or polyline drawn with the pen, then choose Text on path."); return; }
+        if (Editor.PutTextOnPath(path.Id) is { } why) { Say(why); return; }
+        View.Select([path.Id]);
+        OpenStoryEditor();
+        Say("Write the path's text in the story editor; the Text tab sets its type, and its alignment where it sits on the path.");
+    }
+
+    /// <summary>Opens the story being edited, or the selected frame's, in a story editor window (one per story).</summary>
+    public StoryEditor? OpenStoryEditor(string? story = null)
+    {
+        var storyId = story ?? View.Editing?.StoryId ?? View.Selected switch
+        {
+            [TextFrame f] => f.StoryId,
+            [PathObject { StoryId: { } onPath }] => onPath,
+            _ => null,
+        };
+        if (storyId is null) { Say("Select a text frame or a path with text on it, or put the caret in a frame, to open its story."); return null; }
         if (_storyEditors.FirstOrDefault(se => se.StoryId == storyId) is { } open) { open.Activate(); return open; }
         var editor = new StoryEditor(this, storyId);
         _storyEditors.Add(editor);
@@ -1244,6 +1287,7 @@ public sealed class MainWindow : Window
         var inBox = FocusManager?.GetFocusedElement() is TextBox;
         switch (e.Key)
         {
+            case Key.F when (e.KeyModifiers & KeyModifiers.Alt) != 0: InsertFootnote(); break;
             case Key.N: _ = New(); break;
             case Key.O: _ = OpenWithPicker(); break;
             case Key.S when shift: _ = SaveAs(); break;

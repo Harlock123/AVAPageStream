@@ -116,6 +116,19 @@ public sealed class PageView : Control
     /// <summary>Asks for a picture file: its bytes and where it is.</summary>
     public Func<Task<(byte[] Bytes, string Path)?>>? PickImage { get; set; }
 
+    /// <summary>Asks for a story to be opened in the story editor (a footnote double-clicked at the foot of a column).</summary>
+    public event Action<string>? OpenStory;
+
+    /// <summary>The footnote at a point on the sheet being worked on, if there is one.</summary>
+    public string? NoteAt(Pt p)
+    {
+        foreach (var frame in CurrentSheet.All.OfType<TextFrame>().Where(f => f.Rotation == 0))
+            if (LayoutOf(frame.StoryId) is { Notes.Count: > 0 } layout)
+                foreach (var n in layout.Notes)
+                    if (layout.Areas[n.Area].FrameId == frame.Id && n.Box.Contains(p)) return n.Id;
+        return null;
+    }
+
     public double Zoom { get; private set; } = 1;
 
     /// <summary>Where the page's top-left corner is in the view.</summary>
@@ -647,7 +660,9 @@ public sealed class PageView : Control
 
     /// <summary>The stories of the selected text frames, each once.</summary>
     public IEnumerable<Story> SelectedStories() =>
-        Selected.OfType<TextFrame>().Select(f => Doc.StoryOf(f)).OfType<Story>().DistinctBy(s => s.Id);
+        Selected.OfType<TextFrame>().Select(f => Doc.StoryOf(f))
+            .Concat(Selected.OfType<PathObject>().Select(p => p.StoryId is { } id ? Doc.Stories.GetValueOrDefault(id) : null))
+            .OfType<Story>().DistinctBy(s => s.Id);
 
     /// <summary>
     /// Changes the character format of the selected text; with only a caret, of the text typed next; with frames
@@ -910,8 +925,10 @@ public sealed class PageView : Control
             case PathObject path:
                 var g = PageRenderer.PathGeometry(path);
                 var at = new Point(q.X, q.Y);
+                // Text on it stands up to its size above the path.
+                var reach = path.StoryId is { } sid && Doc.Stories.GetValueOrDefault(sid) is { } onPath ? onPath.FormatAt(0).Size * 2 : 0;
                 return (path.Closed && path.Fill is not null && g.FillContains(at)) ||
-                       g.StrokeContains(new Pen(Brushes.Black, Math.Max(8 / Scale, path.StrokeWidth)), at);
+                       g.StrokeContains(new Pen(Brushes.Black, Math.Max(Math.Max(8 / Scale, path.StrokeWidth), reach)), at);
             default:
                 return o.Bounds.Contains(q, 3 / Scale);
         }
@@ -1089,6 +1106,11 @@ public sealed class PageView : Control
                 }
                 if (HitObject(p) is { } hit)
                 {
+                    if (e.ClickCount >= 2 && NoteAt(p) is { } note)
+                    {
+                        OpenStory?.Invoke(note);
+                        return;
+                    }
                     if (e.ClickCount >= 2 && TextAt(p) is { } frame)
                     {
                         StartEditing(frame, p); // into a frame inside a group, or a table's cell, too

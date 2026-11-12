@@ -347,7 +347,13 @@ public sealed class PathObject : PageObject
     /// <summary>Whether the last point joins back to the first (only a closed path is filled).</summary>
     public bool Closed { get; set; }
 
-    public override string Kind => Nodes.All(n => n.In is null && n.Out is null) ? (Closed ? "Polygon" : "Polyline") : "Path";
+    /// <summary>The story set along the path, if it has text on it.</summary>
+    public string? StoryId { get; set; }
+
+    /// <summary>How far along the path the text starts (from where its alignment puts it), in points.</summary>
+    public double TextOffset { get; set; }
+
+    public override string Kind => StoryId is not null ? "Text on a path" : Nodes.All(n => n.In is null && n.Out is null) ? (Closed ? "Polygon" : "Polyline") : "Path";
 
     /// <summary>Sets the frame to the box round the points and handles, without moving them.</summary>
     public void Fit()

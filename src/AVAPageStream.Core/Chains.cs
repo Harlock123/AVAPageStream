@@ -15,6 +15,7 @@ public static class Chains
     /// </summary>
     public static List<Area> Areas(Document doc, Story story)
     {
+        if (story.NoteOf is not null) return []; // a footnote is set where its story's layout puts it
         if (story.Table is { } tableId)
         {
             // A table cell's story is set in its cell, less the inset.
@@ -110,6 +111,12 @@ public static class Chains
     public static void Forget(Document doc, TableObject table)
     {
         foreach (var id in table.Cells) doc.Stories.Remove(id);
+    }
+
+    /// <summary>Takes a path that is being deleted away with the text on it.</summary>
+    public static void Forget(Document doc, PathObject path)
+    {
+        if (path.StoryId is { } id) doc.Stories.Remove(id);
     }
 
     /// <summary>Takes a frame that is being deleted out of its chain; a story left with no frames goes too.</summary>

@@ -135,6 +135,8 @@ public static class DocumentFile
         }
         foreach (var frame in doc.AllObjects.OfType<TextFrame>())
             if (!doc.Stories.ContainsKey(frame.StoryId)) Chains.NewStory(doc, frame, doc.Style("Body"));
+        foreach (var path in doc.AllObjects.OfType<PathObject>())
+            if (path.StoryId is { } sid && !doc.Stories.ContainsKey(sid)) path.StoryId = null;
         foreach (var table in doc.AllObjects.OfType<TableObject>())
         {
             // Every cell has its story, and the table is as many cells as its rows and columns make.

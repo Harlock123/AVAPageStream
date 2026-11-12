@@ -49,7 +49,7 @@ internal sealed class FontMeasurer : ITextMeasurer
 
     public double Width(string text, CharFormat format)
     {
-        var key = (text, format with { Colour = "", Underline = false, Tracking = 0, Shift = 0, CharStyle = null });
+        var key = (text, format with { Colour = "", Underline = false, Tracking = 0, Shift = 0, CharStyle = null, Note = null });
         if (_widths.TryGetValue(key, out var w)) return w;
         if (_widths.Count > 50_000) _widths.Clear();
         w = FontSupport.Format(text, key.Item2, null).WidthIncludingTrailingWhitespace;
@@ -59,7 +59,7 @@ internal sealed class FontMeasurer : ITextMeasurer
 
     public FontMetrics Metrics(CharFormat format)
     {
-        var key = format with { Colour = "", Underline = false, Tracking = 0, Shift = 0, CharStyle = null };
+        var key = format with { Colour = "", Underline = false, Tracking = 0, Shift = 0, CharStyle = null, Note = null };
         if (_metrics.TryGetValue(key, out var m)) return m;
         var ft = FontSupport.Format("Xg", key, null);
         // How tall the capitals stand: the ink of an H above the baseline.

@@ -64,6 +64,54 @@ public sealed class Editor
         return null;
     }
 
+    /// <summary>
+    /// Puts a footnote's reference in a story at a place, as a superscript number, with a note of its own to write.
+    /// Returns the note's story id, or null if the story can't take one (a footnote or a table's cell).
+    /// </summary>
+    public string? InsertFootnote(string storyId, int at, string text = "")
+    {
+        if (!Doc.Stories.TryGetValue(storyId, out var s) || s.NoteOf is not null || s.Table is not null || s.OnPath is not null) return null;
+        return Change("Insert footnote", d =>
+        {
+            var story = d.Stories[storyId];
+            var note = Footnotes.NewNote(d, storyId, text);
+            var f = story.TypingFormat(at) with { Note = note.Id, Script = Script.Super, CharStyle = null };
+            story.Insert(at, Fields.Footnote.ToString(), f);
+            return note.Id;
+        });
+    }
+
+    /// <summary>Sets text along a path (a story of its own, in the Body style), or returns why not.</summary>
+    public string? PutTextOnPath(string pathId, string text = "Text on a path")
+    {
+        if (Doc.Find(pathId) is not PathObject p) return "Select a path or polyline drawn with the pen first.";
+        if (p.StoryId is not null) return null;
+        if (p.Nodes.Count < 2) return "The path needs at least two points.";
+        Change("Text on path", d =>
+        {
+            var path = (PathObject)d.Find(pathId)!;
+            var style = d.Style("Body");
+            var story = Story.Create(d.NewId("story"), style);
+            story.OnPath = pathId;
+            story.Insert(0, text);
+            d.Stories[story.Id] = story;
+            path.StoryId = story.Id;
+        });
+        return null;
+    }
+
+    /// <summary>Takes the text off a path.</summary>
+    public void TakeTextOffPath(string pathId)
+    {
+        if (Doc.Find(pathId) is not PathObject { StoryId: not null }) return;
+        Change("Remove text from path", d =>
+        {
+            var path = (PathObject)d.Find(pathId)!;
+            Chains.Forget(d, path);
+            path.StoryId = null;
+        });
+    }
+
     /// <summary>Marks the document as having changes to save (a recovered one, which was never saved as it is).</summary>
     public void MarkUnsaved() => _savedStamp = -1;
 
@@ -79,6 +127,7 @@ public sealed class Editor
         if (merge is null || merge != _mergeKey || _undo.Count == 0) Record(label);
         _mergeKey = merge;
         var result = change(Doc);
+        if (Footnotes.Any(Doc)) Footnotes.Tidy(Doc);
         _stamp = _nextStamp++;
         Changed?.Invoke();
         return result;
@@ -187,6 +236,7 @@ public sealed class Editor
                 var going = sheet.All.Where(o => doomed.Contains(o.Id)).ToList();
                 foreach (var frame in Shapes.Flatten(going).OfType<TextFrame>()) Chains.Forget(d, frame);
                 foreach (var table in Shapes.Flatten(going).OfType<TableObject>()) Chains.Forget(d, table);
+                foreach (var path in Shapes.Flatten(going).OfType<PathObject>()) Chains.Forget(d, path);
                 foreach (var o in going)
                 {
                     var around = Shapes.GroupsAround(sheet.Objects, o.Id);
@@ -243,7 +293,17 @@ public sealed class Editor
                 copied.Frames = [frame.Id];
                 d.Stories[copied.Id] = copied;
                 frame.StoryId = copied.Id;
+                Footnotes.Bring(from ?? d, d, copied);
             }
+            if (o is PathObject path && original is PathObject op && op.StoryId is { } sid && (from ?? d).Stories.GetValueOrDefault(sid) is { } onPath)
+            {
+                var copied = System.Text.Json.JsonSerializer.Deserialize<Story>(System.Text.Json.JsonSerializer.Serialize(onPath, Document.Json), Document.Json)!;
+                copied.Id = d.NewId("story");
+                copied.OnPath = path.Id;
+                d.Stories[copied.Id] = copied;
+                path.StoryId = copied.Id;
+            }
+            else if (o is PathObject bare) bare.StoryId = null;
             if (o is TableObject table && original is TableObject t)
             {
                 // A copied table gets copies of its cells' stories.
@@ -450,6 +510,7 @@ public sealed class Editor
             var page = d.Pages[index];
             foreach (var frame in page.All.OfType<TextFrame>().ToList()) Chains.Forget(d, frame);
             foreach (var table in page.All.OfType<TableObject>().ToList()) Chains.Forget(d, table);
+            foreach (var path in page.All.OfType<PathObject>().ToList()) Chains.Forget(d, path);
             d.Pages.RemoveAt(index);
         });
         return null;

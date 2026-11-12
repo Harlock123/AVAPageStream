@@ -134,6 +134,8 @@ public sealed class SidePanel : TabControl
     private readonly StackPanel _rotationRow = new();
     private readonly StackPanel _frameRows = new();
     private readonly StackPanel _pictureRows = new();
+    private readonly StackPanel _pathTextRows = new();
+    public TextBox TextOffsetBox { get; } = Ui.Box();
     private readonly WrapPanel _swatchButtons = new() { Margin = new Thickness(74, 2, 0, 4) };
     private List<Swatch> _swatchesShown = [];
     private readonly Border _fillSwatch = Swatch();
@@ -331,6 +333,19 @@ public sealed class SidePanel : TabControl
         MeasureBox(GutterBox, (o, v) => { if (o is TextFrame f) f.Gutter = Math.Max(0, v); }, "Gutter");
         MeasureBox(InsetBox, (o, v) => { if (o is TextFrame f) f.Inset = Math.Max(0, v); }, "Inset");
         MeasureBox(OffsetXBox, (o, v) => { if (o is PictureObject p) p.OffsetX = v; }, "Crop");
+        MeasureBox(TextOffsetBox, (o, v) => { if (o is PathObject p) p.TextOffset = v; }, "Move text along path");
+        _pathTextRows.Children.AddRange([
+            Ui.Heading("Text on the path"),
+            Ui.Row(("Start", TextOffsetBox)),
+            new TextBlock
+            {
+                Text = "How far along the path the text starts, from where its alignment (in the Text tab) puts it.",
+                Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap,
+            },
+            Ui.Buttons(
+                Ui.Button("Edit text…", () => _window.OpenStoryEditor(), "Write the text in the story editor"),
+                Ui.Button("Remove text", () => { if (View.Selected is [PathObject p]) Editor.TakeTextOffPath(p.Id); })),
+        ]);
         MeasureBox(OffsetYBox, (o, v) => { if (o is PictureObject p) p.OffsetY = v; }, "Crop");
         Commit(FillBox, t => SetColour(false, t));
         Commit(StrokeBox, t => SetColour(true, t));
@@ -415,6 +430,7 @@ public sealed class SidePanel : TabControl
             _cornerRow,
             _frameRows,
             _pictureRows,
+            _pathTextRows,
             _arrowRows,
             _tableRows,
             Ui.Heading("Text wrap"),
@@ -1280,6 +1296,8 @@ public sealed class SidePanel : TabControl
             Set(InsetBox, Units.Format(f.Inset, Unit));
         }
         _pictureRows.IsVisible = one is PictureObject;
+        _pathTextRows.IsVisible = one is PathObject { StoryId: not null };
+        if (one is PathObject { StoryId: not null } onPath) Set(TextOffsetBox, Units.Format(onPath.TextOffset, Unit));
         _arrowRows.IsVisible = selected.All(o => o is LineObject);
         _tableRows.IsVisible = one is TableObject;
         if (one is TableObject table)
