@@ -695,26 +695,56 @@ public sealed class Editor
         return start + fragment.Text.Length;
     });
 
-    /// <summary>Replaces every match of a search in one step, each replacement in the format of the text it replaces. Returns how many.</summary>
-    public int ReplaceAll(string query, string replacement, FindOptions options)
+    /// <summary>
+    /// Replaces every match of a search in one step, each replacement in the format of the text it replaces, and (if
+    /// a style is given) puts each in that style. With a style and no replacement, the text found is kept and only
+    /// restyled. Returns how many.
+    /// </summary>
+    public int ReplaceAll(string query, string replacement, FindOptions options, StyleChange? style = null)
     {
         var matches = Search.FindAll(Doc, query, options);
         if (matches.Count == 0) return 0;
-        Change($"Replace {matches.Count}", d =>
+        var keep = style is { Any: true } && replacement.Length == 0;
+        Change(keep ? $"Restyle {matches.Count}" : $"Replace {matches.Count}", d =>
         {
             // Each one's replacement worked out before any changes (a pattern's groups come from the text as found).
             var withs = matches.ToDictionary(m => m, m => Search.Replacement(d, m, query, replacement, options));
             foreach (var group in matches.GroupBy(m => m.StoryId))
             {
                 var story = d.Stories[group.Key];
-                foreach (var m in group.OrderByDescending(m => m.Start)) Swap(story, m.Start, m.Length, withs[m]);
+                foreach (var m in group.OrderByDescending(m => m.Start))
+                {
+                    var end = keep ? m.Start + m.Length : Swap(story, m.Start, m.Length, withs[m]);
+                    Restyle(d, story, m.Start, end - m.Start, style);
+                }
             }
         });
         return matches.Count;
     }
 
-    /// <summary>Replaces one stretch of text, keeping the format of its first character. Returns where the caret goes.</summary>
-    public int ReplaceOne(Match m, string replacement) => Change("Replace", d => Swap(d.Stories[m.StoryId], m.Start, m.Length, replacement));
+    /// <summary>
+    /// Replaces one stretch of text, keeping the format of its first character, and puts it in a style if one is
+    /// given (with no replacement, only restyling it). Returns where the caret goes.
+    /// </summary>
+    public int ReplaceOne(Match m, string replacement, StyleChange? style = null)
+    {
+        var keep = style is { Any: true } && replacement.Length == 0;
+        return Change(keep ? "Restyle" : "Replace", d =>
+        {
+            var story = d.Stories[m.StoryId];
+            var end = keep ? m.Start + m.Length : Swap(story, m.Start, m.Length, replacement);
+            Restyle(d, story, m.Start, end - m.Start, style);
+            return end;
+        });
+    }
+
+    private static void Restyle(Document d, Story story, int start, int length, StyleChange? style)
+    {
+        if (style is null) return;
+        if (style.ParaStyle is { } p && d.Styles.Any(s => s.Name == p)) story.ApplyStyle(start, length, d.Style(p), d.CharStyle);
+        if (style.CharStyle is { } c && length > 0)
+            story.ApplyCharStyle(start, length, c.Length == 0 ? null : d.CharStyle(c), d.CharStyle, d.Style);
+    }
 
     private static int Swap(Story story, int start, int length, string replacement)
     {

@@ -70,4 +70,37 @@ public class FindPatternTests
         Assert.Contains("\nSection\n", e.Doc.Stories[id].Text);
         Assert.Equal("Heading", e.Doc.Stories[id].Paras[0].Style);
     }
+
+    [Fact]
+    public void Replacing_can_put_text_in_a_style_keeping_or_changing_it()
+    {
+        var (e, id) = OneStory("The Moon pulls the sea.\nNote: watch the Moon.\nThe moon rises.");
+        // Kept, and put in a character style: only the words found.
+        Assert.Equal(3, e.ReplaceAll("moon", "", new FindOptions(), new StyleChange(CharStyle: "Emphasis")));
+        var story = e.Doc.Stories[id];
+        Assert.Equal("The Moon pulls the sea.\nNote: watch the Moon.\nThe moon rises.", story.Text);
+        Assert.Equal(["Moon", "Moon", "moon"], Texts(e, "", new FindOptions(CharStyle: "Emphasis")));
+        Assert.True(story.FormatAt(4).Italic);
+        Assert.False(story.FormatAt(0).Italic);
+        Assert.Equal("Restyle 3", e.UndoLabel);
+        // Out of it again.
+        e.ReplaceAll("", "", new FindOptions(CharStyle: "Emphasis"), new StyleChange(CharStyle: ""));
+        Assert.Empty(Texts(e, "", new FindOptions(CharStyle: "Emphasis")));
+        Assert.False(e.Doc.Stories[id].FormatAt(4).Italic);
+        // A pattern's paragraphs into a paragraph style.
+        Assert.Equal(1, e.ReplaceAll("^Note:", "", new FindOptions(Regex: true, MatchCase: true), new StyleChange(ParaStyle: "Caption")));
+        story = e.Doc.Stories[id];
+        Assert.Equal(["Body", "Caption", "Body"], story.Paras.Select(p => p.Style));
+        Assert.True(story.FormatAt(story.Text.IndexOf("watch", StringComparison.Ordinal)).Italic); // the whole paragraph, in Caption's italic
+        // Replaced, and the new text in a style.
+        e.ReplaceAll("sea", "ocean", new FindOptions(WholeWord: true), new StyleChange(CharStyle: "Strong"));
+        story = e.Doc.Stories[id];
+        Assert.Equal(["ocean"], Texts(e, "", new FindOptions(CharStyle: "Strong")));
+        Assert.True(story.IsWellFormed());
+        // One at a time.
+        var m = Search.FindAll(e.Doc, "rises", new FindOptions())[0];
+        var end = e.ReplaceOne(m, "", new StyleChange(CharStyle: "Strong"));
+        Assert.Equal(m.Start + m.Length, end);
+        Assert.Equal(["ocean", "rises"], Texts(e, "", new FindOptions(CharStyle: "Strong")));
+    }
 }

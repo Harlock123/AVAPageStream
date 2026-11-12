@@ -44,8 +44,8 @@ public sealed class MainWindow : Window
 
     // The find bar
     public Border FindBar { get; } = new() { IsVisible = false };
-    public TextBox FindBox { get; } = new() { Width = 220, PlaceholderText = "Find", FontSize = 12 };
-    public TextBox ReplaceBox { get; } = new() { Width = 200, PlaceholderText = "Replace with", FontSize = 12 };
+    public TextBox FindBox { get; } = new() { Width = 190, PlaceholderText = "Find", FontSize = 12 };
+    public TextBox ReplaceBox { get; } = new() { Width = 150, PlaceholderText = "Replace with", FontSize = 12 };
     public CheckBox MatchCase { get; } = new() { Content = "Match case", FontSize = 12 };
     public CheckBox WholeWord { get; } = new() { Content = "Whole word", FontSize = 12 };
     public CheckBox Pattern { get; } = new() { Content = "Pattern", FontSize = 12 };
@@ -53,6 +53,11 @@ public sealed class MainWindow : Window
     /// <summary>Which text to look in: any, or one paragraph style's or character style's (as "¶ Name" and "a Name").</summary>
     public ComboBox FindStyle { get; } = new() { FontSize = 12, MinWidth = 130 };
     private const string AnyStyle = "In any style";
+
+    /// <summary>A style to put what is replaced in: none, a paragraph style ("¶ Name") or a character style ("a Name").</summary>
+    public ComboBox ChangeStyle { get; } = new() { FontSize = 12, MinWidth = 130 };
+    private const string NoChange = "Style unchanged";
+    private const string NoCharStyle = "a (no character style)";
     public TextBlock FindStatus { get; } = new() { Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     private readonly MenuItem _recentMenu = new() { Header = "Open _recent" };
     private readonly MenuItem _templatesMenu = new() { Header = "New from _template" };
@@ -593,6 +598,9 @@ public sealed class MainWindow : Window
         ToolTip.SetTip(FindStyle, "Find only in text of a paragraph style (¶) or a character style (a). With nothing to find, it finds each stretch in the style.");
         FindStyle.ItemsSource = new[] { AnyStyle };
         FindStyle.SelectedIndex = 0;
+        ToolTip.SetTip(ChangeStyle, "Put what is replaced in a paragraph style (¶) or a character style (a). With nothing to replace it with, the text found is kept and only its style changes.");
+        ChangeStyle.ItemsSource = new[] { NoChange };
+        ChangeStyle.SelectedIndex = 0;
         var lastStyle = AnyStyle;
         FindStyle.SelectionChanged += (_, _) =>
         {
@@ -611,6 +619,7 @@ public sealed class MainWindow : Window
                 B("Previous", () => FindNext(false), "Find the one before (Shift+Enter)"),
                 B("Next", () => FindNext(true), "Find the next one (Enter, or F3)"),
                 ReplaceBox,
+                ChangeStyle,
                 B("Replace", ReplaceNext, "Replace the one found, and find the next"),
                 B("Replace all", ReplaceAll, "Replace every one in the document, as one step to undo"),
                 MatchCase,
@@ -635,9 +644,28 @@ public sealed class MainWindow : Window
         }
     }
 
-    /// <summary>The styles the find bar can look in, from the document's, keeping the one chosen if it is still there.</summary>
+    /// <summary>The style chosen to put replaced text in, if any.</summary>
+    private StyleChange? ChangeTo => (ChangeStyle.SelectedItem as string) switch
+    {
+        NoCharStyle => new StyleChange(CharStyle: ""),
+        { } s when s.StartsWith("¶ ", StringComparison.Ordinal) => new StyleChange(ParaStyle: s[2..]),
+        { } s when s.StartsWith("a ", StringComparison.Ordinal) => new StyleChange(CharStyle: s[2..]),
+        _ => null,
+    };
+
+    /// <summary>The styles the find bar can look in and change to, from the document's, keeping the ones chosen if they are still there.</summary>
     private void RefreshFindStyles()
     {
+        var change = new List<string> { NoChange };
+        change.AddRange(Editor.Doc.Styles.Select(s => "¶ " + s.Name));
+        change.AddRange(Editor.Doc.CharStyles.Select(s => "a " + s.Name));
+        change.Add(NoCharStyle);
+        if (ChangeStyle.ItemsSource is not IEnumerable<string> was || !was.SequenceEqual(change))
+        {
+            var picked = ChangeStyle.SelectedItem as string;
+            ChangeStyle.ItemsSource = change;
+            ChangeStyle.SelectedIndex = Math.Max(0, change.IndexOf(picked ?? NoChange));
+        }
         var items = new List<string> { AnyStyle };
         items.AddRange(Editor.Doc.Styles.Select(s => "¶ " + s.Name));
         items.AddRange(Editor.Doc.CharStyles.Select(s => "a " + s.Name));
@@ -691,7 +719,7 @@ public sealed class MainWindow : Window
         if (View.Editing is { Length: > 0 } t && new Match(t.StoryId, t.Start, t.Length) is var found &&
             Search.IsFound(Editor.Doc, found, query, FindOptions))
         {
-            var after = Editor.ReplaceOne(found, Search.Replacement(Editor.Doc, found, query, ReplaceBox.Text ?? "", FindOptions));
+            var after = Editor.ReplaceOne(found, Search.Replacement(Editor.Doc, found, query, ReplaceBox.Text ?? "", FindOptions), ChangeTo);
             t.Caret = t.Anchor = after;
         }
         if (!FindNext()) FindStatus.Text = Search.FindAll(Editor.Doc, query, FindOptions).Count == 0 ? "None left." : FindStatus.Text;
@@ -702,10 +730,14 @@ public sealed class MainWindow : Window
         var query = FindBox.Text ?? "";
         RefreshFindStyles();
         if (Search.Problem(Editor.Doc, query, FindOptions) is { } problem) { FindStatus.Text = problem; return; }
-        var n = Editor.ReplaceAll(query, ReplaceBox.Text ?? "", FindOptions);
+        var change = ChangeTo;
+        var n = Editor.ReplaceAll(query, ReplaceBox.Text ?? "", FindOptions, change);
         var what = query.Length > 0 ? $"\"{query}\"" : "text in " + (FindOptions.ParaStyle ?? FindOptions.CharStyle);
-        FindStatus.Text = n switch { 0 => "Not found.", 1 => "Replaced 1.", _ => $"Replaced {n}." };
-        Say(n == 0 ? $"There is no {what} in the document." : $"Replaced {n} of {what}; one undo puts them all back.");
+        var restyled = change is not null && (ReplaceBox.Text ?? "").Length == 0;
+        var into = change is null ? "" : change.ParaStyle is { } ps ? $" in {ps}" : change.CharStyle is { Length: > 0 } cs ? $" in {cs}" : " out of its character style";
+        FindStatus.Text = n == 0 ? "Not found." : restyled ? $"Restyled {n}." : $"Replaced {n}.";
+        Say(n == 0 ? $"There is no {what} in the document."
+            : (restyled ? $"Put {n} of {what}{into}" : $"Replaced {n} of {what}{into}") + "; one undo puts them all back.");
     }
 
     private Control BuildStatusBar()

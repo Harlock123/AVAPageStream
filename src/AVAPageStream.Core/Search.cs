@@ -15,6 +15,15 @@ public sealed record FindOptions(bool MatchCase = false, bool WholeWord = false,
     public bool ByStyle => ParaStyle is not null || CharStyle is not null;
 }
 
+/// <summary>
+/// A style to put replaced (or found) text in: a paragraph style for the paragraphs it is in, a character style for
+/// the text itself ("" to take it out of its character style), or both.
+/// </summary>
+public sealed record StyleChange(string? ParaStyle = null, string? CharStyle = null)
+{
+    public bool Any => ParaStyle is not null || CharStyle is not null;
+}
+
 /// <summary>Finding text through every story, in reading order: the pages' stories first, then the masters'.</summary>
 public static class Search
 {

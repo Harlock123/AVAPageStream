@@ -805,3 +805,7 @@ stale ones again (`GeneratedLists.IsStale` compares their text with what `Make` 
 forgets any whose marker is gone; making one settles the same way. Export, PNG and print update first; preflight
 reports `ListStale`. With it, a fix: applying or changing a paragraph style dropped what markers mark (footnote
 references, anchors, places, cross-references and index entries); `Story.Keep` holds them.
+
+Stage 2 done: `StyleChange` (a paragraph style, a character style, "" for none) given to `Editor.ReplaceAll` and
+`ReplaceOne`; with no replacement text the found text is kept and only restyled ("Restyle n" to undo). The find bar's
+Change to list chooses it.

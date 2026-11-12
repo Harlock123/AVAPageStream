@@ -582,6 +582,12 @@ The style list (**In any style**, to begin with) finds only in text of one parag
 (a). With nothing typed to find, it finds each stretch of text in that style: every heading, say, or every word in
 Emphasis, one after another.
 
+The list beside the replacement (**Style unchanged**, to begin with) puts what is replaced in a style: a paragraph
+style (¶) for the paragraphs it is in, or a character style (a) for the text itself, or *(no character style)* to
+take it out of one. With the replacement box empty, the text found is kept and only its style changes: find `Moon`,
+pick *a Emphasis* and Replace all, and every Moon is in italics; find `^Note:` as a pattern and pick *¶ Caption* to
+put every paragraph starting "Note:" in Caption.
+
 ## Spelling
 
 ![The spelling window, with a misspelt word and its suggestions](docs/images/guide/spelling.png)
