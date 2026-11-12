@@ -348,6 +348,26 @@ The **Pen** (B) draws shapes of your own, point by point:
 Double-click a path with Select to change it: drag its points (squares) and their handles (dots). Delete takes out
 the last point you dragged. Escape, or a click elsewhere, finishes.
 
+### Gradients, transparency, shadows and corners
+
+![A gradient card with rounded corners and a drop shadow, a radial gradient multiplied over it, glowing text, and a see-through box with cut corners](docs/images/guide/effects.png)
+
+The Object tab's **Effects** go on any object: shapes, text frames, pictures, tables and groups.
+
+- **Fill with**: a colour, or a **linear** or **radial gradient**. Type its **Colours** separated by commas, swatches
+  and tints among them, each with **at** and a per cent if it isn't evenly spaced: `Navy, Gold at 60, White`. A
+  linear gradient runs at its **Angle** (0° left to right, 90° top to bottom); a radial one out from the middle.
+- **Opacity** makes the whole object see-through, and **Fill** and **Stroke** each on their own.
+- **Blend** mixes its colours with what is under it: Multiply darkens (as ink over ink), Screen lightens, and the
+  others as in other programs.
+- **Shadow**: a **drop shadow** behind it, or a **glow** all round it, in any colour and opacity, with how far
+  **across** and **down** it falls and how soft its **Blur** is. A text frame's shadow follows its text.
+- **Corners** (rectangles, text frames and pictures): one size for every corner, or four (top left, top right,
+  bottom right, bottom left), **rounded** or **cut**. A picture is cut to its corners.
+
+They are drawn the same on screen, in PNGs and in PDFs, where they stay as vector shading and transparency (a
+shadow's blur is the one part a PDF carries as a picture).
+
 ### Text on a path
 
 ![Text set along a curve, and a footnote at the foot of the column](docs/images/guide/pathtext.png)

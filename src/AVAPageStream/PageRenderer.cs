@@ -113,13 +113,20 @@ internal sealed class PageRenderer
     public void DrawObject(DrawingContext dc, Document doc, PageObject o, int? page = null)
     {
         using var turned = o.Rotation != 0 ? dc.PushTransform(Turn(o, 1, new Vector(0, 0))) : (DrawingContext.PushedState?)null;
+        // See-through, blended or with a shadow: drawn as a layer of its own.
+        using var effects = Effects.Begin(dc, o, c => Colours.Resolve(c, doc.Swatches) is { } v && Colours.TryParse(v, out var rgba) ? new SkiaSharp.SKColor(rgba.R, rgba.G, rgba.B, rgba.A) : null);
         var rect = new Rect(o.X, o.Y, Math.Max(0, o.W), Math.Max(0, o.H));
-        var fill = BrushOf(doc, o.Fill);
-        var pen = o.Stroke is not null && o.StrokeWidth > 0 && BrushOf(doc, o.Stroke) is { } sb ? new Pen(sb, o.StrokeWidth) : null;
+        var fill = FillOf(doc, o, rect);
+        var stroke = o.Stroke is not null && o.StrokeWidth > 0 ? BrushOf(doc, o.Stroke) : null;
+        if (stroke is not null && o.StrokeOpacity < 1) stroke = new SolidColorBrush(((ISolidColorBrush)stroke).Color, o.StrokeOpacity);
+        var pen = stroke is not null ? new Pen(stroke, o.StrokeWidth) : null;
+        // Rounded or cut corners, for the rectangles: its outline.
+        var corners = o is RectangleObject or TextFrame or PictureObject && o.Corners is { IsSquare: false } c ? Effects.Outline(rect, c) : null;
         switch (o)
         {
             case RectangleObject r:
-                dc.DrawRectangle(fill, pen, rect, r.CornerRadius, r.CornerRadius);
+                if (corners is not null) dc.DrawGeometry(fill, pen, corners);
+                else dc.DrawRectangle(fill, pen, rect, r.CornerRadius, r.CornerRadius);
                 break;
             case EllipseObject:
                 dc.DrawEllipse(fill, pen, rect.Center, rect.Width / 2, rect.Height / 2);
@@ -134,7 +141,8 @@ internal sealed class PageRenderer
                 }
                 break;
             case TextFrame frame:
-                if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
+                if (corners is not null && (fill is not null || pen is not null)) dc.DrawGeometry(fill, pen, corners);
+                else if (fill is not null || pen is not null) dc.DrawRectangle(fill, pen, rect);
                 DrawStory(dc, doc, frame.StoryId, id => id == frame.Id, page);
                 DrawNotes(dc, doc, frame, page);
                 break;
@@ -149,6 +157,17 @@ internal sealed class PageRenderer
                 if (path.StoryId is { } onPath) DrawPathText(dc, doc, path, onPath, page);
                 break;
             case PictureObject picture:
+                if (corners is not null)
+                {
+                    // The picture inside its rounded or cut corners.
+                    using (dc.PushGeometryClip(corners))
+                    {
+                        if (fill is not null) dc.FillRectangle(fill, rect);
+                        DrawPicture(dc, doc, picture, rect);
+                    }
+                    if (pen is not null) dc.DrawGeometry(null, pen, corners);
+                    break;
+                }
                 if (fill is not null) dc.FillRectangle(fill, rect);
                 DrawPicture(dc, doc, picture, rect);
                 if (pen is not null) dc.DrawRectangle(null, pen, rect);
@@ -434,6 +453,15 @@ internal sealed class PageRenderer
         picture = doc.Images.Get(key) is { } bytes ? Pictures.Load(bytes) : null;
         _pictures[key] = picture;
         return picture;
+    }
+
+    /// <summary>An object's fill: its gradient across its frame, or its colour, at its fill's opacity.</summary>
+    private IBrush? FillOf(Document doc, PageObject o, Rect rect)
+    {
+        if (o.Gradient is { Stops.Count: >= 2 } g)
+            return Effects.Brush(g, rect, c => Colours.Resolve(c, doc.Swatches) is { } v && Colours.TryParse(v, out var rgba) ? Color.FromArgb(rgba.A, rgba.R, rgba.G, rgba.B) : null, o.FillOpacity);
+        var fill = BrushOf(doc, o.Fill);
+        return fill is ISolidColorBrush solid && o.FillOpacity < 1 ? new SolidColorBrush(solid.Color, o.FillOpacity) : fill;
     }
 
     /// <summary>The brush for a colour: a swatch's own colour for a reference to one.</summary>

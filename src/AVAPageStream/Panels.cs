@@ -131,6 +131,22 @@ public sealed class SidePanel : TabControl
     public TextBox WrapGapBox { get; } = Ui.Box();
     private readonly StackPanel _objectBody = new() { Spacing = 0 };
     private readonly StackPanel _cornerRow = new();
+    private readonly StackPanel _gradientRows = new();
+    private readonly StackPanel _shadowRows = new();
+    public ComboBox FillKindChoice { get; } = new() { ItemsSource = new[] { "Colour", "Linear gradient", "Radial gradient" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox GradientStopsBox { get; } = Ui.Box("such as Navy, Gold at 60, White");
+    public TextBox GradientAngleBox { get; } = Ui.Box("0, left to right");
+    public TextBox OpacityBox { get; } = Ui.Box("100%");
+    public TextBox FillOpacityBox { get; } = Ui.Box("100%");
+    public TextBox StrokeOpacityBox { get; } = Ui.Box("100%");
+    public ComboBox BlendChoice { get; } = new() { ItemsSource = Enum.GetNames<Core.BlendMode>().Select(n => System.Text.RegularExpressions.Regex.Replace(n, "(?<=[a-z])(?=[A-Z])", " ").ToLowerInvariant() is var s ? char.ToUpperInvariant(s[0]) + s[1..] : n).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public ComboBox ShadowChoice { get; } = new() { ItemsSource = new[] { "None", "Drop shadow", "Glow" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
+    public TextBox ShadowColourBox { get; } = Ui.Box("Black");
+    public TextBox ShadowOpacityBox { get; } = Ui.Box("50%");
+    public TextBox ShadowXBox { get; } = Ui.Box();
+    public TextBox ShadowYBox { get; } = Ui.Box();
+    public TextBox ShadowBlurBox { get; } = Ui.Box();
+    public ComboBox CornerStyleChoice { get; } = new() { ItemsSource = new[] { "Rounded", "Cut" }, HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
     private readonly StackPanel _rotationRow = new();
     private readonly StackPanel _frameRows = new();
     private readonly StackPanel _pictureRows = new();
@@ -331,7 +347,24 @@ public sealed class SidePanel : TabControl
             ChangeSelected("Rotate", o => { if (o is not (LineObject or GroupObject)) o.Rotation = angle; });
         });
         MeasureBox(StrokeWidthBox, (o, v) => o.StrokeWidth = Math.Max(0, v), "Stroke width", remember: true);
-        MeasureBox(CornerBox, (o, v) => { if (o is RectangleObject r) r.CornerRadius = Math.Max(0, v); }, "Corner radius");
+        Commit(CornerBox, text =>
+        {
+            if (_refreshing || View.Selected.Count == 0) return;
+            if (!Core.Corners.TryRead(text, Unit, out var sizes)) { _window.Say("Type a size for every corner, such as 6pt, or four: top left, top right, bottom right, bottom left."); Refresh(); return; }
+            var style = CornerStyleChoice.SelectedIndex == 1 ? CornerStyle.Cut : CornerStyle.Round;
+            ChangeSelected("Corners", o => { if (o is RectangleObject or TextFrame or PictureObject) o.Corners = new Core.Corners(sizes[0], sizes[1], sizes[2], sizes[3], style); });
+        });
+        CornerStyleChoice.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || CornerStyleChoice.SelectedIndex < 0) return;
+            var style = CornerStyleChoice.SelectedIndex == 1 ? CornerStyle.Cut : CornerStyle.Round;
+            ChangeSelected("Corner style", o =>
+            {
+                if (o is not (RectangleObject or TextFrame or PictureObject)) return;
+                var c = o.Corners ?? (o is RectangleObject r ? Core.Corners.All(r.CornerRadius) : Core.Corners.All(6));
+                o.Corners = c with { Style = style };
+            });
+        };
         MeasureBox(GutterBox, (o, v) => { if (o is TextFrame f) f.Gutter = Math.Max(0, v); }, "Gutter");
         MeasureBox(InsetBox, (o, v) => { if (o is TextFrame f) f.Inset = Math.Max(0, v); }, "Inset");
         MeasureBox(OffsetXBox, (o, v) => { if (o is PictureObject p) p.OffsetX = v; }, "Crop");
@@ -383,6 +416,8 @@ public sealed class SidePanel : TabControl
         };
 
         _cornerRow.Children.Add(Ui.Row(("Corners", CornerBox)));
+        _cornerRow.Children.Add(Ui.Row(("Style", CornerStyleChoice)));
+        BuildEffects();
         _rotationRow.Children.Add(Ui.Row(("Rotation", RotationBox)));
         BuildTableRows();
         _arrowRows.Children.AddRange([Ui.Heading("Arrowheads"), new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16, Children = { ArrowStartBox, ArrowEndBox } }]);
@@ -430,6 +465,8 @@ public sealed class SidePanel : TabControl
             swatchMenu,
             Ui.Row(("Width", StrokeWidthBox)),
             _cornerRow,
+            _gradientRows,
+            _shadowRows,
             _frameRows,
             _pictureRows,
             _pathTextRows,
@@ -567,6 +604,93 @@ public sealed class SidePanel : TabControl
             ChangeSelected(label, o => set(o, v));
             if (remember) Remember();
         });
+
+    /// <summary>A per cent as typed ("60", "60%"), as a fraction; null if it isn't one from 0 to 100.</summary>
+    private static double? Percent(string? text) =>
+        double.TryParse((text ?? "").Trim().TrimEnd('%'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) && v is >= 0 and <= 100 ? v / 100 : null;
+
+    private static string Percent(double v) => $"{Math.Round(v * 100):0}%";
+
+    /// <summary>The Effects section: gradient fills, opacity and blending, shadows and glows.</summary>
+    private void BuildEffects()
+    {
+        void Gradient()
+        {
+            if (_refreshing || View.Selected.Count == 0) return;
+            if (FillKindChoice.SelectedIndex <= 0) { ChangeSelected("Fill colour", o => o.Gradient = null); Refresh(); return; }
+            var text = string.IsNullOrWhiteSpace(GradientStopsBox.Text) ? $"{FillBox.Text ?? "White"}, White" : GradientStopsBox.Text;
+            if (Core.Gradient.ReadStops(text, Doc.Swatches, out var stops) is { } why) { _window.Say(why); return; }
+            var angle = double.TryParse((GradientAngleBox.Text ?? "0").Trim().TrimEnd('°'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var a) ? a : 0;
+            var radial = FillKindChoice.SelectedIndex == 2;
+            ChangeSelected("Gradient", o => o.Gradient = (o.Gradient ?? new Core.Gradient(radial, stops)) with { Radial = radial, Stops = stops, Angle = angle });
+            Refresh();
+        }
+        FillKindChoice.SelectionChanged += (_, _) => Gradient();
+        Commit(GradientStopsBox, _ => Gradient());
+        Commit(GradientAngleBox, _ => Gradient());
+        void Opacity(TextBox box, string label, Action<PageObject, double> set) => Commit(box, text =>
+        {
+            if (_refreshing || View.Selected.Count == 0) return;
+            if (Percent(text) is not { } v) { _window.Say("Type how opaque, from 0% (clear) to 100% (solid)."); Refresh(); return; }
+            ChangeSelected(label, o => set(o, v));
+        });
+        Opacity(OpacityBox, "Opacity", (o, v) => o.Opacity = v);
+        Opacity(FillOpacityBox, "Fill opacity", (o, v) => o.FillOpacity = v);
+        Opacity(StrokeOpacityBox, "Stroke opacity", (o, v) => o.StrokeOpacity = v);
+        BlendChoice.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || BlendChoice.SelectedIndex < 0) return;
+            var mode = (Core.BlendMode)BlendChoice.SelectedIndex;
+            ChangeSelected("Blend mode", o => o.Blend = mode);
+        };
+        void ShadowChanged()
+        {
+            if (_refreshing || View.Selected.Count == 0) return;
+            if (ShadowChoice.SelectedIndex <= 0) { ChangeSelected("No shadow", o => o.Shadow = null); Refresh(); return; }
+            if (!Colours.TryRead(ShadowColourBox.Text, Doc.Swatches, out var colour) || colour is null) { _window.Say("Type the shadow's colour: a swatch's name or a value."); return; }
+            double Measure(TextBox b, double otherwise) => Units.TryParse(b.Text, Unit, out var v) ? v : otherwise;
+            var glow = ShadowChoice.SelectedIndex == 2;
+            var shadow = new Shadow(colour, Percent(ShadowOpacityBox.Text) ?? 0.5, Measure(ShadowXBox, glow ? 0 : 4), Measure(ShadowYBox, glow ? 0 : 4), Math.Max(0, Measure(ShadowBlurBox, glow ? 8 : 4)), glow);
+            ChangeSelected(glow ? "Glow" : "Drop shadow", o => o.Shadow = shadow);
+            Refresh();
+        }
+        ShadowChoice.SelectionChanged += (_, _) => ShadowChanged();
+        foreach (var b in new[] { ShadowColourBox, ShadowOpacityBox, ShadowXBox, ShadowYBox, ShadowBlurBox }) Commit(b, _ => ShadowChanged());
+        _gradientRows.Children.AddRange([
+            Ui.Row(("Fill with", FillKindChoice)),
+            Ui.Row(("Colours", GradientStopsBox)),
+            Ui.Row(("Angle", GradientAngleBox)),
+            Ui.Heading("Effects"),
+            Ui.Row(("Opacity", OpacityBox)),
+            Ui.Row(("Fill", FillOpacityBox), ("Stroke", StrokeOpacityBox)),
+            Ui.Row(("Blend", BlendChoice)),
+        ]);
+        _shadowRows.Children.AddRange([
+            Ui.Row(("Shadow", ShadowChoice)),
+            Ui.Row(("Colour", ShadowColourBox), ("Opacity", ShadowOpacityBox)),
+            Ui.Row(("Across", ShadowXBox), ("Down", ShadowYBox)),
+            Ui.Row(("Blur", ShadowBlurBox)),
+        ]);
+    }
+
+    private void RefreshEffects(PageObject o)
+    {
+        FillKindChoice.SelectedIndex = o.Gradient is null ? 0 : o.Gradient.Radial ? 2 : 1;
+        Set(GradientStopsBox, o.Gradient?.Describe(Doc.Swatches) ?? "");
+        Set(GradientAngleBox, o.Gradient is { } g ? $"{g.Angle:0.#}°" : "");
+        GradientStopsBox.IsEnabled = GradientAngleBox.IsEnabled = o.Gradient is not null;
+        Set(OpacityBox, Percent(o.Opacity));
+        Set(FillOpacityBox, Percent(o.FillOpacity));
+        Set(StrokeOpacityBox, Percent(o.StrokeOpacity));
+        BlendChoice.SelectedIndex = (int)o.Blend;
+        ShadowChoice.SelectedIndex = o.Shadow is null ? 0 : o.Shadow.Glow ? 2 : 1;
+        var s = o.Shadow ?? new Shadow();
+        Set(ShadowColourBox, Colours.Describe(s.Colour, Doc.Swatches));
+        Set(ShadowOpacityBox, Percent(s.Opacity));
+        Set(ShadowXBox, Units.Format(s.X, Unit));
+        Set(ShadowYBox, Units.Format(s.Y, Unit));
+        Set(ShadowBlurBox, Units.Format(s.Blur, Unit));
+    }
 
     private void ChangeSelected(string label, Action<PageObject> change, bool includeLocked = false)
     {
@@ -1300,10 +1424,12 @@ public sealed class SidePanel : TabControl
         _fillSwatch.Background = Brush(first.Fill);
         _strokeSwatch.Background = Brush(first.Stroke);
         Set(StrokeWidthBox, Units.Format(first.StrokeWidth, Unit));
-        _cornerRow.IsVisible = one is RectangleObject;
+        _cornerRow.IsVisible = selected.All(o => o is RectangleObject or TextFrame or PictureObject);
+        RefreshEffects(first);
         _rotationRow.IsVisible = selected.All(o => o is not (LineObject or GroupObject or TableObject));
         Set(RotationBox, first.Rotation.ToString("0.##", CultureInfo.InvariantCulture) + "°");
-        if (one is RectangleObject r) Set(CornerBox, Units.Format(r.CornerRadius, Unit));
+        Set(CornerBox, first.Corners is { } fc ? fc.Describe(Unit) : first is RectangleObject r ? Units.Format(r.CornerRadius, Unit) : Units.Format(0, Unit));
+        CornerStyleChoice.SelectedIndex = first.Corners?.Style == CornerStyle.Cut ? 1 : 0;
         _frameRows.IsVisible = one is TextFrame;
         if (one is TextFrame f)
         {

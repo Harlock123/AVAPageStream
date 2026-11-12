@@ -167,6 +167,11 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
 - **CMYK PDFs** are made by `PdfColour` rewriting the finished PDF (read by `PdfFile`, which also writes the update):
   `rg`/`RG` in content streams become `k`/`K` or a spot colour's `scn`, Flate RGB pictures and gradients' functions
   are converted. It relies on SkiaSharp's plain PDF, as `PdfExtras.Finish` does.
+- **Effects** (`PageObject.Gradient`, `Opacity`, `FillOpacity`, `StrokeOpacity`, `Blend`, `Shadow`, `Corners`,
+  in Core's `Effects.cs`) are drawn by the window's `Effects.cs`: an object with effects is wrapped by two custom
+  draw operations, one doing `SaveLayer` (opacity, blend, shadow filter) and one `Restore`, around Avalonia's own
+  drawing of it. Their bounds are huge on purpose: one culled without the other would leave the canvas's layers
+  unmatched. Gradients are Avalonia brushes in the object's own coordinates.
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
 - **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever

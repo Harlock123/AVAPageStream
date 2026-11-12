@@ -397,4 +397,33 @@ public partial class WindowTests
         pre.Close();
         Done(w);
     }
+
+    [AvaloniaFact]
+    public void Guide_effects()
+    {
+        var w = GuideWindow();
+        var e = w.Editor;
+        var card = e.Add(SheetRef.PageAt(0), new RectangleObject
+        {
+            X = 72, Y = 90, W = 300, H = 180, Stroke = null,
+            Gradient = new Gradient(false, [new ColourStop(0, "@Blue"), new ColourStop(1, "@Cyan")], 30),
+            Shadow = new Shadow(Colours.Black, 0.45, 8, 10, 12), Corners = Corners.All(18),
+        });
+        e.Add(SheetRef.PageAt(0), new EllipseObject
+        {
+            X = 300, Y = 60, W = 200, H = 200, Stroke = null,
+            Gradient = new Gradient(true, [new ColourStop(0, "@Yellow"), new ColourStop(1, "@Red")]), Opacity = 0.85, Blend = BlendMode.Multiply,
+        });
+        var f = e.Add(SheetRef.PageAt(0), new TextFrame { X = 96, Y = 120, W = 240, H = 60, Stroke = null });
+        e.ReplaceText(f.StoryId, 0, 0, "Harbour Lights", new CharFormat(Fonts.Sans, 30, Bold: true, Colour: "@White"));
+        e.Change("Glow", d => d.Find(f.Id)!.Shadow = new Shadow("@Yellow", 0.9, 0, 0, 10, Glow: true));
+        e.Add(SheetRef.PageAt(0), new RectangleObject { X = 96, Y = 320, W = 220, H = 80, Fill = "@Green", Stroke = null, FillOpacity = 0.7, Corners = new Corners(24, 0, 24, 0, CornerStyle.Cut) });
+        w.View.Select([card.Id]);
+        w.View.FitPage();
+        ShowTab(w, 0, 180);
+        w.Refresh();
+        Guide(w, "effects");
+        Assert.NotNull(w.Editor.Doc.Find(card.Id)!.Gradient);
+        Done(w);
+    }
 }

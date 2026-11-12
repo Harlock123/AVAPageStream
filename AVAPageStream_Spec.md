@@ -671,4 +671,7 @@ What a designer laying out a page reaches for, on the program's own shapes, fram
 - **Placing PDF pages as pictures**, through PDFium (BSD-licensed): a page of a PDF placed like an SVG, kept as
   vector in the exported PDF where it can be.
 
-**Status (12 November 2026):** planned.
+**Status (12 November 2026):** started. Done: gradients, transparency and blend modes, drop shadows and glows, and
+rounded and cut corners. Gradients are set in the Object tab (dragging them on the page is still to come); an object
+with opacity, a blend mode or a shadow is drawn as a Skia layer of its own, opened and closed round Avalonia's own
+drawing of it, so its text and pictures are in it too.

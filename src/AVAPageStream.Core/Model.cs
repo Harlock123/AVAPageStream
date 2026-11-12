@@ -205,6 +205,27 @@ public abstract class PageObject
     [JsonIgnore]
     public Box WrapBox => Shapes.Extent(this).Inflate(WrapGap);
 
+    /// <summary>A gradient its fill is instead of its <see cref="Fill"/> colour, if it has one.</summary>
+    public Gradient? Gradient { get; set; }
+
+    /// <summary>How opaque the object is as a whole, and its fill and stroke apart (1: solid).</summary>
+    public double Opacity { get; set; } = 1;
+    public double FillOpacity { get; set; } = 1;
+    public double StrokeOpacity { get; set; } = 1;
+
+    /// <summary>How its colours mix with what is under it.</summary>
+    public BlendMode Blend { get; set; }
+
+    /// <summary>A drop shadow or glow, if it has one.</summary>
+    public Shadow? Shadow { get; set; }
+
+    /// <summary>For rectangles, text frames and pictures: rounded or cut corners (a rectangle's CornerRadius otherwise).</summary>
+    public Corners? Corners { get; set; }
+
+    /// <summary>Whether it is drawn as a layer of its own: see-through, blended or with a shadow.</summary>
+    [JsonIgnore]
+    public bool HasEffects => Opacity < 1 || Blend != BlendMode.Normal || Shadow is not null;
+
     /// <summary>The layer it is on, by name (null: the bottom layer). Inside a group, the group's layer counts.</summary>
     public string? Layer { get; set; }
 
