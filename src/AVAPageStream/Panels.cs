@@ -148,6 +148,9 @@ public sealed class SidePanel : TabControl
     public ToggleButton BoldToggle { get; } = Toggle("B", FontWeight.Bold);
     public ToggleButton ItalicToggle { get; } = Toggle("I", FontWeight.Normal, FontStyle.Italic);
     public ToggleButton UnderlineToggle { get; } = Toggle("U", FontWeight.Normal);
+    public ToggleButton SmallCapsToggle { get; } = Toggle("Sc", FontWeight.Normal);
+    public ToggleButton SuperToggle { get; } = Toggle("x²", FontWeight.Normal);
+    public ToggleButton SubToggle { get; } = Toggle("x₂", FontWeight.Normal);
     public TextBox TextColourBox { get; } = Ui.Box("a name or #RRGGBB");
     public TextBox TrackingBox { get; } = Ui.Box("thousandths of an em");
     public Dictionary<Align, ToggleButton> AlignButtons { get; } = [];
@@ -484,6 +487,12 @@ public sealed class SidePanel : TabControl
         BoldToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { Bold = BoldToggle.IsChecked == true }, "Bold"); };
         ItalicToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { Italic = ItalicToggle.IsChecked == true }, "Italic"); };
         UnderlineToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { Underline = UnderlineToggle.IsChecked == true }, "Underline"); };
+        SmallCapsToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { SmallCaps = SmallCapsToggle.IsChecked == true }, "Small caps"); };
+        SuperToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { Script = SuperToggle.IsChecked == true ? Script.Super : Script.Normal }, "Superscript"); };
+        SubToggle.IsCheckedChanged += (_, _) => { if (!_refreshing) View.ApplyChar(f => f with { Script = SubToggle.IsChecked == true ? Script.Sub : Script.Normal }, "Subscript"); };
+        ToolTip.SetTip(SmallCapsToggle, "Small caps");
+        ToolTip.SetTip(SuperToggle, "Superscript");
+        ToolTip.SetTip(SubToggle, "Subscript");
         Commit(TextColourBox, t =>
         {
             if (!Colours.TryRead(t, Doc.Swatches, out var c) || c is null)
@@ -557,7 +566,7 @@ public sealed class SidePanel : TabControl
             Ui.Heading("Character"),
             Ui.Row(("Font", FontChoice)),
             Ui.Row(("Size", SizeBox)),
-            Ui.Row(("Style", new StackPanel { Orientation = Orientation.Horizontal, Children = { BoldToggle, ItalicToggle, UnderlineToggle } })),
+            Ui.Row(("Style", new StackPanel { Orientation = Orientation.Horizontal, Children = { BoldToggle, ItalicToggle, UnderlineToggle, SmallCapsToggle, SuperToggle, SubToggle } })),
             Ui.Row(("Colour", TextColourBox)),
             Ui.Row(("Tracking", TrackingBox)),
             Ui.Heading("Insert"),
@@ -1073,6 +1082,9 @@ public sealed class SidePanel : TabControl
         BoldToggle.IsChecked = c.Bold;
         ItalicToggle.IsChecked = c.Italic;
         UnderlineToggle.IsChecked = c.Underline;
+        SmallCapsToggle.IsChecked = c.SmallCaps;
+        SuperToggle.IsChecked = c.Script == Script.Super;
+        SubToggle.IsChecked = c.Script == Script.Sub;
         Set(TextColourBox, Colours.Describe(c.Colour, Doc.Swatches));
         Set(TrackingBox, c.Tracking.ToString("0.##", CultureInfo.InvariantCulture));
         foreach (var (align, b) in AlignButtons) b.IsChecked = p.Align == align;

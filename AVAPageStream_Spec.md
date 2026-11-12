@@ -296,9 +296,23 @@ Text copied while typing is kept with its formats as well as put on the clipboar
 (while the clipboard still holds that text), it keeps its formats; the paragraph it lands in keeps its own format,
 and each new paragraph it makes takes the one it had. Text from other programs is pasted plain.
 
+### Small caps, super- and subscript (milestone 3)
+
+Text tab › Sc, x² and x₂. Small caps set lower-case letters as capitals at 72% of the size; superscript and
+subscript set the text at 60% of the size, raised by a third of the size or lowered by a sixth. They are ways of
+setting the characters, not changes to them: the text stays as typed, and searching finds it as typed.
+
+### Table of contents (milestone 3)
+
+Text › Table of contents… asks which paragraph styles to list (the first ticked is the top level) and puts the
+contents at the caret, or at the end of the selected frame's story: a paragraph for each paragraph in those styles on
+the pages (not the masters), in page order, as "text, tab, page number" (– for one that is overset). Each level gets
+a style of its own, Contents 1, Contents 2…, indented a step a level, with a right tab and dot leader at the column's
+width; make the contents again to bring the page numbers up to date (the styles are remade).
+
 ### Later
 
-Small caps, super- and subscript, and spelling (milestone 3).
+Spelling (milestone 3).
 
 ---
 
@@ -380,6 +394,10 @@ change partly wrong. The title shows `•` while there are changes not saved.
 
 ## 12. Files
 
+- **Templates** (milestone 3): File › Save as template writes the document as a `.avpt` (the same format) in the
+  templates folder in the user's settings folder; File › New from template starts an untitled document from one of
+  those, from any `.avpt` file, or from the built-in Newsletter (Letter, a masthead and two linked columns, page
+  numbers in the footer) and Booklet (eight A5 facing pages with one story through them, page numbers outside).
 - **`.avps`**: a ZIP archive holding `document.json` (everything but the images, as indented JSON, with a format
   version) and `images/<sha256>.<ext>` for each picture used. Images no object uses are left out on saving.
 - Saving writes a new file beside the old one and then replaces it, so a failed save never damages the old file.
@@ -394,7 +412,12 @@ change partly wrong. The title shows `•` while there are changes not saved.
 - **Export PDF**: every page (or a range) as vector PDF with its fonts embedded, at the page's size.
 - **Export PNG**: the current page or every page at a chosen resolution (72 to 600 dpi), one file per page.
 - Both draw with the same renderer as the screen, with guides, frame outlines and the pasteboard left out.
-- **Print**: milestone 3 (through the PDF on platforms that cannot print from Avalonia).
+- **Print** (File › Print, Ctrl+P; milestone 3): the same choice of pages as exporting, then the pages are written
+  to a PDF and sent to the system's printing: `lp` (CUPS) on Linux and macOS, the PDF's Print action on Windows.
+  Avalonia has no printing of its own; where there is no `lp`, the window says where the PDF is.
+- **Booklets** (milestone 3): exporting or printing can arrange the pages as a saddle-stitched booklet: each sheet
+  side twice a page wide, with two pages on it in the order that folds and nests into a booklet (8|1, 2|7, 6|3, 4|5
+  for eight pages), made up to a multiple of four with blank pages. Print both sides, flipping on the short edge.
 
 ---
 
@@ -404,6 +427,7 @@ change partly wrong. The title shows `•` while there are changes not saved.
 | --- | --- |
 | Ctrl+N, Ctrl+O, Ctrl+S, Ctrl+Shift+S | New, open, save, save as |
 | Ctrl+E | Export PDF |
+| Ctrl+P | Print |
 | Ctrl+Z, Ctrl+Y / Ctrl+Shift+Z | Undo, redo |
 | Ctrl+X, Ctrl+C, Ctrl+V | Cut, copy, paste (objects, or text when editing) |
 | Ctrl+D | Duplicate |
@@ -500,3 +524,6 @@ the story editor; find and replace; importing text and Markdown; styled copy and
 
 Printing; CMYK and spot colours; SVG and EPS pictures; spelling; small caps, super- and subscript; tables; a table of
 contents from paragraph styles; templates; booklet printing.
+
+**Status (11 November 2026):** started. Done and tested: printing, booklets, templates, the table of contents, small
+caps, superscript and subscript. Still to do: CMYK and spot colours, SVG and EPS pictures, spelling, and tables.

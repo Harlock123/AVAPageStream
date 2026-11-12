@@ -25,7 +25,8 @@ text into them, link them so a story flows from column to column and page to pag
   resize a frame. A frame whose story doesn't fit shows a red ⊞ mark; click it, then another frame, and the text flows
   on into that one, on the same page or another.
 - **Type.** Liberation Serif and Liberation Sans come built in, so a document looks the same on every computer, and
-  any installed font can be used too. Set size, bold, italic, underline, colour, tracking and kerning; alignment
+  any installed font can be used too. Set size, bold, italic, underline, small caps, superscript and subscript,
+  colour, tracking and kerning; alignment
   (left, centre, right, justified), leading, indents, space before and after, tab stops (left, right, centre and
   decimal, with leaders), drop caps and hyphenation; and paragraph styles (Body, Heading, Subheading, Caption, and
   your own) that update every paragraph using them when you redefine or rename one.
@@ -47,6 +48,11 @@ text into them, link them so a story flows from column to column and page to pag
 - **PDF and PNG.** Export all the pages, this page or a range (`1-3, 5`) as a vector PDF with its fonts embedded, or
   as PNGs at 72 to 600 dpi. They are drawn
   by the same code as the screen, so line breaks and positions match exactly.
+- **Print and booklets.** Print straight from the program (through the system's printing), and print or export a
+  booklet: pages paired on each sheet in the order that folds into a stapled booklet.
+- **A table of contents** from your headings' paragraph styles, with dot leaders to the page numbers.
+- **Templates.** Save any document as a template, and start new ones from it, or from the built-in newsletter and
+  booklet.
 - **Self-contained files.** A `.avps` document carries its pictures with it.
 
 | Styling text from the Text tab | A story too long for its frame | The exported PDF |
@@ -92,8 +98,8 @@ dotnet test AVAPageStream.slnx
 dotnet run --project src/AVAPageStream
 ```
 
-The design, and what is still to come (printing, CMYK and spot colours, SVG pictures, spelling, tables, a table of
-contents), is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md).
+The design, and what is still to come (CMYK and spot colours, SVG pictures, spelling, tables), is in
+[AVAPageStream_Spec.md](AVAPageStream_Spec.md).
 
 ## Licence
 

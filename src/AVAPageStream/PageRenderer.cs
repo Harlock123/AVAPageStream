@@ -127,7 +127,8 @@ internal sealed class PageRenderer
             if (layout.Areas[line.Area].FrameId != frame.Id) continue;
             foreach (var piece in line.Pieces)
             {
-                var f = piece.Format;
+                var given = piece.Format;
+                var f = TextFlow.AsSet(given);
                 var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
                 var baseline = line.Baseline - f.Shift + piece.Drop;
                 if (piece.Tab)
@@ -136,7 +137,16 @@ internal sealed class PageRenderer
                     continue;
                 }
                 var text = layout.Display(piece.Start, piece.Length) + (piece.Hyphen ? "-" : "");
-                if (f.Tracking == 0)
+                if (f.SmallCaps)
+                {
+                    foreach (var (part, pf, offset) in TextFlow.SmallCapsPieces(text, f))
+                    {
+                        var ft = FontSupport.Format(part, pf, brush);
+                        var x = piece.X + TextFlow.Measure(Layouts.Measurer, text[..offset], f);
+                        dc.DrawText(ft, new Point(x, baseline - ft.Baseline));
+                    }
+                }
+                else if (f.Tracking == 0)
                 {
                     var ft = FontSupport.Format(text, f, brush);
                     dc.DrawText(ft, new Point(piece.X, baseline - ft.Baseline));
@@ -313,4 +323,37 @@ internal sealed class PageVisual : Control
     }
 
     public override void Render(DrawingContext context) => _renderer.Draw(context, _doc, _sheet);
+}
+
+/// <summary>
+/// Several pages side by side on one sheet, for a booklet: each drawn at its own place across (a missing page left
+/// as blank paper). One visual for the sheet, since Avalonia draws a visual into a canvas from the canvas's corner.
+/// </summary>
+internal sealed class SheetVisual : Control
+{
+    private readonly PageRenderer _renderer;
+    private readonly Document _doc;
+    private readonly IReadOnlyList<(Sheet? Page, double X)> _pages;
+
+    public SheetVisual(Document doc, IReadOnlyList<(Sheet? Page, double X)> pages, double width, PageRenderer renderer)
+    {
+        _doc = doc;
+        _pages = pages;
+        _renderer = renderer;
+        Width = width;
+        Height = doc.Setup.PageHeight;
+        Measure(new Size(Width, Height));
+        Arrange(new Rect(0, 0, Width, Height));
+    }
+
+    public override void Render(DrawingContext context)
+    {
+        context.FillRectangle(Look.Paper, new Rect(0, 0, Width, Height));
+        foreach (var (page, x) in _pages)
+        {
+            if (page is null) continue;
+            using (context.PushTransform(Matrix.CreateTranslation(x, 0)))
+                _renderer.Draw(context, _doc, page);
+        }
+    }
 }

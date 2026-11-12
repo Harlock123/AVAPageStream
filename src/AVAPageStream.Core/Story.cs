@@ -9,7 +9,12 @@ public sealed record CharFormat(
     bool Underline = false,
     string Colour = Colours.Black,
     double Tracking = 0, // thousandths of an em added after each character
-    double Shift = 0);   // baseline shift, in points up
+    double Shift = 0,    // baseline shift, in points up
+    bool SmallCaps = false,
+    Script Script = Script.Normal);
+
+/// <summary>Superscript and subscript: set smaller, above or below the baseline.</summary>
+public enum Script { Normal, Super, Sub }
 
 public enum Align { Left, Centre, Right, Justify }
 

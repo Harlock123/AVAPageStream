@@ -46,15 +46,16 @@ internal sealed class AskDialog : Window
     }
 }
 
-/// <summary>What to export: the pages (counting from 0) and, for PNG, the resolution.</summary>
-public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi);
+/// <summary>What to export or print: the pages (counting from 0), for PNG the resolution, and for PDF or print whether as a booklet.</summary>
+public sealed record ExportChoice(IReadOnlyList<int> Pages, int Dpi, bool Booklet = false);
 
 /// <summary>Asks which pages to export (all, this one, or a range like "1-3, 5") and, for PNG, at what resolution.</summary>
 internal sealed class ExportDialog : Window
 {
-    private ExportDialog(bool png, int pageCount, int current, int dpi)
+    private ExportDialog(string kind, int pageCount, int current, int dpi)
     {
-        Title = png ? "Export PNG" : "Export PDF";
+        var png = kind == "png";
+        Title = kind switch { "png" => "Export PNG", "print" => "Print", _ => "Export PDF" };
         Width = 420;
         SizeToContent = SizeToContent.Height;
         CanResize = false;
@@ -70,9 +71,10 @@ internal sealed class ExportDialog : Window
         // TextChanged can arrive after the click that checked the range, so only a real change hides the error.
         range.TextChanged += (_, _) => { if (Error is not null && range.Text != checkedText) Error.IsVisible = false; };
         var resolution = Resolution = new NumericUpDown { Minimum = 72, Maximum = 600, Increment = 25, Value = dpi, FormatString = "0", Width = 130 };
+        var booklet = BookletBox = new CheckBox { Content = "As a booklet: pages in pairs on each sheet, in the order that folds", IsVisible = !png };
         var error = Error = new TextBlock { Foreground = Look.Error, FontSize = 12, TextWrapping = TextWrapping.Wrap, IsVisible = false };
 
-        var export = ExportButton = new Button { Content = "Export", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        var export = ExportButton = new Button { Content = kind == "print" ? "Print" : "Export", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
         export.Classes.Add("accent");
         var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
         cancel.Click += (_, _) => Close(null);
@@ -92,7 +94,7 @@ internal sealed class ExportDialog : Window
                 pages = chosen;
             }
             else pages = [.. Enumerable.Range(0, pageCount)];
-            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi)));
+            Close(new ExportChoice(pages, (int)(resolution.Value ?? dpi), booklet.IsChecked == true));
         };
 
         Content = new StackPanel
@@ -117,12 +119,14 @@ internal sealed class ExportDialog : Window
                         new TextBlock { Text = "dpi (72 to 600)", Foreground = Look.Heading, VerticalAlignment = VerticalAlignment.Center },
                     },
                 },
+                booklet,
                 error,
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { export, cancel } },
             },
         };
     }
 
+    internal CheckBox BookletBox { get; }
     internal RadioButton Some { get; }
     internal TextBox Range { get; }
     internal NumericUpDown Resolution { get; }
@@ -130,6 +134,42 @@ internal sealed class ExportDialog : Window
     internal Button ExportButton { get; }
 
     /// <summary>Asks; null if cancelled. <paramref name="current"/> is the page shown, or -1 when a master is.</summary>
-    public static Task<ExportChoice?> Show(Window owner, bool png, int pageCount, int current, int dpi) =>
-        new ExportDialog(png, pageCount, current, dpi).ShowDialog<ExportChoice?>(owner);
+    public static Task<ExportChoice?> Show(Window owner, string kind, int pageCount, int current, int dpi) =>
+        new ExportDialog(kind, pageCount, current, dpi).ShowDialog<ExportChoice?>(owner);
+}
+
+/// <summary>Asks which paragraph styles a table of contents lists, the first chosen as its top level.</summary>
+internal sealed class ContentsDialog : Window
+{
+    private ContentsDialog(IReadOnlyList<string> styles)
+    {
+        Title = "Table of contents";
+        Width = 380;
+        SizeToContent = SizeToContent.Height;
+        CanResize = false;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Background = Look.Window;
+        var boxes = styles.Select(s => new CheckBox { Content = s, IsChecked = s is "Heading" or "Subheading" }).ToList();
+        var make = new Button { Content = "Make it", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        make.Classes.Add("accent");
+        var cancel = new Button { Content = "Cancel", MinWidth = 90, HorizontalContentAlignment = HorizontalAlignment.Center };
+        make.Click += (_, _) => Close(boxes.Where(b => b.IsChecked == true).Select(b => (string)b.Content!).ToList());
+        cancel.Click += (_, _) => Close(null);
+        var list = new StackPanel { Spacing = 4 };
+        list.Children.AddRange(boxes);
+        Content = new StackPanel
+        {
+            Margin = new Thickness(20),
+            Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "List the paragraphs in these styles, with their pages. The first ticked is the top level.", Foreground = Look.Text, TextWrapping = TextWrapping.Wrap },
+                new ScrollViewer { Content = list, MaxHeight = 300 },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { make, cancel } },
+            },
+        };
+    }
+
+    public static Task<List<string>?> Show(Window owner, IReadOnlyList<string> styles) =>
+        new ContentsDialog(styles).ShowDialog<List<string>?>(owner);
 }

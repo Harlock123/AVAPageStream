@@ -40,7 +40,8 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     undo), `TextNav.cs` (words), `Snapping.cs`, `DocumentFile.cs` (the ZIP file),
     `PageRanges.cs` (reading "1-3, 5"), `Search.cs` (find through the stories in reading order), `TextImport.cs`
     (plain text and Markdown to placed paragraphs), `Tabs.cs` (tab stops), `Hyphenator.cs` (Liang's algorithm over
-    the patterns embedded from `Hyphenation/`), `AppSettings.cs`.
+    the patterns embedded from `Hyphenation/`), `Contents.cs` (a table of contents), `Imposition.cs` (booklet
+    order), `Templates.cs` (the built-in templates and .avpt files), `AppSettings.cs`.
 - `src/AVAPageStream/`: the Avalonia program, built in code rather than XAML.
   - `PageRenderer.cs`: `Layouts` (each story's layout, kept until its text, formats or areas change),
     `PageRenderer` (draws a page and its master in points) and `PageVisual` (one page as a control, for export).
@@ -48,7 +49,7 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     editing; `PageScroller.cs` puts scroll bars round it.
   - `StoryEditor.cs`: a story as plain text in a window of its own, kept in step with the page both ways.
   - `Panels.cs` (`SidePanel`: the Object, Text, Pages and Document tabs), `MainWindow.cs` (menus, tool bar, toolbox,
-    status bar, files, clipboard, keys), `Export.cs` (PDF through SkiaSharp, PNG), `FontSupport.cs` (the bundled
+    status bar, files, clipboard, keys), `Export.cs` (PDF and booklets through SkiaSharp, PNG), `Printing.cs` (lp, or Windows' Print action), `FontSupport.cs` (the bundled
     fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs` (`AskDialog`, `ExportDialog`).
   - `Assets/Fonts/`: Liberation Serif and Sans, with their licence.
 - `tests/AVAPageStream.Tests/`: xUnit v3 with Avalonia.Headless.XUnit. `Core/` tests the library with
@@ -95,6 +96,10 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   master's story is laid out once per page it is drawn under (`Layouts.Of(doc, id, page)`).
 - **Positions are points**, from the top-left of the page an object is on, rounded to 1/100 pt where the mouse sets them.
 - **Subclassed controls need `StyleKeyOverride`** (as `SidePanel` has) or the theme gives them no template.
+- **Draw a PDF page as one visual.** `DrawingContextHelper.RenderAsync` draws from the canvas's corner whatever
+  transform the canvas has, so a booklet sheet is one `SheetVisual` placing its pages itself.
+- **Small caps and scripts are ways of setting text.** Measure with `TextFlow.Measure` and draw with `TextFlow.AsSet`
+  and `SmallCapsPieces`; never pass a format with `SmallCaps` or a `Script` straight to the measurer.
 - **PDF metadata starts from `SKDocumentPdfMetadata.Default`**: a bare initialiser zeroes the encoding quality, which
   turns every picture into the worst JPEG. The export test checks for it.
 - **Errors say what to do**, in the status bar, never as a bare exception.

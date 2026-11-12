@@ -76,7 +76,7 @@ public partial class WindowTests
         var w = Open();
         w.AddPage(after: true);
         w.AddPage(after: true);
-        w.AskExport = kind => ExportDialog.Show(w, kind == "png", w.Editor.Doc.Pages.Count, 1, 150);
+        w.AskExport = kind => ExportDialog.Show(w, kind, w.Editor.Doc.Pages.Count, 1, 150);
         var asked = w.AskExport("png");
         Pump();
         var dialog = Assert.IsType<ExportDialog>(Assert.Single(w.OwnedWindows));

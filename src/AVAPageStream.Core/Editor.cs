@@ -479,29 +479,51 @@ public sealed class Editor
     public int Place(string storyId, int index, IReadOnlyList<PlacedPara> paras)
     {
         if (paras.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
-        return Change("Place text", d =>
+        return Change("Place text", d => PlaceInto(d, storyId, index, paras));
+    }
+
+    private static int PlaceInto(Document d, string storyId, int index, IReadOnlyList<PlacedPara> paras)
+    {
+        var story = d.Stories[storyId];
+        index = Math.Clamp(index, 0, story.Length);
+        var before = index > 0 && story.Text[index - 1] != '\n';
+        var after = index < story.Length && story.Text[index] != '\n';
+        var body = string.Join("\n", paras.Select(p => p.Text));
+        story.Insert(index, (before ? "\n" : "") + body + (after ? "\n" : ""), d.Style("Body").Char);
+        var at = index + (before ? 1 : 0);
+        foreach (var para in paras)
         {
-            var story = d.Stories[storyId];
-            index = Math.Clamp(index, 0, story.Length);
-            var before = index > 0 && story.Text[index - 1] != '\n';
-            var after = index < story.Length && story.Text[index] != '\n';
-            var body = string.Join("\n", paras.Select(p => p.Text));
-            story.Insert(index, (before ? "\n" : "") + body + (after ? "\n" : ""), d.Style("Body").Char);
-            var at = index + (before ? 1 : 0);
-            foreach (var para in paras)
+            story.ApplyStyle(at, 0, d.Style(para.Style));
+            if (para.LeftIndent != 0 || para.FirstIndent != 0)
+                story.FormatParas(at, 0, f => f with { LeftIndent = para.LeftIndent, FirstIndent = para.FirstIndent });
+            var run = at;
+            foreach (var r in para.Runs)
             {
-                story.ApplyStyle(at, 0, d.Style(para.Style));
-                if (para.LeftIndent != 0 || para.FirstIndent != 0)
-                    story.FormatParas(at, 0, f => f with { LeftIndent = para.LeftIndent, FirstIndent = para.FirstIndent });
-                var run = at;
-                foreach (var r in para.Runs)
-                {
-                    if (r.Bold || r.Italic) story.FormatChars(run, r.Text.Length, f => f with { Bold = f.Bold || r.Bold, Italic = f.Italic || r.Italic });
-                    run += r.Text.Length;
-                }
-                at += para.Text.Length + 1;
+                if (r.Bold || r.Italic) story.FormatChars(run, r.Text.Length, f => f with { Bold = f.Bold || r.Bold, Italic = f.Italic || r.Italic });
+                run += r.Text.Length;
             }
-            return index + (before ? 1 : 0) + body.Length;
+            at += para.Text.Length + 1;
+        }
+        return index + (before ? 1 : 0) + body.Length;
+    }
+
+    /// <summary>
+    /// Puts a table of contents into a story at <paramref name="index"/>, as one step: a "Contents" style for each
+    /// level (made, or remade, with its page-number tab at <paramref name="width"/>), then a paragraph an entry.
+    /// </summary>
+    public int InsertContents(string storyId, int index, IReadOnlyList<ContentsEntry> entries, double width)
+    {
+        if (entries.Count == 0 || !Doc.Stories.ContainsKey(storyId)) return index;
+        return Change("Table of contents", d =>
+        {
+            foreach (var level in entries.Select(e => e.Level).Distinct())
+            {
+                var style = Contents.MakeStyle(d, level, width);
+                var i = d.Styles.FindIndex(s => s.Name == style.Name);
+                if (i >= 0) d.Styles[i] = style;
+                else d.Styles.Add(style);
+            }
+            return PlaceInto(d, storyId, index, Contents.Paragraphs(entries));
         });
     }
 

@@ -2,6 +2,8 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
+    <!-- One test reads a rendered bitmap's pixels. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <!-- The tests pass no cancellation tokens: each is quick, and none waits on anything outside. -->
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
   </PropertyGroup>

@@ -46,6 +46,42 @@ internal static class Export
         }
     }
 
+    /// <summary>
+    /// Writes the pages as a booklet: each PDF page a sheet side twice a page wide, with two pages on it in the order
+    /// that folds into a saddle-stitched booklet (made up to a multiple of four with blank pages).
+    /// </summary>
+    public static async Task Booklet(Document doc, string path, IReadOnlyList<int>? pages = null, string? title = null)
+    {
+        var chosen = pages ?? Enumerable.Range(0, doc.Pages.Count).ToList();
+        var renderer = new PageRenderer(new Layouts(FontMeasurer.Shared)) { Screen = false };
+        var (w, h) = (doc.Setup.PageWidth, doc.Setup.PageHeight);
+        var temp = path + ".part";
+        try
+        {
+            await using (var stream = File.Create(temp))
+            {
+                var metadata = SKDocumentPdfMetadata.Default;
+                metadata.Title = title ?? Path.GetFileNameWithoutExtension(path);
+                metadata.Creator = metadata.Producer = "AVAPageStream";
+                using var pdf = SKDocument.CreatePdf(stream, metadata);
+                foreach (var side in Imposition.Booklet(chosen.Count))
+                {
+                    var canvas = pdf.BeginPage((float)(2 * w), (float)h);
+                    Sheet? Page(int? slot) => slot is { } i ? doc.Pages[chosen[i]] : null;
+                    var sheet = new SheetVisual(doc, [(Page(side.Left), 0), (Page(side.Right), w)], 2 * w, renderer);
+                    await DrawingContextHelper.RenderAsync(canvas, sheet, new Rect(0, 0, 2 * w, h), new Vector(96, 96));
+                    pdf.EndPage();
+                }
+                pdf.Close();
+            }
+            File.Move(temp, path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temp)) File.Delete(temp);
+        }
+    }
+
     /// <summary>Writes one page to a PNG at a resolution in dots per inch.</summary>
     public static void Png(Document doc, Sheet sheet, string path, int dpi)
     {

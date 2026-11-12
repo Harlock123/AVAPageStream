@@ -242,9 +242,48 @@ public static class TextFlow
 {
     private const double Slack = 0.01;
 
-    /// <summary>A string's width in a format, tracking included.</summary>
-    public static double Measure(ITextMeasurer m, string text, CharFormat f) =>
-        text.Length == 0 ? 0 : m.Width(text, f) + text.Length * f.Tracking / 1000 * f.Size;
+    /// <summary>A string's width in a format, tracking, small caps and super- or subscript included.</summary>
+    public static double Measure(ITextMeasurer m, string text, CharFormat f)
+    {
+        if (text.Length == 0) return 0;
+        f = AsSet(f);
+        var tracking = text.Length * f.Tracking / 1000 * f.Size;
+        if (!f.SmallCaps) return m.Width(text, f) + tracking;
+        return SmallCapsPieces(text, f).Sum(p => m.Width(p.Text, p.Format)) + tracking;
+    }
+
+    /// <summary>The size small capitals are set at, of the format's size.</summary>
+    public const double SmallCapsScale = 0.72;
+
+    /// <summary>
+    /// A format as it is set: superscript and subscript at 60% of the size, raised by a third of the size or lowered
+    /// by a sixth (on top of any baseline shift).
+    /// </summary>
+    public static CharFormat AsSet(CharFormat f) => f.Script switch
+    {
+        Script.Super => f with { Script = Script.Normal, Size = Math.Round(f.Size * 0.6, 2), Shift = f.Shift + f.Size * 0.33 },
+        Script.Sub => f with { Script = Script.Normal, Size = Math.Round(f.Size * 0.6, 2), Shift = f.Shift - f.Size * 0.16 },
+        _ => f,
+    };
+
+    /// <summary>
+    /// Small caps as runs to draw: capitals and everything that isn't a lower-case letter as they are, lower-case
+    /// letters as capitals at <see cref="SmallCapsScale"/> of the size. Each run keeps its offset into the text.
+    /// </summary>
+    public static IEnumerable<(string Text, CharFormat Format, int Offset)> SmallCapsPieces(string text, CharFormat f)
+    {
+        var small = f with { SmallCaps = false, Size = Math.Round(f.Size * SmallCapsScale, 2) };
+        var big = f with { SmallCaps = false };
+        var i = 0;
+        while (i < text.Length)
+        {
+            var lower = char.IsLower(text[i]);
+            var j = i;
+            while (j < text.Length && char.IsLower(text[j]) == lower) j++;
+            yield return lower ? (text[i..j].ToUpperInvariant(), small, i) : (text[i..j], big, i);
+            i = j;
+        }
+    }
 
     /// <summary>The leading of a line: the paragraph's, or 120% of its largest size.</summary>
     public static double Leading(ParaFormat para, double largestSize) => para.Leading > 0 ? para.Leading : largestSize * 1.2;
@@ -424,9 +463,10 @@ public static class TextFlow
     private static (double Ascent, double Descent) Height(IEnumerable<CharFormat> formats, ITextMeasurer m)
     {
         double ascent = 0, descent = 0;
-        foreach (var f in formats)
+        foreach (var given in formats)
         {
-            var fm = m.Metrics(f);
+            var f = AsSet(given);
+            var fm = m.Metrics(f with { SmallCaps = false });
             ascent = Math.Max(ascent, fm.Ascent + Math.Max(0, f.Shift));
             descent = Math.Max(descent, fm.Descent - Math.Min(0, f.Shift));
         }

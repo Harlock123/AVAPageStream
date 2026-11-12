@@ -49,6 +49,7 @@ public sealed class MainWindow : Window
     public CheckBox WholeWord { get; } = new() { Content = "Whole word", FontSize = 12 };
     public TextBlock FindStatus { get; } = new() { Foreground = Look.Heading, FontSize = 12, VerticalAlignment = VerticalAlignment.Center };
     private readonly MenuItem _recentMenu = new() { Header = "Open _recent" };
+    private readonly MenuItem _templatesMenu = new() { Header = "New from _template" };
     private readonly MenuItem _snapItem = new() { Header = "_Snap to guides", ToggleType = MenuItemToggleType.CheckBox };
     private readonly MenuItem _guidesItem = new() { Header = "Show _guides", ToggleType = MenuItemToggleType.CheckBox };
     private readonly MenuItem _gridItem = new() { Header = "Show g_rid", ToggleType = MenuItemToggleType.CheckBox };
@@ -59,6 +60,15 @@ public sealed class MainWindow : Window
 
     /// <summary>Asks which pages to export (kind "pdf" or "png") and at what resolution; tests answer it themselves.</summary>
     public Func<string, Task<ExportChoice?>> AskExport { get; set; }
+
+    /// <summary>Asks which styles a table of contents lists; tests answer it themselves.</summary>
+    public Func<IReadOnlyList<string>, Task<List<string>?>> AskContents { get; set; } = _ => Task.FromResult<List<string>?>(null);
+
+    /// <summary>Sends a PDF to the printer, returning why it couldn't; tests answer it themselves.</summary>
+    public Func<string, Task<string?>> SendToPrinter { get; set; } = Printing.Send;
+
+    /// <summary>The folder templates are saved in.</summary>
+    public string TemplatesFolder { get; set; } = Path.Combine(AppSettings.Folder, "templates");
 
     /// <summary>Asks for a file to open (by kind: "document" or "image"); tests answer it themselves.</summary>
     public Func<string, Task<string?>> PickOpen { get; set; }
@@ -83,7 +93,8 @@ public sealed class MainWindow : Window
         Icon = new WindowIcon(Avalonia.Platform.AssetLoader.Open(new Uri("avares://AVAPageStream/Assets/AVAPageStream.png")));
 
         View = new PageView(Editor) { Snap = Settings.Snap, ShowGuides = Settings.ShowGuides, ShowGrid = Settings.ShowGrid, SnapGrid = Settings.SnapGrid };
-        AskExport = kind => ExportDialog.Show(this, kind == "png", Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
+        AskExport = kind => ExportDialog.Show(this, kind, Editor.Doc.Pages.Count, View.Sheet.IsMaster ? -1 : View.Sheet.Index, Settings.ExportDpi);
+        AskContents = styles => ContentsDialog.Show(this, styles);
         View.PickImage = async () => await PickOpen("image") is { } path ? await File.ReadAllBytesAsync(path) : null;
         View.SelectionChanged += Refresh;
         View.ViewChanged += () => ZoomInfo.Text = $"{Math.Round(View.Zoom * 100)}%";
@@ -160,6 +171,8 @@ public sealed class MainWindow : Window
         _gridItem.Click += (_, _) => SetGrid(show: !View.ShowGrid, snap: View.SnapGrid);
         _snapGridItem.Click += (_, _) => SetGrid(show: View.ShowGrid || !View.SnapGrid, snap: !View.SnapGrid);
         _recentMenu.SubmenuOpened += (_, _) => FillRecent();
+        _templatesMenu.SubmenuOpened += (_, _) => FillTemplates();
+        FillTemplates();
         FillRecent();
 
         return new Menu
@@ -173,14 +186,17 @@ public sealed class MainWindow : Window
                     Items =
                     {
                         Item("_New", () => _ = New(), "Ctrl+N"),
+                        _templatesMenu,
                         Item("_Open…", () => _ = OpenWithPicker(), "Ctrl+O"),
                         _recentMenu,
                         new Separator(),
                         Item("_Save", () => _ = Save(), "Ctrl+S"),
                         Item("Save _as…", () => _ = SaveAs(), "Ctrl+Shift+S"),
+                        Item("Save as _template…", () => _ = SaveAsTemplate()),
                         new Separator(),
                         Item("Export _PDF…", () => _ = ExportPdf(), "Ctrl+E"),
                         Item("Export P_NG…", () => _ = ExportPng()),
+                        Item("P_rint…", () => _ = Print(), "Ctrl+P"),
                         new Separator(),
                         Item("_Quit", Close, "Ctrl+Q"),
                     },
@@ -252,6 +268,7 @@ public sealed class MainWindow : Window
                         Item("_Underline", () => View.ToggleChar(f => f.Underline, (f, v) => f with { Underline = v }, "Underline"), "Ctrl+U"),
                         new Separator(),
                         Item("_Story editor…", () => OpenStoryEditor(), "Ctrl+Shift+E"),
+                        Item("Table of _contents…", () => _ = MakeContents()),
                         new Separator(),
                         Item("Insert page _number", () => View.InsertField(Fields.PageNumber), "Ctrl+Shift+D3"),
                         Item("Insert page c_ount", () => View.InsertField(Fields.PageCount)),
@@ -843,8 +860,11 @@ public sealed class MainWindow : Window
         if (!path.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) path += ".pdf";
         try
         {
-            await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName);
-            Say($"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.");
+            if (choice.Booklet) await Export.Booklet(Editor.Doc, path, choice.Pages, BaseName);
+            else await Export.Pdf(Editor.Doc, path, choice.Pages, BaseName);
+            Say(choice.Booklet
+                ? $"Exported {Pages(choice.Pages.Count)} as a booklet of {Imposition.Booklet(choice.Pages.Count).Count / 2} sheets, printed both sides, to {Path.GetFileName(path)}."
+                : $"Exported {Pages(choice.Pages.Count)} to {Path.GetFileName(path)}.");
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
@@ -876,6 +896,103 @@ public sealed class MainWindow : Window
 
     private static string Pages(int n) => n == 1 ? "1 page" : $"{n} pages";
 
+    /// <summary>Prints: the pages (or a booklet of them) as a PDF sent to the system's printing.</summary>
+    public async Task Print()
+    {
+        if (await AskExport("print") is not { } choice) return;
+        var pdf = Path.Combine(Path.GetTempPath(), $"AVAPageStream print {DateTime.Now:yyyyMMdd-HHmmss}.pdf");
+        try
+        {
+            if (choice.Booklet) await Export.Booklet(Editor.Doc, pdf, choice.Pages, BaseName);
+            else await Export.Pdf(Editor.Doc, pdf, choice.Pages, BaseName);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't make the pages to print: {e.Message}");
+            return;
+        }
+        var why = await SendToPrinter(pdf);
+        Say(why ?? (choice.Booklet ? "Sent the booklet to the printer: print it on both sides, flipping on the short edge." : $"Sent {Pages(choice.Pages.Count)} to the printer."));
+    }
+
+    /// <summary>Puts a table of contents of the chosen styles at the caret, or at the end of the selected frame's story.</summary>
+    public async Task MakeContents()
+    {
+        string storyId;
+        int at;
+        if (View.Editing is { } t) (storyId, at) = (t.StoryId, t.Caret);
+        else if (View.Selected is [TextFrame f] && Editor.Doc.StoryOf(f) is { } s) (storyId, at) = (s.Id, s.Length);
+        else { Say("Put the caret in a text frame, or select one, for the table of contents to go in."); return; }
+        var styles = Editor.Doc.Styles.Select(s => s.Name).Where(n => !n.StartsWith("Contents ", StringComparison.Ordinal)).ToList();
+        if (await AskContents(styles) is not { Count: > 0 } chosen) return;
+        var entries = Contents.Find(Editor.Doc, chosen, FontMeasurer.Shared);
+        if (entries.Count == 0) { Say($"No paragraphs are in {string.Join(" or ", chosen)} yet."); return; }
+        // The page numbers' tab goes at the right of the column the contents go in.
+        var frame = Editor.Doc.Stories[storyId].Frames.Select(Editor.Doc.Find).OfType<TextFrame>().FirstOrDefault();
+        var width = frame?.ColumnBoxes().First().W ?? 300;
+        var caret = Editor.InsertContents(storyId, at, entries, width);
+        View.Reveal(storyId, caret, 0);
+        Say($"Made a table of contents of {entries.Count} entries. Make it again to bring its page numbers up to date.");
+        Refresh();
+    }
+
+    public async Task<bool> SaveAsTemplate()
+    {
+        if (await PickSave("template", BaseName + Templates.Extension) is not { } path) return false;
+        if (!path.EndsWith(Templates.Extension, StringComparison.OrdinalIgnoreCase)) path += Templates.Extension;
+        try
+        {
+            DocumentFile.Save(Editor.Doc, path);
+            Say($"Saved the template {Path.GetFileNameWithoutExtension(path)}. File › New from template starts a document from it.");
+            return true;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't save the template: {e.Message}");
+            return false;
+        }
+    }
+
+    /// <summary>Starts a new, untitled document from a template: a built-in one, or a template file.</summary>
+    public async Task NewFrom(Template? builtIn, string? file = null)
+    {
+        if (!await SaveChanges()) return;
+        try
+        {
+            var doc = builtIn is not null ? builtIn.Make() : DocumentFile.Load(file!);
+            Use(new Editor(doc), null);
+            Say($"A new document from the {builtIn?.Name ?? Path.GetFileNameWithoutExtension(file)} template.");
+        }
+        catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            Say($"Couldn't use that template: {e.Message}");
+        }
+    }
+
+    private void FillTemplates()
+    {
+        _templatesMenu.Items.Clear();
+        foreach (var t in Templates.BuiltIn)
+        {
+            var item = new MenuItem { Header = t.Name };
+            ToolTip.SetTip(item, t.Description);
+            item.Click += (_, _) => _ = NewFrom(t);
+            _templatesMenu.Items.Add(item);
+        }
+        var saved = Templates.InFolder(TemplatesFolder).ToList();
+        if (saved.Count > 0) _templatesMenu.Items.Add(new Separator());
+        foreach (var path in saved)
+        {
+            var item = new MenuItem { Header = Path.GetFileNameWithoutExtension(path).Replace("_", "__") };
+            item.Click += (_, _) => _ = NewFrom(null, path);
+            _templatesMenu.Items.Add(item);
+        }
+        _templatesMenu.Items.Add(new Separator());
+        var other = new MenuItem { Header = "A template file…" };
+        other.Click += async (_, _) => { if (await PickOpen("template") is { } path) await NewFrom(null, path); };
+        _templatesMenu.Items.Add(other);
+    }
+
     private void FillRecent()
     {
         _recentMenu.Items.Clear();
@@ -898,6 +1015,7 @@ public sealed class MainWindow : Window
             {
                 "image" => [new FilePickerFileType("Pictures") { Patterns = ["*.png", "*.jpg", "*.jpeg", "*.gif", "*.bmp", "*.webp"] }],
                 "text" => [new FilePickerFileType("Text and Markdown") { Patterns = ["*.txt", "*.md", "*.markdown", "*.text"] }],
+                "template" => [new FilePickerFileType("AVAPageStream templates") { Patterns = ["*" + Templates.Extension] }],
                 _ => [new FilePickerFileType("AVAPageStream documents") { Patterns = ["*" + DocumentFile.Extension] }],
             },
         });
@@ -910,10 +1028,19 @@ public sealed class MainWindow : Window
         {
             "pdf" => ("PDF", "*.pdf", "pdf"),
             "png" => ("PNG picture", "*.png", "png"),
+            "template" => ("AVAPageStream template", "*" + Templates.Extension, Templates.Extension.TrimStart('.')),
             _ => ("AVAPageStream document", "*" + DocumentFile.Extension, DocumentFile.Extension.TrimStart('.')),
         };
+        IStorageFolder? start = null;
+        if (kind == "template")
+        {
+            // Templates saved in the templates folder are offered by File › New from template.
+            Directory.CreateDirectory(TemplatesFolder);
+            start = await StorageProvider.TryGetFolderFromPathAsync(TemplatesFolder);
+        }
         var file = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
         {
+            SuggestedStartLocation = start,
             Title = kind == "document" ? "Save the document" : "Export",
             SuggestedFileName = suggested,
             DefaultExtension = ext,
@@ -955,6 +1082,7 @@ public sealed class MainWindow : Window
             case Key.E when shift: OpenStoryEditor(); break;
             case Key.E: _ = ExportPdf(); break;
             case Key.Q: Close(); break;
+            case Key.P: _ = Print(); break;
             case Key.Z when inBox: return;
             case Key.Z when shift: Redo(); break;
             case Key.Z: Undo(); break;
