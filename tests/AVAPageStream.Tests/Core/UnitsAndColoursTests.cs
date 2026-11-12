@@ -62,11 +62,14 @@ public class UnitsAndColoursTests
         Assert.True(Colours.TryRead("80FF0000", swatches, out var clear));
         Assert.Equal("#80FF0000", clear);
         Assert.True(Colours.TryRead("blue", swatches, out var blue));
-        Assert.Equal("#2050D0", blue);
+        Assert.Equal("@Blue", blue);                        // a swatch's name refers to the swatch
+        Assert.Equal("#2050D0", Colours.Resolve(blue, swatches));
         Assert.True(Colours.TryRead("none", swatches, out var none));
         Assert.Null(none);
         Assert.False(Colours.TryRead("#12345", swatches, out _));
-        Assert.Equal("Blue", Colours.Describe("#2050D0", swatches));
+        Assert.Equal("Blue", Colours.Describe("@Blue", swatches));
+        Assert.Equal("#2050D0", Colours.Describe("#2050D0", swatches)); // a value is a value, even one a swatch has
+        Assert.Null(Colours.Resolve("@Gone", swatches));
         Assert.Equal("#123456", Colours.Describe("#123456", swatches));
         Assert.Equal("none", Colours.Describe(null, swatches));
     }

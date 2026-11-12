@@ -82,8 +82,8 @@ internal sealed class PageRenderer
     {
         using var turned = o.Rotation != 0 ? dc.PushTransform(Turn(o, 1, new Vector(0, 0))) : (DrawingContext.PushedState?)null;
         var rect = new Rect(o.X, o.Y, Math.Max(0, o.W), Math.Max(0, o.H));
-        var fill = BrushOf(o.Fill);
-        var pen = o.Stroke is not null && o.StrokeWidth > 0 && BrushOf(o.Stroke) is { } sb ? new Pen(sb, o.StrokeWidth) : null;
+        var fill = BrushOf(doc, o.Fill);
+        var pen = o.Stroke is not null && o.StrokeWidth > 0 && BrushOf(doc, o.Stroke) is { } sb ? new Pen(sb, o.StrokeWidth) : null;
         switch (o)
         {
             case RectangleObject r:
@@ -126,7 +126,7 @@ internal sealed class PageRenderer
             foreach (var piece in line.Pieces)
             {
                 var f = piece.Format;
-                var brush = BrushOf(f.Colour) ?? Brushes.Black;
+                var brush = BrushOf(doc, f.Colour) ?? Brushes.Black;
                 var text = layout.Display(piece.Start, piece.Length).Replace('\t', ' ');
                 var baseline = line.Baseline - f.Shift;
                 if (f.Tracking == 0)
@@ -242,6 +242,9 @@ internal sealed class PageRenderer
         _bitmaps[key] = bitmap;
         return bitmap;
     }
+
+    /// <summary>The brush for a colour: a swatch's own colour for a reference to one.</summary>
+    public IBrush? BrushOf(Document doc, string? colour) => BrushOf(Colours.Resolve(colour, doc.Swatches));
 
     public IBrush? BrushOf(string? colour)
     {

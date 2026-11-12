@@ -163,3 +163,33 @@ public class SearchAndPlaceTests
         Assert.Equal((-1.0, 2.0), on.SnapBox(new Box(55, 70, 10, 10), 3));
     }
 }
+
+public class SwatchTests
+{
+    [Fact]
+    public void Changing_renaming_and_deleting_a_swatch_reach_everything_using_it()
+    {
+        var e = new Editor(Document.New());
+        Assert.Null(e.AddSwatch("Harbour blue", "#1C2433"));
+        Assert.NotNull(e.AddSwatch("harbour BLUE", "#000000"));
+        Assert.NotNull(e.AddSwatch("Bad", "blue-ish"));
+        var box = e.Add(SheetRef.PageAt(0), new RectangleObject { Fill = "@Harbour blue", Stroke = "@Harbour blue" });
+        var frame = e.Add(SheetRef.PageAt(0), new TextFrame { W = 100, H = 100 });
+        e.ReplaceText(frame.StoryId, 0, 0, "inked", new CharFormat(Colour: "@Harbour blue"));
+        e.DefineStyle(e.Doc.Style("Caption") with { Char = e.Doc.Style("Caption").Char with { Colour = "@Harbour blue" } });
+
+        Assert.Null(e.ChangeSwatch("Harbour blue", "#203050"));
+        Assert.Equal("#203050", Colours.Resolve(e.Doc.Find(box.Id)!.Fill, e.Doc.Swatches));
+
+        Assert.Null(e.RenameSwatch("Harbour blue", "Navy"));
+        Assert.Equal("@Navy", e.Doc.Find(box.Id)!.Fill);
+        Assert.Equal("@Navy", e.Doc.Stories[frame.StoryId].FormatAt(0).Colour);
+        Assert.Equal("@Navy", e.Doc.Style("Caption").Char.Colour);
+
+        Assert.Null(e.DeleteSwatch("Navy"));
+        Assert.Equal("#203050", e.Doc.Find(box.Id)!.Stroke); // kept as a plain colour
+        Assert.Equal("#203050", e.Doc.Stories[frame.StoryId].FormatAt(0).Colour);
+        e.Undo();
+        Assert.Equal("@Navy", e.Doc.Find(box.Id)!.Stroke);
+    }
+}

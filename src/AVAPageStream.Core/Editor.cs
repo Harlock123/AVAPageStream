@@ -514,6 +514,73 @@ public sealed class Editor
         foreach (var story in d.Stories.Values) story.Restyle(style);
     });
 
+    // ---- Swatches -------------------------------------------------------------------------------------------
+
+    public string? AddSwatch(string name, string colour)
+    {
+        name = name.Trim();
+        if (name.Length == 0 || name.Contains('@')) return "A swatch needs a name (without @).";
+        if (Doc.Swatches.Any(w => w.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return $"There is already a swatch called {name}.";
+        if (!Colours.TryParse(colour, out var c)) return "Type the swatch's colour as #RRGGBB.";
+        Change("Add swatch " + name, d => d.Swatches.Add(new Swatch(name, c.Hex)));
+        return null;
+    }
+
+    /// <summary>Gives a swatch a new colour: everything using it changes with it.</summary>
+    public string? ChangeSwatch(string name, string colour)
+    {
+        if (!Colours.TryParse(colour, out var c)) return "Type the swatch's colour as #RRGGBB.";
+        var i = Doc.Swatches.FindIndex(w => w.Name == name);
+        if (i < 0) return $"There is no swatch called {name}.";
+        Change("Change swatch " + name, d => d.Swatches[i] = d.Swatches[i] with { Colour = c.Hex });
+        return null;
+    }
+
+    /// <summary>Renames a swatch, and everything using it follows.</summary>
+    public string? RenameSwatch(string old, string name)
+    {
+        name = name.Trim();
+        if (name.Length == 0 || name.Contains('@')) return "A swatch needs a name (without @).";
+        if (name == old) return null;
+        if (Doc.Swatches.Any(w => w.Name.Equals(name, StringComparison.OrdinalIgnoreCase))) return $"There is already a swatch called {name}.";
+        var i = Doc.Swatches.FindIndex(w => w.Name == old);
+        if (i < 0) return $"There is no swatch called {old}.";
+        Change("Rename swatch " + old, d =>
+        {
+            d.Swatches[i] = d.Swatches[i] with { Name = name };
+            Recolour(d, Colours.Ref(old), Colours.Ref(name));
+        });
+        return null;
+    }
+
+    /// <summary>Deletes a swatch; what used it keeps its colour as a plain value.</summary>
+    public string? DeleteSwatch(string name)
+    {
+        var i = Doc.Swatches.FindIndex(w => w.Name == name);
+        if (i < 0) return $"There is no swatch called {name}.";
+        Change("Delete swatch " + name, d =>
+        {
+            var value = d.Swatches[i].Colour;
+            d.Swatches.RemoveAt(i);
+            Recolour(d, Colours.Ref(name), value);
+        });
+        return null;
+    }
+
+    /// <summary>Replaces one colour with another everywhere: objects' fills and strokes, text, and styles.</summary>
+    private static void Recolour(Document d, string from, string to)
+    {
+        foreach (var o in d.AllObjects)
+        {
+            if (o.Fill == from) o.Fill = to;
+            if (o.Stroke == from) o.Stroke = to;
+        }
+        foreach (var story in d.Stories.Values)
+            story.FormatChars(0, story.Length + 1, f => f.Colour == from ? f with { Colour = to } : f);
+        for (var k = 0; k < d.Styles.Count; k++)
+            if (d.Styles[k].Char.Colour == from) d.Styles[k] = d.Styles[k] with { Char = d.Styles[k].Char with { Colour = to } };
+    }
+
     /// <summary>Makes the document facing or single-sided; a facing document's masters each get a left side.</summary>
     public void SetFacing(bool facing) => Change(facing ? "Facing pages" : "Single pages", d =>
     {

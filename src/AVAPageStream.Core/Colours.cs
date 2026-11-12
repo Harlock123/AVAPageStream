@@ -12,8 +12,8 @@ public readonly record struct Rgba(byte A, byte R, byte G, byte B)
 public sealed record Swatch(string Name, string Colour);
 
 /// <summary>
-/// Colours are kept in the document as text: "#RRGGBB" or "#AARRGGBB", or null for none. A swatch's name may be typed
-/// in place of the value.
+/// Colours are kept in the document as text: "#RRGGBB" or "#AARRGGBB", "@Name" for the document's swatch of that name
+/// (so changing the swatch changes everything using it), or null for none.
 /// </summary>
 public static class Colours
 {
@@ -26,6 +26,19 @@ public static class Colours
         new("Red", "#E02020"), new("Green", "#1E9E40"), new("Blue", "#2050D0"),
         new("Cyan", "#00A0E0"), new("Magenta", "#D0008A"), new("Yellow", "#FFD800"),
     ];
+
+    /// <summary>A colour that refers to a swatch by name.</summary>
+    public static string Ref(string swatch) => "@" + swatch;
+
+    public static bool IsRef(string? colour) => colour is { Length: > 1 } && colour[0] == '@';
+
+    /// <summary>The value a colour stands for: a swatch's colour for a reference (null if there is no such swatch), else itself.</summary>
+    public static string? Resolve(string? colour, IEnumerable<Swatch> swatches)
+    {
+        if (!IsRef(colour)) return colour;
+        var name = colour![1..];
+        return swatches.FirstOrDefault(w => w.Name == name)?.Colour;
+    }
 
     public static bool TryParse(string? text, out Rgba colour)
     {
@@ -40,7 +53,7 @@ public static class Colours
     }
 
     /// <summary>
-    /// Reads a typed colour: "none" (or nothing) is no colour, a swatch name gives its colour, otherwise a hex value.
+    /// Reads a typed colour: "none" (or nothing) is no colour, a swatch's name refers to the swatch, otherwise a hex value.
     /// Returns false, leaving <paramref name="colour"/> null, for anything else.
     /// </summary>
     public static bool TryRead(string? text, IEnumerable<Swatch> swatches, out string? colour)
@@ -48,9 +61,9 @@ public static class Colours
         colour = null;
         var s = text?.Trim() ?? "";
         if (s.Length == 0 || s.Equals("none", StringComparison.OrdinalIgnoreCase)) return true;
-        if (swatches.FirstOrDefault(w => w.Name.Equals(s, StringComparison.OrdinalIgnoreCase)) is { } swatch)
+        if (swatches.FirstOrDefault(w => w.Name.Equals(s.TrimStart('@'), StringComparison.OrdinalIgnoreCase)) is { } swatch)
         {
-            colour = swatch.Colour;
+            colour = Ref(swatch.Name);
             return true;
         }
         if (!TryParse(s, out var rgba)) return false;
@@ -58,11 +71,11 @@ public static class Colours
         return true;
     }
 
-    /// <summary>How a colour is shown in a box: its swatch's name if it has one, its hex value otherwise, or "none".</summary>
+    /// <summary>How a colour is shown in a box: the swatch's name for a reference, the hex value otherwise, or "none".</summary>
     public static string Describe(string? colour, IEnumerable<Swatch> swatches)
     {
         if (colour is null) return "none";
-        if (!TryParse(colour, out var c)) return colour;
-        return swatches.FirstOrDefault(w => TryParse(w.Colour, out var s) && s == c)?.Name ?? c.Hex;
+        if (IsRef(colour)) return colour[1..];
+        return TryParse(colour, out var c) ? c.Hex : colour;
     }
 }

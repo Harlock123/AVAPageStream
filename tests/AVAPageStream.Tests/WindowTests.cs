@@ -316,7 +316,7 @@ public partial class WindowTests
         Press(w, Key.Enter);
         var o = w.Editor.Doc.Find(rect.Id)!;
         Assert.Equal(72, o.X);
-        Assert.Equal("#E02020", o.Fill);
+        Assert.Equal("@Red", o.Fill); // by the swatch, so it follows the swatch
         Assert.Equal("Red", w.Panel.FillBox.Text);
 
         w.Panel.YBox.Focus();

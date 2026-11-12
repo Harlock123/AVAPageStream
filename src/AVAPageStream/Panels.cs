@@ -134,6 +134,8 @@ public sealed class SidePanel : TabControl
     private readonly StackPanel _rotationRow = new();
     private readonly StackPanel _frameRows = new();
     private readonly StackPanel _pictureRows = new();
+    private readonly WrapPanel _swatchButtons = new() { Margin = new Thickness(74, 2, 0, 4) };
+    private List<Swatch> _swatchesShown = [];
     private readonly Border _fillSwatch = Swatch();
     private readonly Border _strokeSwatch = Swatch();
 
@@ -190,6 +192,11 @@ public sealed class SidePanel : TabControl
     public TextBox MasterGutterBox { get; } = Ui.Box();
     private readonly StackPanel _masterGuides = new();
     private readonly StackPanel _masterGuideBoxes = new();
+
+    // Swatches
+    public ListBox SwatchList { get; } = new() { MaxHeight = 220, FontSize = 12 };
+    public TextBox SwatchNameBox { get; } = Ui.Box("Name");
+    public TextBox SwatchValueBox { get; } = Ui.Box("#RRGGBB");
 
     public ComboBox UnitChoice { get; } = new() { ItemsSource = Units.All.Select(Units.Name).ToList(), HorizontalAlignment = HorizontalAlignment.Stretch, FontSize = 12 };
 
@@ -255,31 +262,7 @@ public sealed class SidePanel : TabControl
 
     private Control BuildObject()
     {
-        var swatchMenu = new WrapPanel { Margin = new Thickness(74, 2, 0, 4) };
-        foreach (var s in Colours.DefaultSwatches().Prepend(new Swatch("None", "")))
-        {
-            var name = s.Name;
-            var b = new Button
-            {
-                Width = 18,
-                Height = 18,
-                Padding = new Thickness(0),
-                Margin = new Thickness(0, 0, 3, 3),
-                Background = s.Colour.Length > 0 ? new SolidColorBrush(Color.Parse(s.Colour)) : Brushes.Transparent,
-                BorderBrush = Look.Border,
-                BorderThickness = new Thickness(1),
-                Content = s.Colour.Length == 0 ? new TextBlock { Text = "∅", FontSize = 11, Foreground = Look.Heading, HorizontalAlignment = HorizontalAlignment.Center } : null,
-            };
-            ToolTip.SetTip(b, name + " (click: fill, Shift+click: stroke)");
-            b.Click += (_, _) => { };
-            b.AddHandler(PointerReleasedEvent, (_, e) =>
-            {
-                var stroke = (e.KeyModifiers & KeyModifiers.Shift) != 0;
-                SetColour(stroke, name);
-            }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
-            swatchMenu.Children.Add(b);
-        }
-
+        var swatchMenu = _swatchButtons;
         // Through Bounds, so a group or path moves (and scales) what is in it.
         MeasureBox(XBox, (o, v) => o.Bounds = o.Bounds with { X = v }, "Move");
         MeasureBox(YBox, (o, v) => o.Bounds = o.Bounds with { Y = v }, "Move");
@@ -766,6 +749,23 @@ public sealed class SidePanel : TabControl
             if (Math.Abs(v - Doc.Setup.Grid) > 0.001) Editor.Change("Grid spacing", d => d.Setup = d.Setup with { Grid = v });
             View.InvalidateVisual();
         });
+        SwatchList.ItemTemplate = new Avalonia.Controls.Templates.FuncDataTemplate<Swatch>((w, _) => new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            Children =
+            {
+                new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(3), BorderBrush = Look.Border, BorderThickness = new Thickness(1), Background = w is null ? null : Swatchless(w.Colour) },
+                new TextBlock { Text = w?.Name, Foreground = Look.Text, VerticalAlignment = VerticalAlignment.Center },
+                new TextBlock { Text = w?.Colour, Foreground = Look.Faint, VerticalAlignment = VerticalAlignment.Center },
+            },
+        });
+        SwatchList.SelectionChanged += (_, _) =>
+        {
+            if (_refreshing || SelectedSwatch is not { } w) return;
+            SwatchNameBox.Text = w.Name;
+            SwatchValueBox.Text = w.Colour;
+        };
         FacingBox.IsCheckedChanged += (_, _) =>
         {
             if (_refreshing) return;
@@ -804,6 +804,21 @@ public sealed class SidePanel : TabControl
                 Ui.Buttons(
                     Ui.Button("Show grid", () => _window.SetGrid(!View.ShowGrid, View.SnapGrid)),
                     Ui.Button("Snap to grid", () => _window.SetGrid(View.ShowGrid || !View.SnapGrid, !View.SnapGrid))),
+                Ui.Heading("Swatches"),
+                SwatchList,
+                Ui.Row(("Name", SwatchNameBox)),
+                Ui.Row(("Colour", SwatchValueBox)),
+                Ui.Buttons(
+                    Ui.Button("Add", () => SwatchSay(Editor.AddSwatch(SwatchNameBox.Text ?? "", SwatchValueBox.Text ?? ""), "Added the swatch.")),
+                    Ui.Button("Change colour", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.ChangeSwatch(w.Name, SwatchValueBox.Text ?? ""), $"{w.Name} is a new colour: everything using it changed."); },
+                        "Give the selected swatch the colour typed: everything using it changes"),
+                    Ui.Button("Rename", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.RenameSwatch(w.Name, SwatchNameBox.Text ?? ""), "Renamed the swatch."); }),
+                    Ui.Button("Delete", () => { if (SelectedSwatch is { } w) SwatchSay(Editor.DeleteSwatch(w.Name), $"Deleted {w.Name}; what used it keeps the colour."); })),
+                new TextBlock
+                {
+                    Text = "Colours picked by a swatch's name follow it when it changes.",
+                    Foreground = Look.Faint, FontSize = 11, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 4),
+                },
                 Ui.Heading("Units"),
                 Ui.Row(("Measure in", UnitChoice)),
                 new TextBlock
@@ -814,6 +829,10 @@ public sealed class SidePanel : TabControl
             },
         };
     }
+
+    private Swatch? SelectedSwatch => SwatchList.SelectedItem as Swatch;
+
+    private void SwatchSay(string? why, string done) => _window.Say(why ?? done);
 
     /// <summary>A row of two labelled boxes whose labels change (left/right, or inside/outside).</summary>
     private static Grid SideRow(TextBlock a, Control boxA, TextBlock b, Control boxB)
@@ -899,6 +918,7 @@ public sealed class SidePanel : TabControl
 
     private void RefreshObject()
     {
+        FillSwatchButtons();
         var selected = View.Selected;
         _objectBody.IsVisible = selected.Count > 0;
         ObjectTitle.Text = selected.Count switch
@@ -944,7 +964,39 @@ public sealed class SidePanel : TabControl
         Set(WrapGapBox, Units.Format(first.WrapGap, Unit));
     }
 
-    private static IBrush Brush(string? colour) =>
+    /// <summary>The buttons for the document's swatches (and none): click for the fill, Shift+click for the stroke.</summary>
+    private void FillSwatchButtons()
+    {
+        if (_swatchesShown.SequenceEqual(Doc.Swatches)) return;
+        _swatchesShown = [.. Doc.Swatches];
+        _swatchButtons.Children.Clear();
+        foreach (var s in Doc.Swatches.Prepend(new Swatch("None", "")))
+        {
+            var name = s.Name;
+            var b = new Button
+            {
+                Width = 18,
+                Height = 18,
+                Padding = new Thickness(0),
+                Margin = new Thickness(0, 0, 3, 3),
+                Background = s.Colour.Length > 0 ? Brush(s.Colour) : Brushes.Transparent,
+                BorderBrush = Look.Border,
+                BorderThickness = new Thickness(1),
+                Content = s.Colour.Length == 0 ? new TextBlock { Text = "∅", FontSize = 11, Foreground = Look.Heading, HorizontalAlignment = HorizontalAlignment.Center } : null,
+            };
+            ToolTip.SetTip(b, name + " (click: fill, Shift+click: stroke)");
+            b.AddHandler(PointerReleasedEvent, (_, e) =>
+            {
+                var stroke = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+                SetColour(stroke, name);
+            }, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+            _swatchButtons.Children.Add(b);
+        }
+    }
+
+    private IBrush Brush(string? colour) => Swatchless(Colours.Resolve(colour, Doc.Swatches));
+
+    private static IBrush Swatchless(string? colour) =>
         colour is not null && Colours.TryParse(colour, out var c) ? new SolidColorBrush(Color.FromArgb(c.A, c.R, c.G, c.B))
             : new VisualBrush { Visual = new TextBlock { Text = "∅", Foreground = Look.Heading }, Stretch = Stretch.None };
 
@@ -1032,6 +1084,12 @@ public sealed class SidePanel : TabControl
         Set(GridBox, Units.Format(s.Grid, Unit));
         UnitChoice.SelectedIndex = Array.IndexOf(Units.All, s.Unit);
         FacingBox.IsChecked = s.Facing;
+        if (SwatchList.ItemsSource is not IEnumerable<Swatch> shown || !shown.SequenceEqual(Doc.Swatches))
+        {
+            var selected = SelectedSwatch?.Name;
+            SwatchList.ItemsSource = Doc.Swatches.ToList();
+            SwatchList.SelectedItem = Doc.Swatches.FirstOrDefault(w => w.Name == selected);
+        }
         MarginLeftLabel.Text = s.Facing ? "Inside" : "Left";
         _marginRightLabel.Text = s.Facing ? "Outside" : "Right";
     }
