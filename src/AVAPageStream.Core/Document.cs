@@ -26,7 +26,27 @@ public sealed class ImageStore
     public IEnumerable<string> Keys => _images.Keys;
 
     /// <summary>The file extension an image's bytes say it is.</summary>
-    public static string Extension(byte[] b) => b switch
+    public static string Extension(byte[] b)
+    {
+        if (IsSvg(b)) return "svg";
+        if (IsEps(b)) return "eps";
+        return Raster(b);
+    }
+
+    /// <summary>Whether the bytes are an SVG drawing: XML whose first element is &lt;svg&gt;.</summary>
+    public static bool IsSvg(byte[] b)
+    {
+        var head = System.Text.Encoding.UTF8.GetString(b, 0, Math.Min(b.Length, 2048)).TrimStart('\uFEFF', ' ', '\t', '\r', '\n');
+        return (head.StartsWith("<?xml", StringComparison.Ordinal) || head.StartsWith("<svg", StringComparison.Ordinal) || head.StartsWith("<!--", StringComparison.Ordinal))
+               && head.Contains("<svg", StringComparison.Ordinal);
+    }
+
+    /// <summary>Whether the bytes are Encapsulated PostScript: text starting %!PS-Adobe … EPSF, or the DOS binary form with a preview.</summary>
+    public static bool IsEps(byte[] b) =>
+        b is [0xC5, 0xD0, 0xD3, 0xC6, ..] ||
+        (b is [(byte)'%', (byte)'!', ..] && System.Text.Encoding.ASCII.GetString(b, 0, Math.Min(b.Length, 80)).Split('\n')[0].Contains("EPSF"));
+
+    private static string Raster(byte[] b) => b switch
     {
         [0x89, 0x50, 0x4E, 0x47, ..] => "png",
         [0xFF, 0xD8, ..] => "jpg",

@@ -1547,12 +1547,13 @@ public sealed class PageView : Control
         if (bytes is null) return;
         if (!ImageStore.IsImage(bytes))
         {
-            Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP or WebP).");
+            Status?.Invoke("That file isn't a picture AVAPageStream can show (PNG, JPEG, GIF, BMP, WebP, SVG or EPS).");
             return;
         }
         var key = Doc.Images.Add(bytes);
         _editor.Change("Place picture", d => { if (d.Find(pictureId) is PictureObject p) p.Image = key; });
         Select([pictureId]);
+        if (_renderer.Describe(Doc, key) is { } what) Status?.Invoke($"Placed {what}.");
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

@@ -54,7 +54,7 @@ internal sealed class Layouts(ITextMeasurer measurer)
 internal sealed class PageRenderer
 {
     private readonly Dictionary<string, IBrush> _brushes = [];
-    private readonly Dictionary<string, Bitmap?> _bitmaps = [];
+    private readonly Dictionary<string, PictureSource?> _pictures = [];
 
     public PageRenderer(Layouts layouts) => Layouts = layouts;
 
@@ -205,21 +205,48 @@ internal sealed class PageRenderer
 
     private void DrawPicture(DrawingContext dc, Document doc, PictureObject picture, Rect frame)
     {
-        if (BitmapOf(doc, picture.Image) is not { } bitmap)
+        var source = PictureOf(doc, picture.Image);
+        if (source is null || source is PostScriptPicture { Shown: null })
         {
             if (!Screen) return;
             var pen = new Pen(new SolidColorBrush(Color.Parse("#A0A8B8")), 0.75);
             dc.DrawRectangle(new SolidColorBrush(Color.Parse("#F0F2F5")), pen, frame);
             dc.DrawLine(pen, frame.TopLeft, frame.BottomRight);
             dc.DrawLine(pen, frame.TopRight, frame.BottomLeft);
+            if (source is PostScriptPicture eps)
+            {
+                var label = FontSupport.Format("EPS: " + eps.How, new CharFormat(Fonts.Sans, 8), new SolidColorBrush(Color.Parse("#5A6478")));
+                label.MaxTextWidth = Math.Max(20, frame.Width - 8);
+                using (dc.PushClip(frame)) dc.DrawText(label, new Point(frame.X + 4, frame.Y + 4));
+            }
             return;
         }
-        // The image's size in points: its pixels at the resolution it says it was made for.
-        var size = new Size(bitmap.PixelSize.Width * 72 / bitmap.Dpi.X, bitmap.PixelSize.Height * 72 / bitmap.Dpi.Y);
-        var dest = Placement(picture.Fit, size, frame).Translate(new Vector(picture.OffsetX, picture.OffsetY));
+        var dest = Placement(picture.Fit, source.Size, frame).Translate(new Vector(picture.OffsetX, picture.OffsetY));
         using (dc.PushClip(frame))
-            dc.DrawImage(bitmap, new Rect(0, 0, bitmap.Size.Width, bitmap.Size.Height), dest);
+        {
+            switch (source)
+            {
+                case RasterPicture r:
+                    dc.DrawImage(r.Bitmap, new Rect(0, 0, r.Bitmap.Size.Width, r.Bitmap.Size.Height), dest);
+                    break;
+                case VectorPicture v:
+                    dc.Custom(new SvgDraw(v.Picture, v.Cull, dest, frame));
+                    break;
+                case PostScriptPicture { Shown: { } shown }:
+                    dc.DrawImage(shown, new Rect(0, 0, shown.Size.Width, shown.Size.Height), dest);
+                    break;
+            }
+        }
     }
+
+    /// <summary>How a picture's image was shown: for the status bar.</summary>
+    public string? Describe(Document doc, string key) => PictureOf(doc, key) switch
+    {
+        VectorPicture => "an SVG drawing, kept as vector",
+        PostScriptPicture eps => "an EPS picture, shown by " + eps.How,
+        RasterPicture r => $"a picture of {r.Bitmap.PixelSize.Width} × {r.Bitmap.PixelSize.Height} pixels",
+        _ => null,
+    };
 
     /// <summary>
     /// The transform that turns an object about its centre, for drawing at <paramref name="scale"/> view units a point
@@ -275,20 +302,13 @@ internal sealed class PageRenderer
         }
     }
 
-    private Bitmap? BitmapOf(Document doc, string key)
+    private PictureSource? PictureOf(Document doc, string key)
     {
         if (key.Length == 0) return null;
-        if (_bitmaps.TryGetValue(key, out var bitmap)) return bitmap;
-        try
-        {
-            bitmap = doc.Images.Get(key) is { } bytes ? new Bitmap(new MemoryStream(bytes)) : null;
-        }
-        catch (Exception)
-        {
-            bitmap = null; // a damaged image shows as a missing one
-        }
-        _bitmaps[key] = bitmap;
-        return bitmap;
+        if (_pictures.TryGetValue(key, out var picture)) return picture;
+        picture = doc.Images.Get(key) is { } bytes ? Pictures.Load(bytes) : null;
+        _pictures[key] = picture;
+        return picture;
     }
 
     /// <summary>The brush for a colour: a swatch's own colour for a reference to one.</summary>

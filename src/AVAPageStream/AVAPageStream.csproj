@@ -14,6 +14,8 @@
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
     <!-- Already under Avalonia; referenced for its PDF document. Keep it at the version Avalonia.Skia asks for. -->
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
+    <!-- SVG pictures, drawn as vector through Skia. 5.1.1 is the last built on SkiaSharp 3.119, as Avalonia 12 is. -->
+    <PackageReference Include="Svg.Skia" Version="5.1.1" />
     <ProjectReference Include="..\AVAPageStream.Core\AVAPageStream.Core.csproj" />
   </ItemGroup>
   <ItemGroup>
