@@ -789,6 +789,63 @@ kept*). Saving or closing it removes the copy. If the program stops without savi
 time it starts it offers the work it saved: **Recover** opens it, as a document with changes still to save under its
 own name; **Discard** throws the copy away; **Not now** keeps it to be offered next time.
 
+## AI: the AI Chat and AI agents
+
+![The AI Chat on the right, having laid out a flyer: a blue band with the headline, the details in two columns below, each tool call it made listed in the chat, a picture of the page it looked at, and Undo this reply](docs/images/guide/ai-chat.png)
+
+AVAPageStream can be driven by an AI model: in the program's own **AI Chat**, or by an AI agent working from outside,
+such as Claude Code or Claude Desktop. Either way it lays out pages with the same tools you do — frames, text,
+styles, pictures, shapes, tables, swatches, pages and masters — looks at what it made, and fixes what doesn't look
+right. Each thing it does is one step that **Ctrl+Z** takes back, and your own work and its share one undo history.
+The model can't open or save files outside its working folder: the folder the document is in, or your Documents
+folder.
+
+### The AI Chat
+
+**AI › AI Chat** (or **F12**) opens the chat on the right of the window. Type what you want ("make a one-page flyer
+for the bake sale", "put this text in two columns with a heading", "make the headings blue") and press Enter. The
+chat shows each tool call the model makes as it goes, with what it came to, and the pictures of pages it looks at.
+**Stop** stops it. After a reply that changed the document, **Undo this reply** puts the whole document back as it
+was before that reply; **Timeline** lists every such reply, with a picture of the page before it, to go back further.
+
+The chat can use either of two kinds of model, chosen with **Setup…**:
+
+- **Claude**, through Anthropic's API. It needs your API key: set the `ANTHROPIC_API_KEY` environment variable before
+  starting AVAPageStream, or enter it with **Key…** (it's kept in your settings folder, readable only by you). Your
+  own API account is billed for what the chat uses; the line under the chat shows the tokens and roughly what they
+  cost, and Setup can stop the chat at a budget.
+- **A local or self-hosted model**, through any server that speaks the OpenAI Chat Completions API: Ollama
+  (`http://localhost:11434/v1`), LM Studio, llama.cpp's server, vLLM, or a company's own gateway. Give the server's
+  address and the model's name (**Refresh** lists the models the server has). Nothing leaves your computer with a
+  local server, and there's nothing to pay. Small models do better with **Core tools only** (a shorter list of the
+  main tools) and simple jobs; tick **Model sees pictures** only for a model that can read images.
+
+**History** keeps past chats on this computer, to reopen or export as Markdown, but only with *Keep chat history*
+ticked (it's off at first: a chat may hold a client's words).
+
+### AI agents from outside
+
+**AI › Allow AI Agents (MCP)** lets an AI agent on this computer work in the open window through the Model Context
+Protocol. It's off until you turn it on. **AI › Connect an Agent…** shows how to add AVAPageStream to an agent; for
+Claude Code:
+
+```
+claude mcp add avapagestream -- /path/to/AVAPageStream --mcp --attach
+```
+
+The agent then works on the document in the window while you watch, and its calls wait while you have a dialog box
+open or are dragging something. Without `--attach`, `AVAPageStream --mcp` is a server with a document of its own and
+no window at all, for agents that make documents on their own: it measures, draws and exports exactly as the window
+does. `--root FOLDER` sets its working folder.
+
+**Connect an Agent** can also let agents on **other computers** in, over the network (MCP over HTTP, on port 8768
+unless you choose another). They need the access token shown there (**Show**, **Copy**; **New token** shuts out
+everyone given the old one). Plain HTTP sends the token and the work unencrypted, so use it on a network you trust;
+`AVAPageStream --mcp --http 8768 --cert cert.pem --key key.pem` serves HTTPS, headless.
+
+The server also offers saved recipes (MCP prompts) an agent can follow: a one-page flyer, a two-column newsletter
+and a booklet with page numbers.
+
 ## Keyboard
 
 | Keys | |
@@ -811,6 +868,7 @@ own name; **Discard** throws the copy away; **Not now** keeps it to be offered n
 | Ctrl+Alt+F | Insert a footnote |
 | Ctrl+F, F3, Shift+F3 | Find and replace, find the next, the one before |
 | F7 | Check spelling |
+| F12 | The AI Chat |
 | Ctrl+Shift+E | The story editor |
 | Tab | In a table, the next cell |
 | Space (held) | Slide the page about |
@@ -820,5 +878,6 @@ Help › Keys and tools has the short version.
 
 ## Where things are kept
 
-Your settings, your own dictionary (`words.txt`), your templates and the Recovery folder of autosaved work are kept in the AVAPageStream folder of your
+Your settings, your own dictionary (`words.txt`), your templates, the Recovery folder of autosaved work, the AI Chat's
+API keys and saved chats (`Chats`) and the network door's token (`mcp-network-token`) are kept in the AVAPageStream folder of your
 user settings: `~/.config/AVAPageStream` on Linux and macOS, and `%APPDATA%\AVAPageStream` on Windows.

@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The MCP server: AI agents lay out documents through it, headless over stdio, live in the open window through a
+       local pipe, or over the network (HTTP, with a token). No Avalonia: text measuring, drawing and export come from
+       the program (IPageLibrary), so this sits beside the window rather than on it. -->
+  <PropertyGroup>
+    <RootNamespace>AVAPageStream.Mcp</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AVAPageStream.Core\AVAPageStream.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The official C# MCP SDK's core: the server, client and transports. -->
+    <PackageReference Include="ModelContextProtocol.Core" Version="2.3.0" />
+    <!-- The network door (NetworkListener): the SDK's Streamable HTTP handler on Kestrel. -->
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AVAPageStream.Tests" />
+  </ItemGroup>
+</Project>

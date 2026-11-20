@@ -211,8 +211,70 @@ public sealed class Editor
 
     private void Record(string label)
     {
+        if (_grouped > 0) return; // the group's own step holds it
         _undo.Add((Doc.Clone(), label, _stamp));
         _redo.Clear();
+    }
+
+    /// <summary>
+    /// Puts the whole document back as <paramref name="to"/> has it (a copy of it), as one undo step called
+    /// <paramref name="label"/>: an AI chat's Undo this reply, which Ctrl+Z can take back again.
+    /// </summary>
+    public void Revert(string label, Document to)
+    {
+        Record(label);
+        _mergeKey = null;
+        Doc = to.Clone();
+        _stamp = _nextStamp++;
+        Changed?.Invoke();
+    }
+
+    private int _grouped;
+
+    /// <summary>
+    /// Makes everything <paramref name="work"/> changes through this editor one undo step called
+    /// <paramref name="label"/> (none if it changed nothing). If it throws, the document goes back to how it was and no
+    /// step is left. An AI agent's call is one of these, however many changes it makes.
+    /// </summary>
+    public T Group<T>(string label, Func<T> work)
+    {
+        if (_grouped > 0) return work();
+        var before = Doc.Clone();
+        var stamp = _stamp;
+        var redo = _redo.ToList();
+        T result;
+        _grouped++;
+        try
+        {
+            result = work();
+        }
+        catch
+        {
+            Doc = before;
+            _stamp = stamp;
+            _redo.Clear();
+            _redo.AddRange(redo);
+            _mergeKey = null;
+            Changed?.Invoke();
+            throw;
+        }
+        finally
+        {
+            _grouped--;
+        }
+        _mergeKey = null;
+        if (before.ToJson(false) == Doc.ToJson(false))
+        {
+            _stamp = stamp;
+            _redo.Clear();
+            _redo.AddRange(redo);
+            return result;
+        }
+        _undo.Add((before, label, stamp));
+        _redo.Clear();
+        _stamp = _nextStamp++;
+        Changed?.Invoke();
+        return result;
     }
 
     // ---- Objects --------------------------------------------------------------------------------------------

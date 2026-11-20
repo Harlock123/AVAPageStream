@@ -88,6 +88,14 @@ pictures, tables, colour, spelling, and exporting and printing, with a picture f
 - **Templates.** Save any document as a template, and start new ones from it, or from the built-in newsletter and
   booklet.
 - **Self-contained files.** A `.avps` document carries its pictures with it.
+- **AI: a chat and agents.** The AI Chat (F12) lays out pages for you from what you ask, with Claude through
+  Anthropic's API or a model on your own computer through any OpenAI-compatible server (Ollama, LM Studio,
+  llama.cpp, vLLM). It shows every step, looks at the page it made, and Undo this reply puts it all back. AVAPageStream
+  is also an MCP server with 40 tools, so AI agents such as Claude Code can work in the open window
+  (`AVAPageStream --mcp --attach`, after AI › Allow AI Agents), on documents of their own with no window
+  (`AVAPageStream --mcp`), or from other computers over HTTP with a token. Every step an agent takes is one Ctrl+Z.
+
+![The AI Chat having laid out a flyer: the tool calls it made, a picture of the page it checked, and Undo this reply](docs/images/guide/ai-chat.png)
 
 | Styling text from the Text tab | A story too long for its frame | The exported PDF |
 | --- | --- | --- |
@@ -135,6 +143,7 @@ Needs the .NET 10 SDK.
 dotnet build AVAPageStream.slnx
 dotnet test AVAPageStream.slnx
 dotnet run --project src/AVAPageStream
+dotnet run --project src/AVAPageStream -- --mcp      # the MCP server on stdio, no window (--attach: the open window)
 ```
 
 The design of all of it is in [AVAPageStream_Spec.md](AVAPageStream_Spec.md). EPS pictures, text and all, are drawn

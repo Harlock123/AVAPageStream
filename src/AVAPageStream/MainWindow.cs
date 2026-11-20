@@ -17,7 +17,7 @@ namespace AVAPageStream;
 /// The program's window: the menus and tool bar, the toolbox, the page view, the side panel and the status bar.
 /// Built in code; its controls and commands are public so tests can drive them.
 /// </summary>
-public sealed class MainWindow : Window
+public sealed partial class MainWindow : Window
 {
     private readonly string _settingsPath;
     private bool _closing;
@@ -244,6 +244,7 @@ public sealed class MainWindow : Window
         View.ShowSheet += ShowSheet;
         Editor.Changed += OnChanged;
         Panel = new SidePanel(this);
+        SetUpAgents();
 
         var centre = new Grid { ColumnDefinitions = new ColumnDefinitions("*,4,330") };
         Scroller = new PageScroller(View);
@@ -271,6 +272,8 @@ public sealed class MainWindow : Window
         var box = BuildToolbox();
         DockPanel.SetDock(box, Dock.Left);
         dock.Children.Add(box);
+        DockPanel.SetDock(ChatHolder, Dock.Right);
+        dock.Children.Add(ChatHolder);
         dock.Children.Add(centre);
         Content = dock;
 
@@ -483,6 +486,7 @@ public sealed class MainWindow : Window
                         Item("Edit this page's _master", EditMaster),
                     },
                 },
+                BuildAiMenu(),
                 new MenuItem
                 {
                     Header = "_Help",
@@ -1673,6 +1677,12 @@ public sealed class MainWindow : Window
     {
         var command = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0;
         var shift = (e.KeyModifiers & KeyModifiers.Shift) != 0;
+        if (e.Key == Key.F12)
+        {
+            ToggleChat();
+            e.Handled = true;
+            return;
+        }
         if (e.Key == Key.F7)
         {
             OpenSpelling();

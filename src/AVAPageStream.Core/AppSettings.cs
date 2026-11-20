@@ -17,6 +17,35 @@ public sealed class AppSettings
     public int AutosaveMinutes { get; set; } = 2; // 0: never
     public bool PreflightFirst { get; set; } = true; // ask before exporting or printing a document with problems that will show
 
+    // ---- AI agents and the AI Chat ----
+
+    /// <summary>Whether AI agents outside the program may work in it, on this computer (AI › Allow AI Agents). Off until turned on.</summary>
+    public bool AllowAgents { get; set; }
+
+    /// <summary>Whether AI agents on other computers may, over the network (AI › Connect an Agent). Off until turned on.</summary>
+    public bool AllowNetworkAgents { get; set; }
+    public string NetworkAgentsAddress { get; set; } = "0.0.0.0";
+    public int NetworkAgentsPort { get; set; } = 8768;
+    /// <summary>The network door's working folder (empty: the Documents folder).</summary>
+    public string NetworkAgentsFolder { get; set; } = "";
+    public string NetworkAgentsCertificate { get; set; } = "";
+    public string NetworkAgentsKey { get; set; } = "";
+
+    /// <summary>Whether the AI Chat panel shows.</summary>
+    public bool ChatOpen { get; set; }
+    public bool ChatAutoContinue { get; set; } = true;
+    /// <summary>"Anthropic", or "OpenAICompatible" for a local or self-hosted server.</summary>
+    public string ChatProvider { get; set; } = "Anthropic";
+    public string ChatServerUrl { get; set; } = "http://localhost:11434/v1";
+    public string ChatServerModel { get; set; } = "";
+    public bool ChatCoreTools { get; set; } = true;
+    public bool ChatModelSeesPictures { get; set; }
+    /// <summary>Keep chats on this computer (off: a chat may hold a client's details).</summary>
+    public bool ChatKeepHistory { get; set; }
+    /// <summary>Prices per million tokens by model, where the person set their own.</summary>
+    public Dictionary<string, double[]> ChatPrices { get; set; } = [];
+    public double? ChatBudget { get; set; }
+
     public const int MaxRecent = 10;
 
     /// <summary>Puts a file at the top of the recent list.</summary>

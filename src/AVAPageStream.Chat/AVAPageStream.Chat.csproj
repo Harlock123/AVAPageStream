@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The in-app AI Chat: the conversation, its model clients (Claude through the Anthropic SDK, or any server that
+       speaks the OpenAI Chat Completions API, such as Ollama or LM Studio running locally) and the bridge to the MCP
+       server's tools. No UI: the panel that shows it is in the program. -->
+  <PropertyGroup>
+    <RootNamespace>AVAPageStream.Chat</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AVAPageStream.Mcp\AVAPageStream.Mcp.csproj" />
+    <!-- The official Anthropic C# SDK. -->
+    <PackageReference Include="Anthropic" Version="13.3.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="AVAPageStream.Tests" />
+  </ItemGroup>
+</Project>

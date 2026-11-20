@@ -819,3 +819,26 @@ splits paragraphs (now tested, and in the guide). Objects are anchored in table 
 the object the text is drawn in (`Chains.ObjectOf` of the area, so a cell's table), and the page view lays out
 cells' and footnotes' stories to find them. Not done: anchored objects in a table's repeated header rows (drawn in
 the first frame only), and in text on a path.
+
+### Milestone 11: AI agents and the AI Chat
+
+AVAPageStream driven by AI models, the same way as AVA Modeler, AVALightWave and CirqAvalonia: an MCP server whose
+tools are the program's own operations, reachable three ways (stdio with no window, a per-user pipe into the open
+window, HTTP with a token from other computers), and an AI Chat panel in the window that drives the same server
+in-process, with Claude (the Anthropic API) or a local or self-hosted model (any OpenAI Chat Completions server).
+
+- `AVAPageStream.Mcp` (no Avalonia): 40 tools over the document, its pages and masters, frames, shapes, pictures and
+  tables, stories and their formats, styles, swatches, find and replace, pictures of pages, preflight, PDF and PNG
+  export, undo, and checkpoints (diff, render, restore); three recipes (flyer, newsletter, booklet). Each change is
+  one undo step through `Editor.Group`, rolled back whole on failure; measures take units ("1in", "6p", "12mm").
+- The program supplies text measuring, drawing and export (`IPageLibrary`), so the headless server sets text exactly
+  as the window does: `--mcp` runs Avalonia's headless platform with Skia and no window.
+- `AVAPageStream.Chat`: AVA Modeler's chat (both providers, tool bridge, usage and budget, saved chats, Undo this
+  reply and the timeline on the server's checkpoints). The panel docks on the right (F12, AI › AI Chat).
+- AI › Allow AI Agents opens the pipe for `--mcp --attach`; AI › Connect an Agent shows the command and runs the
+  network door (port 8768, token beside the settings).
+
+**Status (20 November 2026):** done (584 tests: every tool through a real MCP client, every recipe call by call,
+undo and rollback, checkpoints, the chat on a scripted local model with Undo this reply, the window's live host,
+attaching through the pipe, and the network door's token). Checkpoints last for the session only, so Undo this reply
+isn't offered on a chat reopened from History.

@@ -16,6 +16,8 @@ rulers and guides, undo, `.avps` files, and PDF and PNG export drawn by the same
 dotnet build AVAPageStream.slnx
 dotnet test AVAPageStream.slnx                 # headless; the window tests run on Avalonia's headless platform
 dotnet run --project src/AVAPageStream         # the program
+dotnet run --project src/AVAPageStream -- --mcp   # the MCP server on stdio, no window (--attach: the open window;
+                                               # --http [ADDRESS:]PORT: over the network, with a token)
 AVAPAGESTREAM_SHOTS=/some/folder dotnet test AVAPageStream.slnx
                                                # also saves the README's screenshots and the sample PDF there
 python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.png and .ico
@@ -63,6 +65,27 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
     status bar, files, clipboard, keys), `Export.cs` (PDF and booklets through SkiaSharp, PNG), `Printing.cs` (lp, or Windows' Print action), `FontSupport.cs` (the bundled
     fonts and `FontMeasurer`), `Look.cs`, `Dialogs.cs` (`AskDialog`, `ExportDialog`).
   - `Assets/Fonts/`: Liberation Serif and Sans, with their licence.
+- `src/AVAPageStream.Mcp/`: the MCP server agents lay out documents through (ModelContextProtocol.Core, and
+  .AspNetCore for the network door). No Avalonia.
+  - `PageTools*.cs` are the tools, as `[McpServerTool]` methods (`PageTools.cs` the document, pages and objects,
+    `.Text.cs` stories, styles, swatches and find, `.Output.cs` pictures, preflight and export, `.Checkpoints.cs`
+    checkpoints, diff and going back); `PageServer.cs` has the instructions every agent is told and the argument
+    checks; `Recipes.cs` the saved recipes (MCP prompts).
+  - `Hosting.cs`: handlers touch the document only through `IPageHost.RunAsync` and an `IPageSession` (the `Editor`,
+    the file, the page shown). `PageHost` runs every call on the UI thread through an `IUiThread`, waiting while the
+    `IPageDesk` is busy; `HeadlessDesk` is a document with no window. Text measuring, drawing, export and preflight
+    come from an `IPageLibrary`, which the program supplies (`Agents/AgentLibrary.cs`).
+  - `LiveListener` (a per-user named pipe) and `LiveBridge` (`--mcp --attach`) let outside agents into the window;
+    `NetworkListener` is the network door (Streamable HTTP at `/mcp`, bearer token, Origin check). Both are the same
+    files as CirqAvalonia's and AVA Modeler's, the names apart: fix them together. `McpCommandLine` reads `--mcp`.
+- `src/AVAPageStream.Chat/`: the AI Chat's conversation (`ChatSession`), its model clients (`AnthropicBackend` on the
+  Anthropic SDK, `OpenAICompatibleBackend` for Ollama, LM Studio and the like), the API key store, the usage ledger,
+  saved chats and the in-process bridge to the MCP server (`McpToolBridge`). No UI. Taken from AVA Modeler's
+  `AVAModeler.Chat`, so a fix there may be wanted here.
+- `src/AVAPageStream/Agents/`: the program's side: `AgentLibrary`, `LiveAgents` (the pipe and network doors, and the
+  hosts for outside agents and the chat, on the window), `AgentMain` (`--mcp` with no window: Avalonia's headless
+  platform with Skia, its dispatcher on the main thread) and `ChatPanel`. `MainWindow.Agents.cs` is the AI menu, the
+  chat's place on the right and Connect an Agent.
 - `tests/AVAPageStream.Tests/`: xUnit v3 with Avalonia.Headless.XUnit. `Core/` tests the library with
   `FixedMeasurer` (every character half its size wide, so layouts are easy sums); `WindowTests` drives the window
   with the mouse and keys and real fonts; `Sample.cs` builds the newsletter in the screenshots.
@@ -223,5 +246,14 @@ python3 tools/make_icon.py                     # redraws Assets/AVAPageStream.pn
   and `SmallCapsPieces`; never pass a format with `SmallCaps` or a `Script` straight to the measurer.
 - **PDF metadata starts from `SKDocumentPdfMetadata.Default`**: a bare initialiser zeroes the encoding quality, which
   turns every picture into the worst JPEG. The export test checks for it.
+- **Agent tools.** Every change an agent makes goes through `PageTools.Edit`, which runs it inside
+  `Editor.Group`: one undo step however many changes it makes, and the document put back whole if it throws. A new
+  tool needs a `[Description]` on it and every parameter (snake_case names) and a place in `AgentTests.ToolNames`;
+  recipes are run call by call by `AgentTests`, so one that stops working fails the build. Measures are `JsonElement?`
+  so an agent can send 72 or "1in". Agent work runs on the UI thread (the headless server's too), because measuring
+  and drawing text need Avalonia.
+- **No real model in tests.** The chat tests answer from `FakeModelServer` (a scripted OpenAI-compatible server);
+  windows in tests get key stores of their own (`MainWindow.ChatKeys`), never the person's. The network token lives
+  only in `mcp-network-token` beside the settings: never in `settings.json`, a status line or a log.
 - **Errors say what to do**, in the status bar, never as a bare exception.
 - **Warnings are errors** (`TreatWarningsAsErrors`), and nullable reference types are on.
