@@ -224,7 +224,7 @@ internal sealed class OpenAICompatibleBackend : IChatBackend
                 var n = outcome.Images.Count == 1 ? "a picture" : $"{outcome.Images.Count} pictures";
                 content += (content.Length > 0 ? "\n" : "") + (ModelSeesPictures
                     ? $"({n}, in the next message)"
-                    : $"({n}, shown to the person in the chat; you can't see pictures here, so check your work with get_document and check_mesh)");
+                    : $"({n}, shown to the person in the chat; you can't see pictures here, so check your work with the tools that read it back)");
                 if (ModelSeesPictures) pictures.AddRange(outcome.Images.Select(i => (call, i)));
             }
             _messages.Add(new JsonObject { ["role"] = "tool", ["tool_call_id"] = call.Id, ["content"] = content });

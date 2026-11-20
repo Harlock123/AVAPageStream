@@ -814,11 +814,18 @@ The chat can use either of two kinds of model, chosen with **Setup…**:
   starting AVAPageStream, or enter it with **Key…** (it's kept in your settings folder, readable only by you). Your
   own API account is billed for what the chat uses; the line under the chat shows the tokens and roughly what they
   cost, and Setup can stop the chat at a budget.
-- **A local or self-hosted model**, through any server that speaks the OpenAI Chat Completions API: Ollama
-  (`http://localhost:11434/v1`), LM Studio, llama.cpp's server, vLLM, or a company's own gateway. Give the server's
-  address and the model's name (**Refresh** lists the models the server has). Nothing leaves your computer with a
-  local server, and there's nothing to pay. Small models do better with **Core tools only** (a shorter list of the
-  main tools) and simple jobs; tick **Model sees pictures** only for a model that can read images.
+- **Any model with an OpenAI-compatible API**, through any server that speaks the OpenAI Chat Completions API. Give the
+  server's address and the model's name (**Refresh** lists the models the server has):
+  - **On this computer**: Ollama (`http://localhost:11434/v1`), LM Studio (`http://localhost:1234/v1`), llama.cpp's
+    server or vLLM. Nothing leaves your computer, there's nothing to pay, and no key is needed.
+  - **On another computer on your network**: the same servers, at that computer's address (such as
+    `http://192.168.1.20:11434/v1`; Ollama must be started with `OLLAMA_HOST=0.0.0.0`). Usually no key either.
+  - **OpenAI or another cloud service**: `https://api.openai.com/v1` with a model such as `gpt-4.1`, or another
+    service's OpenAI-compatible address (OpenRouter, Groq, Mistral, Google's Gemini), with that service's API key
+    entered under **Key…**. That account is billed for what the chat uses.
+
+  Small local models do better with **Core tools only** (a shorter list of the main tools) and simple jobs; tick
+  **Model sees pictures** only for a model that can read images.
 
 **History** keeps past chats on this computer, to reopen or export as Markdown, but only with *Keep chat history*
 ticked (it's off at first: a chat may hold a client's words).
